@@ -556,7 +556,7 @@ class ExchangeWorker(QThread):
             # 정밀 보정값 적용
             left_offset = 395
             crop_width = 670
-            top_offset = -20
+            top_offset = -5
             bottom_trim = 20
 
             # 전체 페이지 스크린샷을 메모리에서 바로 처리
@@ -768,7 +768,6 @@ class StockWorker(QThread):
                 os.remove(screenshot_path)
 
             self.copy_image_to_clipboard(output_path)
-            self.open_image(output_path)
             return output_path
 
         except Exception as e:
@@ -935,11 +934,6 @@ class NewsTab(QWidget):
         
         # 복사하기 버튼 활성화
         self.copy_result_btn.setEnabled(True)
-        
-        # 첫 번째 실행 시 챗봇 열기
-        if self.first_time:
-            self.open_chatbot()
-            self.first_time = False
     
     def open_chatbot(self):
         webbrowser.open(CHATBOT_URL, new=0)
