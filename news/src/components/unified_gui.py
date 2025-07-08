@@ -537,10 +537,10 @@ class ExchangeWorker(QThread):
             WebDriverWait(driver, 10).until(
                 lambda d: d.execute_script("return document.readyState") == "complete"
             )
-            time.sleep(1)  # 0.2초에서 1초로 복원
+            time.sleep(0.5)  # 0.2초에서 1초로 복원
 
             try:
-                top = driver.find_element(By.CSS_SELECTOR, "div.exchange_top.up")
+                top = driver.find_element(By.CSS_SELECTOR, "div.exchange_top")
                 bottom = driver.find_element(By.CSS_SELECTOR, "div.invest_wrap")
             except Exception as e:
                 print(f"환율 차트 요소를 찾을 수 없습니다: {e}")
@@ -857,12 +857,15 @@ class NewsTab(QWidget):
         button_layout = QHBoxLayout()
         self.extract_btn = QPushButton("📄 기사 추출")
         self.extract_btn.clicked.connect(self.extract_news)
+        self.reset_btn = QPushButton("🔄 리셋")
+        self.reset_btn.clicked.connect(self.reset_inputs)
         self.cancel_btn = QPushButton("❌ 취소")
         self.cancel_btn.clicked.connect(self.cancel_extraction)
         self.cancel_btn.setEnabled(False)  # 초기에는 비활성화
         self.open_chatbot_btn = QPushButton("🌐 챗봇 열기")
         self.open_chatbot_btn.clicked.connect(self.open_chatbot)
         button_layout.addWidget(self.extract_btn)
+        button_layout.addWidget(self.reset_btn)
         button_layout.addWidget(self.cancel_btn)
         button_layout.addWidget(self.open_chatbot_btn)
         layout.addLayout(button_layout)
@@ -894,6 +897,18 @@ class NewsTab(QWidget):
         
         self.setLayout(layout)
     
+    def reset_inputs(self):
+        """입력 필드들을 초기화합니다."""
+        self.url_input.clear()
+        self.keyword_input.clear()
+        self.result_text.clear()
+        self.progress_label.setText("")
+        self.copy_result_btn.setEnabled(False)
+        if self.worker and self.worker.isRunning():
+            self.worker.terminate()
+        self.extract_btn.setEnabled(True)
+        self.cancel_btn.setEnabled(False)
+
     def extract_news(self):
         url = self.url_input.text().strip()
         keyword = self.keyword_input.text().strip()
@@ -942,7 +957,7 @@ class NewsTab(QWidget):
     def copy_result(self):
         text = self.result_text.toPlainText()
         pyperclip.copy(text)
-        QMessageBox.information(self, "복사 완료", "결과가 클립보드에 복사되었습니다.")
+        # 모달 제거 - 복사 완료 메시지 삭제
 
     def cancel_extraction(self):
         self.worker.terminate()
@@ -989,6 +1004,8 @@ class ExchangeTab(QWidget):
         button_layout = QHBoxLayout()
         self.capture_btn = QPushButton("📊 차트 캡처")
         self.capture_btn.clicked.connect(self.capture_chart)
+        self.reset_btn = QPushButton("🔄 리셋")
+        self.reset_btn.clicked.connect(self.reset_inputs)
         self.cancel_btn = QPushButton("❌ 취소")
         self.cancel_btn.clicked.connect(self.cancel_capture)
         self.cancel_btn.setEnabled(False)  # 초기에는 비활성화
@@ -998,6 +1015,7 @@ class ExchangeTab(QWidget):
         self.open_chatbot_btn.clicked.connect(self.open_chatbot)
         
         button_layout.addWidget(self.capture_btn)
+        button_layout.addWidget(self.reset_btn)
         button_layout.addWidget(self.cancel_btn)
         button_layout.addWidget(self.open_folder_btn)
         button_layout.addWidget(self.open_chatbot_btn)
@@ -1020,6 +1038,16 @@ class ExchangeTab(QWidget):
         layout.addWidget(result_group)
         
         self.setLayout(layout)
+    
+    def reset_inputs(self):
+        """입력 필드들을 초기화합니다."""
+        self.keyword_input.clear()
+        self.progress_label.setText("")
+        self.result_label.setText("")
+        if self.worker and self.worker.isRunning():
+            self.worker.terminate()
+        self.capture_btn.setEnabled(True)
+        self.cancel_btn.setEnabled(False)
     
     def open_folder(self):
         """환율차트 폴더 열기"""
@@ -1118,6 +1146,8 @@ class StockTab(QWidget):
         button_layout = QHBoxLayout()
         self.capture_btn = QPushButton("📊 차트 캡처")
         self.capture_btn.clicked.connect(self.capture_chart)
+        self.reset_btn = QPushButton("🔄 리셋")
+        self.reset_btn.clicked.connect(self.reset_inputs)
         self.cancel_btn = QPushButton("❌ 취소")
         self.cancel_btn.clicked.connect(self.cancel_capture)
         self.cancel_btn.setEnabled(False)  # 초기에는 비활성화
@@ -1126,6 +1156,7 @@ class StockTab(QWidget):
         self.open_chatbot_btn = QPushButton("🌐 챗봇 열기")
         self.open_chatbot_btn.clicked.connect(self.open_chatbot)
         button_layout.addWidget(self.capture_btn)
+        button_layout.addWidget(self.reset_btn)
         button_layout.addWidget(self.cancel_btn)
         button_layout.addWidget(self.open_folder_btn)
         button_layout.addWidget(self.open_chatbot_btn)
@@ -1148,6 +1179,16 @@ class StockTab(QWidget):
         layout.addWidget(result_group)
         
         self.setLayout(layout)
+    
+    def reset_inputs(self):
+        """입력 필드들을 초기화합니다."""
+        self.keyword_input.clear()
+        self.progress_label.setText("")
+        self.result_label.setText("")
+        if self.worker and self.worker.isRunning():
+            self.worker.terminate()
+        self.capture_btn.setEnabled(True)
+        self.cancel_btn.setEnabled(False)
     
     def open_folder(self):
         today = datetime.now().strftime('%Y%m%d')
