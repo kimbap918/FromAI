@@ -11,8 +11,7 @@ news/src/
 ├── components/
 │   ├── hwan_tab.py         # 환율 차트 캡처 및 관련 기능을 제공하는 환율 탭 UI
 │   ├── news_tab.py         # 뉴스 기사 추출 및 요약 기능을 제공하는 뉴스 탭 UI
-│   ├── stock_tab.py        # 주식 차트 캡처 및 관련 기능을 제공하는 주식 탭 UI
-│   └── unified_gui.py      # 여러 탭을 통합 관리하는 전체 PyQt5 GUI 프레임워크
+│   └── stock_tab.py        # 주식 차트 캡처 및 관련 기능을 제공하는 주식 탭 UI
 ├── services/
 │   ├── news_LLM.py         # 뉴스 기사 본문을 LLM(Gemini)으로 재작성/요약하는 서비스 로직
 │   └── stock_LLM.py        # 주식 관련 기사 본문을 LLM(Gemini)으로 생성하는 서비스 로직
