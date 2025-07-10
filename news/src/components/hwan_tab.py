@@ -125,7 +125,7 @@ class HwanTab(QWidget):
     # ------------------------------------------------------------------
     def open_folder(self):
         today = datetime.now().strftime('%Y%m%d')
-        folder_path = os.path.join("환율차트", today)
+        folder_path = os.path.join("환율차트", f"환율{today}")
         if os.path.exists(folder_path):
             if platform.system() == "Windows":
                 os.startfile(folder_path)

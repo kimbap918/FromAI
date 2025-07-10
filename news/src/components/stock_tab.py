@@ -132,7 +132,7 @@ class StockTab(QWidget):
     # ------------------------------------------------------------------
     def open_folder(self):
         today = datetime.now().strftime('%Y%m%d')
-        folder_path = os.path.join("주식차트", today)
+        folder_path = os.path.join("주식차트", f"주식{today}")
         if os.path.exists(folder_path):
             if platform.system() == "Windows":
                 os.startfile(folder_path)
