@@ -13,7 +13,13 @@ from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 import time
 import nltk
-nltk.data.path.append('./nltk_data')
+from urllib.parse import urljoin
+import os
+
+# NLTK 데이터 경로 설정
+nltk_data_path = './nltk_data'
+if os.path.exists(nltk_data_path):
+    nltk.data.path.append(nltk_data_path)
 
 # 최소 본문 길이
 MIN_BODY_LENGTH = 300
@@ -105,17 +111,30 @@ def extract_with_iframe(url: str) -> tuple[str, str]:
     title_tag = soup.select_one('h1') or soup.select_one('title')
     title = title_tag.text.strip() if title_tag else "제목 없음"
 
-    body = ""
+    best_body = ""
     iframes = soup.select("iframe[src*='proc_view_body']")
     for iframe in iframes:
         iframe_url = urljoin(url, iframe.get("src"))
         try:
             iframe_res = requests.get(iframe_url, headers=HEADERS)
             iframe_soup = BeautifulSoup(iframe_res.text, 'html.parser')
-            body = iframe_soup.get_text("\n").strip()
-            if len(body) > 200:
-                break
+            # 스마트 파싱 시도 (기사 영역 우선)
+            body = ""
+            for selector in ['article', '.articleBody', '.view_content', '.post-content']:
+                body_area = iframe_soup.select_one(selector)
+                if body_area:
+                    for unwanted in body_area.select('script, style, .ad, .comment'):
+                        unwanted.decompose()
+                    body = body_area.get_text("\n").strip()
+                    if len(body) > 200:
+                        break
+            # 만약 스마트 파싱 실패 시 전체 텍스트 fallback
+            if not body or len(body) < 100:
+                body = iframe_soup.get_text("\n").strip()
+            # 가장 긴 본문을 선택
+            if len(body) > len(best_body):
+                best_body = body
         except:
             continue
 
-    return title, body
+    return title, best_body

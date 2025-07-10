@@ -29,13 +29,17 @@ class ExchangeWorker(QThread):
 
     def run(self):
         try:
-            self.progress.emit("환율 차트 캡처 중...")
+            self.progress.emit("환율 차트 검색 중...")
             image_path = capture_exchange_chart(self.keyword)
+            self.progress.emit("이미지 캡처 및 저장 중...")
             if image_path:
+                self.progress.emit("환율 차트 캡처 성공! 결과가 클립보드에 복사되었습니다.")
                 self.finished.emit(image_path, "")
             else:
+                self.progress.emit("환율 차트 캡처에 실패했습니다.")
                 self.finished.emit("", "환율 차트 캡처에 실패했습니다.")
         except Exception as e:
+            self.progress.emit(f"오류 발생: {str(e)}")
             self.finished.emit("", f"오류 발생: {str(e)}")
 
 # ------------------------------------------------------------------
@@ -161,10 +165,30 @@ class HwanTab(QWidget):
         self.result_label.setText("")
         self.progress_label.setText("처리 중...")
 
+        # self.worker = ExchangeWorker(keyword)
+        # self.worker.progress.connect(self.update_progress)
+        # self.worker.finished.connect(self.on_capture_finished)
+        # self.worker.start()
+        # → 아래처럼 수정
         self.worker = ExchangeWorker(keyword)
         self.worker.progress.connect(self.update_progress)
         self.worker.finished.connect(self.on_capture_finished)
+        # capture_exchange_chart에 progress_callback 전달
+        self.worker.run = lambda: self.worker_run_with_progress()
         self.worker.start()
+
+    def worker_run_with_progress(self):
+        try:
+            image_path = capture_exchange_chart(self.worker.keyword, progress_callback=self.worker.progress.emit)
+            if image_path:
+                self.worker.progress.emit("환율 차트 캡처 성공! 결과가 클립보드에 복사되었습니다.")
+                self.worker.finished.emit(image_path, "")
+            else:
+                self.worker.progress.emit("환율 차트 캡처에 실패했습니다.")
+                self.worker.finished.emit("", "환율 차트 캡처에 실패했습니다.")
+        except Exception as e:
+            self.worker.progress.emit(f"오류 발생: {str(e)}")
+            self.worker.finished.emit("", f"오류 발생: {str(e)}")
 
     # ------------------------------------------------------------------
     # 작성자 : 최준혁
@@ -184,6 +208,10 @@ class HwanTab(QWidget):
     # 기능 : PyQt5에서 환율 차트 캡처 진행 상태 업데이트하는 함수(프론트)
     # ------------------------------------------------------------------
     def update_progress(self, message):
+        if any(x in message for x in ["성공", "주의", "확인", "오류"]):
+            self.progress_label.setStyleSheet("color: #FFA500; font-weight: bold;")
+        else:
+            self.progress_label.setStyleSheet("color: black;")
         self.progress_label.setText(message)
 
     # ------------------------------------------------------------------

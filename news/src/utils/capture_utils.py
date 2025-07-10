@@ -10,6 +10,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
 from news.src.utils.driver_utils import initialize_driver
+from news.src.utils.clipboard_utils import copy_image_to_clipboard
 
 
 # ------------------------------------------------------------------
@@ -23,63 +24,65 @@ def make_exchange_keyword(keyword: str) -> str:
         return keyword
     return f"{keyword}환율"
 
-
-def capture_exchange_chart(keyword: str) -> str:
+# ------------------------------------------------------------------
+# 작성자 : 최준혁
+# 작성일 : 2025-07-10
+# 기능 : 네이버 검색에서 환율 차트를 찾아 캡처하고 저장하는 함수(환율 차트)
+# ------------------------------------------------------------------
+def capture_exchange_chart(keyword: str, progress_callback=None) -> str:
     """
     네이버 검색에서 환율 차트를 찾아 캡처하고 저장
     :param keyword: 검색어 (예: "달러환율" 또는 "달러")
+    :param progress_callback: 진행상황 콜백 함수 (옵션)
     :return: 저장된 이미지 경로
     """
+    if progress_callback:
+        progress_callback("네이버 검색 페이지 접속 중...")
     keyword = make_exchange_keyword(keyword)
     driver = initialize_driver()
     try:
         url = f"https://search.naver.com/search.naver?query={keyword}"
         driver.get(url)
+        if progress_callback:
+            progress_callback("페이지 로딩 대기 중...")
         WebDriverWait(driver, 3).until(
             lambda d: d.execute_script("return document.readyState") == "complete"
         )
         time.sleep(0.3)  # 페이지 로딩을 위한 대기 시간 증가
 
-        # 환율 차트 영역을 찾기 위한 여러 선택자 시도
+        # 환율 차트 영역 찾기
+        if progress_callback:
+            progress_callback("차트 영역 찾는 중...")
         top = None
         bottom = None
-        
-        # 첫 번째 시도: 기존 선택자
         try:
             top = driver.find_element(By.CSS_SELECTOR, "div.exchange_top.up")
             bottom = driver.find_element(By.CSS_SELECTOR, "div.invest_wrap")
         except:
             pass
-        
-        # 두 번째 시도: 다른 가능한 선택자들
         if not top:
             try:
                 top = driver.find_element(By.CSS_SELECTOR, "div.exchange_top")
                 bottom = driver.find_element(By.CSS_SELECTOR, "div.invest_wrap")
             except:
                 pass
-        
-        # 세 번째 시도: 더 일반적인 선택자
         if not top:
             try:
                 top = driver.find_element(By.CSS_SELECTOR, "[class*='exchange']")
                 bottom = driver.find_element(By.CSS_SELECTOR, "[class*='invest']")
             except:
                 pass
-        
-        # 네 번째 시도: 환율 관련 텍스트가 포함된 요소 찾기
         if not top:
             try:
                 elements = driver.find_elements(By.XPATH, "//*[contains(text(), '환율') or contains(text(), '달러') or contains(text(), '엔화')]")
                 if elements:
                     top = elements[0]
-                    # top 요소 아래의 적절한 영역을 bottom으로 설정
                     bottom = driver.find_element(By.CSS_SELECTOR, "div.invest_wrap")
             except:
                 pass
-        
-        # 요소를 찾지 못한 경우 예외 발생
         if not top or not bottom:
+            if progress_callback:
+                progress_callback("❌ 환율 차트 영역을 찾을 수 없습니다.")
             raise Exception(f"환율 차트 요소를 찾을 수 없습니다. 검색어: {keyword}")
 
         driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", top)
@@ -89,6 +92,8 @@ def capture_exchange_chart(keyword: str) -> str:
         start_y = int(top.location['y'] * zoom)
         end_y = int((bottom.location['y'] + bottom.size['height']) * zoom)
 
+        if progress_callback:
+            progress_callback("화면 전체 스크린샷 캡처 중...")
         screenshot = driver.get_screenshot_as_png()
         image = Image.open(io.BytesIO(screenshot))
 
@@ -97,17 +102,23 @@ def capture_exchange_chart(keyword: str) -> str:
         left_offset = 395
         crop_width = 670
 
+        if progress_callback:
+            progress_callback("차트 이미지 잘라내기...")
         cropped = image.crop((left_offset, top_coord, left_offset + crop_width, bottom_coord))
 
         currency = top.text.split('\n')[0].strip().replace(' ', '') or "환율"
         today = datetime.now().strftime('%Y%m%d')
-        # 현재 작업 디렉토리를 기준으로 절대 경로 생성
         current_dir = os.getcwd()
         folder = os.path.join(current_dir, "환율차트", f"환율{today}")
         os.makedirs(folder, exist_ok=True)
         filename = f"{today}_{currency}_환율차트.png"
         output_path = os.path.join(folder, filename)
         cropped.save(output_path)
+        
+        if progress_callback:
+            progress_callback("이미지를 클립보드에 복사 중...")
+        copy_image_to_clipboard(output_path)
+        
         return output_path
 
     finally:
@@ -118,41 +129,44 @@ def capture_exchange_chart(keyword: str) -> str:
 # 작성일 : 2025-07-09
 # 기능 : 네이버 금융 종목 상세 페이지에서 wrap_company 영역을 캡처하고 저장하는 함수(주식 차트)
 # ------------------------------------------------------------------
-def capture_wrap_company_area(stock_code: str) -> str:
+def capture_wrap_company_area(stock_code: str, progress_callback=None) -> str:
     """
     네이버 금융 종목 상세 페이지에서 wrap_company 영역을 캡처
     :param stock_code: 종목 코드 (예: 005930)
     :return: 저장된 이미지 경로
     """
+    if progress_callback:
+        progress_callback("네이버 금융 상세 페이지 접속 중...")
     driver = initialize_driver()
     try:
         url = f"https://finance.naver.com/item/main.naver?code={stock_code}"
         driver.get(url)
-        WebDriverWait(driver, 3).until(
-            lambda d: d.execute_script("return document.readyState") == "complete"
+        if progress_callback:
+            progress_callback("페이지 로딩 대기 중...")
+        # 페이지 로딩 후, 차트 영역이 등장할 때까지 대기
+        WebDriverWait(driver, 5).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, "div.wrap_company"))
         )
-        time.sleep(0.3)
-
-        # KRX/NTX 탭 존재 여부 확인 및 KRX 클릭
+        if progress_callback:
+            progress_callback("차트 영역 찾는 중...")
         elements = driver.find_elements(By.CSS_SELECTOR, "a.top_tab_link")
         has_krx_ntx = False
         krx_clicked = False
-        
         for el in elements:
             if ("KRX" in el.text.upper() or "NTX" in el.text.upper()) and el.is_displayed():
                 has_krx_ntx = True
-                # KRX 탭을 찾아서 클릭
                 if "KRX" in el.text.upper():
                     try:
                         el.click()
                         krx_clicked = True
-                        time.sleep(0.2)  # 클릭 후 잠시 대기
+                        # KRX 탭 클릭 후에도 차트 영역이 다시 등장할 때까지 대기
+                        WebDriverWait(driver, 2).until(
+                            EC.presence_of_element_located((By.CSS_SELECTOR, "div.wrap_company"))
+                        )
                         break
                     except Exception as e:
                         print(f"KRX 탭 클릭 실패: {e}")
                 break
-
-        # 회사명 추출
         try:
             company_name_element = driver.find_element(By.CSS_SELECTOR, "div.wrap_company h2 a")
             company_name = company_name_element.text.strip()
@@ -160,43 +174,163 @@ def capture_wrap_company_area(stock_code: str) -> str:
                 company_name = "Unknown"
         except:
             company_name = "Unknown"
-        
-        # 파일명에서 사용할 수 있도록 회사명 정리 (특수문자 제거)
         clean_company_name = company_name.replace(" ", "").replace("/", "_").replace("\\", "_")
-        
         el = driver.find_element(By.CSS_SELECTOR, "div.wrap_company")
         driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", el)
-        time.sleep(0.3)
-
+        # time.sleep(0.3) 제거
+        if progress_callback:
+            progress_callback("화면 전체 스크린샷 캡처 중...")
         screenshot_path = os.path.abspath("full_screenshot.png")
         driver.save_screenshot(screenshot_path)
-
         location = el.location
         zoom = driver.execute_script("return window.devicePixelRatio || 1;")
         start_x = int(location['x'] * zoom)
         start_y = int(location['y'] * zoom)
-        width = 965
-        height = 515 if has_krx_ntx else 475  # KRX/NTX 탭이 없으면 높이 400
-
+        width = 800
+        height = 505 if has_krx_ntx else 465
         image = Image.open(screenshot_path)
+        if progress_callback:
+            progress_callback("차트 이미지 잘라내기...")
         cropped = image.crop((start_x, start_y, start_x + width, start_y + height))
-
         today = datetime.now().strftime("%Y%m%d")
-        # 현재 작업 디렉토리를 기준으로 절대 경로 생성
         current_dir = os.getcwd()
         folder = os.path.join(current_dir, "주식차트", f"주식{today}")
         os.makedirs(folder, exist_ok=True)
         filename = f"{stock_code}_{clean_company_name}.png"
         output_path = os.path.join(folder, filename)
         cropped.save(output_path)
-
         if os.path.exists(screenshot_path):
             os.remove(screenshot_path)
-
+        if progress_callback:
+            progress_callback("이미지를 클립보드에 복사 중...")
+        copy_image_to_clipboard(output_path)
         return output_path
-
     finally:
         driver.quit()
+
+
+# ------------------------------------------------------------------
+# 작성자 : 최준혁
+# 작성일 : 2025-07-10
+# 기능 : 네이버 검색에서 외국 주식 차트를 찾아 캡처하고 저장하는 함수(외국 주식 차트)
+# ------------------------------------------------------------------
+def capture_foreign_stock_chart(keyword: str, progress_callback=None) -> str:
+    """
+    구글 검색 결과에서 외국주식 차트+시세(구글 파이낸스 위젯) 영역을 캡처합니다.
+    :param keyword: 예) '팔란티어 주가', 'AAPL', '테슬라 주가'
+    :return: 저장된 이미지 경로 (또는 None)
+    """
+    # '구글' 또는 '구글주가'는 '알파벳 주가'로 변환
+    if keyword.replace(' ', '') in ['구글', '구글주가']:
+        keyword = '알파벳 주가'
+    elif '주가' not in keyword:
+        keyword = f"{keyword} 주가"
+    if progress_callback:
+        progress_callback("구글 검색 페이지 접속 중...")
+    print(f"[DEBUG] capture_foreign_stock_chart 진입: {keyword}")
+    driver = initialize_driver()
+    try:
+        # 구글 검색 결과 페이지로 이동
+        url = f"https://www.google.com/search?q={keyword}"
+        driver.get(url)
+        if progress_callback:
+            progress_callback("페이지 로딩 대기 중...")
+        WebDriverWait(driver, 3).until(
+            lambda d: d.execute_script("return document.readyState") == "complete"
+        )
+        time.sleep(0.5)  # 위젯 로딩 대기
+
+        if progress_callback:
+            progress_callback("차트 영역 찾는 중...")
+        # 구글 파이낸스 위젯 영역 찾기
+        try:
+            chart_el = driver.find_element(By.CSS_SELECTOR, "div.aviV4d")
+            print("[DEBUG] selector 성공: div.aviV4d")
+        except Exception as e:
+            print(f"[DEBUG] selector 실패: div.aviV4d / {e}")
+            chart_el = None
+
+        if not chart_el:
+            if progress_callback:
+                progress_callback("❌ 구글에서 차트 영역을 찾을 수 없습니다.")
+            print("❌ 구글에서 차트 영역을 찾을 수 없습니다.")
+            return None
+
+        driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", chart_el)
+        time.sleep(0.5)
+
+        zoom = driver.execute_script("return window.devicePixelRatio || 1;")
+        location = chart_el.location
+        size = chart_el.size
+
+        top_offset = 55
+        bottom_offset = 100
+
+        start_y = int(location['y'] * zoom) - top_offset
+        end_y = int((location['y'] + size['height']) * zoom) - bottom_offset
+        left = int(location['x'] * zoom)
+        width = int(size['width'] * zoom)
+
+        if progress_callback:
+            progress_callback("화면 전체 스크린샷 캡처 중...")
+        screenshot = driver.get_screenshot_as_png()
+        image = Image.open(io.BytesIO(screenshot))
+        if progress_callback:
+            progress_callback("차트 이미지 잘라내기...")
+        cropped = image.crop((left, start_y, left + width, end_y))
+
+        today = datetime.now().strftime('%Y%m%d')
+        safe_keyword = "".join(c for c in keyword if c.isalnum() or c in ('_', '-'))
+        # 한국 주식과 동일하게 저장
+        folder = os.path.join(os.getcwd(), "주식차트", f"주식{today}")
+        os.makedirs(folder, exist_ok=True)
+        filename = f"{today}_{safe_keyword}_구글해외주식.png"
+        output_path = os.path.join(folder, filename)
+        cropped.save(output_path)
+
+        if progress_callback:
+            progress_callback("이미지를 클립보드에 복사 중...")
+        copy_image_to_clipboard(output_path)
+        print(f"✅ 구글 차트 캡처 및 클립보드 복사 완료: {output_path}")
+        return output_path
+
+    except Exception as e:
+        print(f"[ERROR] 구글 해외주식 캡처 중 예외 발생: {e}")
+        return None
+    finally:
+        driver.quit()
+
+
+# ------------------------------------------------------------------
+# 작성자 : 최준혁
+# 작성일 : 2025-07-10
+# 기능 : 네이버 검색에서 주식 종목 코드 추출 후 차트 캡처하는 함수
+# ------------------------------------------------------------------
+def capture_stock_chart(keyword: str, progress_callback=None) -> str:
+    # '구글' 또는 '구글주가'는 '알파벳 주가'로 변환, 그 외 '주가'가 없으면 자동으로 붙임
+    try:
+        print(f"[DEBUG] capture_stock_chart 진입, 입력값: {keyword}")
+        # '구글' 또는 '구글주가'는 '알파벳 주가'로 변환
+        if keyword.replace(' ', '') in ['구글', '구글주가']:
+            keyword = '알파벳 주가'
+        stock_code = get_stock_info_from_search(keyword)
+        print(f"[DEBUG] get_stock_info_from_search 결과: {stock_code}")
+        if stock_code:
+            print(f"[DEBUG] 한국주식 코드로 캡처 시도")
+            return capture_wrap_company_area(stock_code, progress_callback=progress_callback)
+        else:
+            print(f"[DEBUG] 외국주식 캡처 시도")
+            # '구글' 또는 '구글주가'는 '알파벳 주가'로 변환
+            if keyword.replace(' ', '') in ['구글', '구글주가']:
+                keyword = '알파벳 주가'
+            elif '주가' not in keyword:
+                keyword = f"{keyword} 주가"
+            return capture_foreign_stock_chart(keyword, progress_callback=progress_callback)
+    except Exception as e:
+        print(f"[ERROR] capture_stock_chart에서 예외 발생: {e}")
+        return None
+
+
 
 # ------------------------------------------------------------------
 # 작성자 : 최준혁
@@ -208,8 +342,14 @@ def get_stock_info_from_search(keyword: str):
     from selenium import webdriver
     from selenium.webdriver.chrome.options import Options
     import time
-    if keyword.isdigit() and len(keyword) == 6:
-        return keyword
+    # '주가'가 없으면 자동으로 붙임 (중복 방지)
+    if '주가' not in keyword:
+        search_keyword = f"{keyword} 주가"
+    else:
+        search_keyword = keyword
+
+    if search_keyword.isdigit() and len(search_keyword) == 6:
+        return search_keyword
 
     options = Options()
     options.add_argument("--headless")
@@ -220,7 +360,7 @@ def get_stock_info_from_search(keyword: str):
     driver = webdriver.Chrome(options=options)
 
     try:
-        search_url = f"https://search.naver.com/search.naver?query={keyword}+주식"
+        search_url = f"https://search.naver.com/search.naver?query={search_keyword}+주식"
         driver.get(search_url)
         time.sleep(0.3)
 

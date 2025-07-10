@@ -9,7 +9,7 @@ import webbrowser
 import os
 from datetime import datetime
 
-from news.src.utils.capture_utils import capture_wrap_company_area, get_stock_info_from_search
+from news.src.utils.capture_utils import capture_wrap_company_area, get_stock_info_from_search, capture_stock_chart
 
 STOCK_CHATBOT_URL = "https://chatgpt.com/g/g-67a44d9d833c8191bf2974019d233d4e-jeongboseong-gisa-caesbos-culceo-sanggwaneobseum"
 
@@ -17,7 +17,7 @@ STOCK_CHATBOT_URL = "https://chatgpt.com/g/g-67a44d9d833c8191bf2974019d233d4e-je
 # 작성자 : 최준혁
 # 작성일 : 2025-07-09
 # 버전 : 1.0.0
-# 기능 : PyQt5에서 주식 코드 검색 후 차트 캡처하는 기능(프론트)
+# 기능 : PyQt5에서 주식 코드 검색 후 차트 캡처하는 기능
 # ------------------------------------------------------------------
 class StockWorker(QThread):
     finished = pyqtSignal(str, str)  # image_path, error
@@ -29,20 +29,17 @@ class StockWorker(QThread):
 
     def run(self):
         try:
-            self.progress.emit("주식 코드 검색 중...")
-            stock_code = get_stock_info_from_search(self.keyword)
-            if not stock_code:
-                self.finished.emit("", "주식 코드를 찾을 수 없습니다.")
-                return
-
-            self.progress.emit("주식 차트 캡처 중...")
-            image_path = capture_wrap_company_area(stock_code)
+            self.progress.emit("주식 차트 검색 중...")
+            image_path = capture_stock_chart(self.keyword, progress_callback=self.progress.emit)
+            self.progress.emit("이미지 캡처 및 저장 중...")
             if image_path:
+                self.progress.emit("주식 차트 캡처 성공! 결과가 클립보드에 복사되었습니다.")
                 self.finished.emit(image_path, "")
             else:
+                self.progress.emit("주식 차트 캡처에 실패했습니다.")
                 self.finished.emit("", "차트 캡처에 실패했습니다.")
-
         except Exception as e:
+            self.progress.emit(f"오류 발생: {str(e)}")
             self.finished.emit("", str(e))
 
 # ------------------------------------------------------------------
@@ -182,6 +179,10 @@ class StockTab(QWidget):
     # 기능 : PyQt5에서 주식 차트 캡처 진행 상태 업데이트하는 함수(프론트)
     # ------------------------------------------------------------------
     def update_progress(self, message):
+        if any(x in message for x in ["성공", "주의", "확인", "오류"]):
+            self.progress_label.setStyleSheet("color: #FFA500; font-weight: bold;")
+        else:
+            self.progress_label.setStyleSheet("color: black;")
         self.progress_label.setText(message)
 
     # ------------------------------------------------------------------
@@ -197,7 +198,7 @@ class StockTab(QWidget):
             self.progress_label.setText("")
             return
 
-        pyperclip.copy(image_path)
-        self.result_label.setText(f"저장됨: {image_path}\n이미지가 클립보드에 복사되었습니다.")
+        # 이미지는 copy_image_to_clipboard에서 복사됨
+        self.result_label.setText("이미지가 클립보드에 복사되었습니다.")
         self.progress_label.setText("기사 작성시 내용의 오류가 없는지 확인하세요!")
         self.progress_label.setStyleSheet("color: #FFA500; font-weight: bold;")

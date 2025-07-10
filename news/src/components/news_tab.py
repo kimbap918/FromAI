@@ -28,9 +28,10 @@ class NewsWorker(QThread):
 
     def run(self):
         try:
-            self.progress.emit("기사 추출 중...")
-            title, body = extract_article_content(self.url)
+            self.progress.emit("기사 다운로드 중...")
+            title, body = extract_article_content(self.url, progress_callback=self.progress.emit)
 
+            self.progress.emit("본문 길이 확인 중...")
             if len(body) < MIN_BODY_LENGTH:
                 self.finished.emit("", "", "본문이 너무 짧습니다. 다른 링크를 시도해보세요.")
                 return
@@ -38,9 +39,11 @@ class NewsWorker(QThread):
             result_text = f"{self.keyword}, {title}, {body}"
             pyperclip.copy(result_text)
 
+            self.progress.emit("기사 추출 성공! 결과가 클립보드에 복사되었습니다.")
             self.finished.emit(title, body, "")
 
         except Exception as e:
+            self.progress.emit(f"오류 발생: {str(e)}")
             self.finished.emit("", "", f"오류 발생: {str(e)}")
 
 # ------------------------------------------------------------------
@@ -180,6 +183,11 @@ class NewsTab(QWidget):
     # 기능 : PyQt5에서 기사 추출 진행 상태 업데이트하는 함수(프론트)
     # ------------------------------------------------------------------
     def update_progress(self, message):
+        # 마지막 메시지(성공/주의/경고)는 주황색, 그 외는 검정색
+        if any(x in message for x in ["성공", "주의", "확인", "오류"]):
+            self.progress_label.setStyleSheet("color: #FFA500; font-weight: bold;")
+        else:
+            self.progress_label.setStyleSheet("color: black;")
         self.progress_label.setText(message)
 
     # ------------------------------------------------------------------
