@@ -97,7 +97,7 @@ def capture_exchange_chart(keyword: str, progress_callback=None) -> str:
         screenshot = driver.get_screenshot_as_png()
         image = Image.open(io.BytesIO(screenshot))
 
-        top_coord = max(0, start_y - 10)
+        top_coord = max(0, start_y)
         bottom_coord = min(image.height, end_y - 20)
         left_offset = 395
         crop_width = 670
@@ -133,6 +133,7 @@ def capture_wrap_company_area(stock_code: str, progress_callback=None) -> str:
     """
     네이버 금융 종목 상세 페이지에서 wrap_company 영역을 캡처
     :param stock_code: 종목 코드 (예: 005930)
+    :param progress_callback: 진행상황 콜백 함수 (옵션)
     :return: 저장된 이미지 경로
     """
     if progress_callback:
@@ -144,29 +145,15 @@ def capture_wrap_company_area(stock_code: str, progress_callback=None) -> str:
         if progress_callback:
             progress_callback("페이지 로딩 대기 중...")
         # 페이지 로딩 후, 차트 영역이 등장할 때까지 대기
-        WebDriverWait(driver, 5).until(
+        WebDriverWait(driver, 10).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, "div.wrap_company"))
         )
+        time.sleep(0.3)  # 0.1초에서 0.3초로 복원
+        
         if progress_callback:
             progress_callback("차트 영역 찾는 중...")
-        elements = driver.find_elements(By.CSS_SELECTOR, "a.top_tab_link")
-        has_krx_ntx = False
-        krx_clicked = False
-        for el in elements:
-            if ("KRX" in el.text.upper() or "NTX" in el.text.upper()) and el.is_displayed():
-                has_krx_ntx = True
-                if "KRX" in el.text.upper():
-                    try:
-                        el.click()
-                        krx_clicked = True
-                        # KRX 탭 클릭 후에도 차트 영역이 다시 등장할 때까지 대기
-                        WebDriverWait(driver, 2).until(
-                            EC.presence_of_element_located((By.CSS_SELECTOR, "div.wrap_company"))
-                        )
-                        break
-                    except Exception as e:
-                        print(f"KRX 탭 클릭 실패: {e}")
-                break
+        
+        # 회사명 추출
         try:
             company_name_element = driver.find_element(By.CSS_SELECTOR, "div.wrap_company h2 a")
             company_name = company_name_element.text.strip()
@@ -175,23 +162,68 @@ def capture_wrap_company_area(stock_code: str, progress_callback=None) -> str:
         except:
             company_name = "Unknown"
         clean_company_name = company_name.replace(" ", "").replace("/", "_").replace("\\", "_")
+        
+        # KRX 탭 유무에 따른 크기 설정
+        def has_tab_elements(driver):
+            return bool(driver.find_elements(By.CSS_SELECTOR, "a.top_tab_link"))
+        
+        def click_krx_tab(driver):
+            elements = driver.find_elements(By.CSS_SELECTOR, "a.top_tab_link")
+            for el in elements:
+                if ("KRX" in el.text.upper() or "NTX" in el.text.upper()) and el.is_displayed():
+                    if "KRX" in el.text.upper():
+                        try:
+                            el.click()
+                            # KRX 탭 클릭 후에도 차트 영역이 다시 등장할 때까지 대기
+                            WebDriverWait(driver, 2).until(
+                                EC.presence_of_element_located((By.CSS_SELECTOR, "div.wrap_company"))
+                            )
+                            return True
+                        except Exception as e:
+                            print(f"KRX 탭 클릭 실패: {e}")
+                    break
+            return False
+        
+        if has_tab_elements(driver):
+            width, height = 700, 505
+            # LLM 탑재 후에 width 965로 수정할것
+            click_krx_tab(driver)
+            time.sleep(0.3)  # 0.1초에서 0.3초로 복원
+        else:
+            width, height = 700, 465
+            # LLM 탑재 후에 width 965로 수정할것
+        
+        # wrap_company 요소 찾기
         el = driver.find_element(By.CSS_SELECTOR, "div.wrap_company")
         driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", el)
-        # time.sleep(0.3) 제거
+        time.sleep(0.3)  # 0.1초에서 0.3초로 복원
+        
         if progress_callback:
             progress_callback("화면 전체 스크린샷 캡처 중...")
         screenshot_path = os.path.abspath("full_screenshot.png")
         driver.save_screenshot(screenshot_path)
+        
         location = el.location
         zoom = driver.execute_script("return window.devicePixelRatio || 1;")
         start_x = int(location['x'] * zoom)
         start_y = int(location['y'] * zoom)
-        width = 800
-        height = 505 if has_krx_ntx else 465
+        
+        # 좌표 계산 및 경계 검사
+        left = max(0, start_x)
+        top = max(0, start_y)
+        right = left + width
+        bottom = top + height
+        
         image = Image.open(screenshot_path)
+        right = min(right, image.width)
+        bottom = min(bottom, image.height)
+        left = max(0, right - width)
+        top = max(0, bottom - height)
+        
         if progress_callback:
             progress_callback("차트 이미지 잘라내기...")
-        cropped = image.crop((start_x, start_y, start_x + width, start_y + height))
+        cropped = image.crop((left, top, right, bottom))
+        
         today = datetime.now().strftime("%Y%m%d")
         current_dir = os.getcwd()
         folder = os.path.join(current_dir, "주식차트", f"주식{today}")
@@ -199,14 +231,23 @@ def capture_wrap_company_area(stock_code: str, progress_callback=None) -> str:
         filename = f"{stock_code}_{clean_company_name}.png"
         output_path = os.path.join(folder, filename)
         cropped.save(output_path)
+        
         if os.path.exists(screenshot_path):
             os.remove(screenshot_path)
+            
         if progress_callback:
             progress_callback("이미지를 클립보드에 복사 중...")
         copy_image_to_clipboard(output_path)
         return output_path
+        
+    except Exception as e:
+        print(f"오류 발생: {e}")
+        return None
     finally:
-        driver.quit()
+        try:
+            driver.quit()
+        except:
+            pass
 
 
 # ------------------------------------------------------------------
