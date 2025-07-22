@@ -176,6 +176,8 @@ class NewsTab(QWidget):
         self.worker.progress.connect(self.update_progress)
         self.worker.finished.connect(self.on_extraction_finished)
         self.worker.start()
+        # 엔터 여러 번 눌러도 버튼이 항상 활성화되도록 보장
+        self.extract_btn.setEnabled(True)
 
     # ------------------------------------------------------------------
     # 작성자 : 최준혁

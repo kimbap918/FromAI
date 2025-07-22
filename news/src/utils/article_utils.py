@@ -15,6 +15,19 @@ import time
 import nltk
 from urllib.parse import urljoin
 import os
+from datetime import datetime
+try:
+    from zoneinfo import ZoneInfo
+    def get_today_kst_str():
+        return datetime.now(ZoneInfo('Asia/Seoul')).strftime('%Y%m%d %H:%M')
+    def get_today_kst_date_str():
+        return datetime.now(ZoneInfo('Asia/Seoul')).strftime('%Y%m%d')
+except ImportError:
+    import pytz
+    def get_today_kst_str():
+        return datetime.now(pytz.timezone('Asia/Seoul')).strftime('%Y%m%d %H:%M')
+    def get_today_kst_date_str():
+        return datetime.now(pytz.timezone('Asia/Seoul')).strftime('%Y%m%d')
 
 # NLTK 데이터 경로 설정
 nltk_data_path = './nltk_data'

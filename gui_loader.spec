@@ -1,12 +1,14 @@
 # -*- mode: python ; coding: utf-8 -*-
 from PyInstaller.utils.hooks import collect_all
 
-datas = [('news/src/assets', 'news/src/assets')]
+datas = [('news/src/assets', 'news/src/assets'), ('.env', '.')]
 binaries = []
-hiddenimports = ['selenium', 'selenium.webdriver.common.by', 'selenium.webdriver.support.ui', 'selenium.webdriver.support.expected_conditions', 'PyQt5.sip', 'pyperclip', 'win32clipboard']
+hiddenimports = ['selenium', 'selenium.webdriver.common.by', 'selenium.webdriver.support.ui', 'selenium.webdriver.support.expected_conditions', 'PyQt5.sip', 'pyperclip', 'win32clipboard', 'pytz']
 tmp_ret = collect_all('newspaper')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 tmp_ret = collect_all('webdriver_manager')
+datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
+tmp_ret = collect_all('tzdata')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 
 

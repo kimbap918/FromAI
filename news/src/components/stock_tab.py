@@ -9,7 +9,7 @@ import webbrowser
 import os
 from datetime import datetime
 
-from news.src.utils.capture_utils import capture_wrap_company_area, get_stock_info_from_search, capture_stock_chart
+from news.src.utils.capture_utils import capture_and_generate_news
 
 STOCK_CHATBOT_URL = "https://chatgpt.com/g/g-67a44d9d833c8191bf2974019d233d4e-jeongboseong-gisa-caesbos-culceo-sanggwaneobseum"
 
@@ -20,7 +20,7 @@ STOCK_CHATBOT_URL = "https://chatgpt.com/g/g-67a44d9d833c8191bf2974019d233d4e-je
 # 기능 : PyQt5에서 주식 코드 검색 후 차트 캡처하는 기능
 # ------------------------------------------------------------------
 class StockWorker(QThread):
-    finished = pyqtSignal(str, str)  # image_path, error
+    finished = pyqtSignal(str, str)  # news, error
     progress = pyqtSignal(str)
 
     def __init__(self, keyword):
@@ -29,15 +29,14 @@ class StockWorker(QThread):
 
     def run(self):
         try:
-            self.progress.emit("주식 차트 검색 중...")
-            image_path = capture_stock_chart(self.keyword, progress_callback=self.progress.emit)
-            self.progress.emit("이미지 캡처 및 저장 중...")
-            if image_path:
-                self.progress.emit("주식 차트 캡처 성공! 결과가 클립보드에 복사되었습니다.")
-                self.finished.emit(image_path, "")
+            self.progress.emit("주식 차트 및 기사 생성 중...")
+            news = capture_and_generate_news(self.keyword, progress_callback=self.progress.emit)
+            if news:
+                self.progress.emit("기사 생성 성공!")
+                self.finished.emit(news, "")
             else:
-                self.progress.emit("주식 차트 캡처에 실패했습니다.")
-                self.finished.emit("", "차트 캡처에 실패했습니다.")
+                self.progress.emit("기사 생성에 실패했습니다.")
+                self.finished.emit("", "기사 생성에 실패했습니다.")
         except Exception as e:
             self.progress.emit(f"오류 발생: {str(e)}")
             self.finished.emit("", str(e))
@@ -104,9 +103,10 @@ class StockTab(QWidget):
         self.progress_label.setAlignment(Qt.AlignCenter)
         layout.addWidget(self.progress_label)
 
-        self.result_label = QLabel("")
-        self.result_label.setAlignment(Qt.AlignCenter)
-        layout.addWidget(self.result_label)
+        self.result_text = QTextEdit()
+        self.result_text.setReadOnly(True)
+        self.result_text.setMinimumHeight(200)
+        layout.addWidget(self.result_text)
 
         self.setLayout(layout)
 
@@ -117,7 +117,7 @@ class StockTab(QWidget):
     # ------------------------------------------------------------------
     def reset_inputs(self):
         self.keyword_input.clear()
-        self.result_label.setText("")
+        self.result_text.clear()
         self.progress_label.setText("")
         self.capture_btn.setEnabled(True)
         self.cancel_btn.setEnabled(False)
@@ -153,7 +153,7 @@ class StockTab(QWidget):
 
         self.capture_btn.setEnabled(False)
         self.cancel_btn.setEnabled(True)
-        self.result_label.setText("")
+        self.result_text.clear() # Clear previous results
         self.progress_label.setText("처리 중...")
 
         self.worker = StockWorker(keyword)
@@ -190,15 +190,12 @@ class StockTab(QWidget):
     # 작성일 : 2025-07-09
     # 기능 : PyQt5에서 주식 차트 캡처 완료 시 처리하는 함수(프론트)
     # ------------------------------------------------------------------
-    def on_capture_finished(self, image_path, error):
+    def on_capture_finished(self, news, error):
         self.capture_btn.setEnabled(True)
         self.cancel_btn.setEnabled(False)
         if error:
-            QMessageBox.warning(self, "캡처 실패", error)
             self.progress_label.setText("")
+            QMessageBox.warning(self, "실패", error)
             return
-
-        # 이미지는 copy_image_to_clipboard에서 복사됨
-        self.result_label.setText("이미지가 클립보드에 복사되었습니다.")
-        self.progress_label.setText("기사 작성시 내용의 오류가 없는지 확인하세요!")
-        self.progress_label.setStyleSheet("color: #FFA500; font-weight: bold;")
+        self.result_text.setText(news)
+        self.progress_label.setText("기사 생성 완료!")
