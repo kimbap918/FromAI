@@ -75,35 +75,122 @@ def parse_chart_text(chart_text):
                 info[key] = cleaned_value
     return info
 
-def parse_invest_info_text(invest_info_text):
+def parse_invest_info_text(invest_info_text, debug=False):
     info = {}
-    patterns = [
-        ("시가총액", r"시가총액[\s|:|l|\|]*([\d,조억\s]+원)"),
-        ("시가총액순위", r"시가총액순위[\s|:|l|\|]*([\w\d\s]+)"),
-        ("상장주식수", r"상장주식수[\s|:|l|\|]*([\d,]+)"),
-        ("액면가", r"액면가[\s|:|l|\|\d]*([\d,]+원)"),
-        ("외국인한도주식수", r"외국인한도주식수\(A\)[\s|:|l|\|]*([\d,]+)"),
-        ("외국인보유주식수", r"외국인보유주식수\(B\)[\s|:|l|\|]*([\d,]+)"),
-        ("외국인소진율", r"외국인소진율\(B/A\)[\s|:|l|\|]*([\d\.]+%)"),
-        ("투자의견", r"투자의견[\s|:|l|\|\d\.]*([\d\.]+매수)"),
-        ("목표주가", r"목표주가[\s|:|l|\|]*([\d,]+)"),
-        ("52주최고", r"52주최고[\s|:|l|\|\d\.]*([\d,]+)"),
-        ("52주최저", r"52주최저[\s|:|l|\|\d\.]*([\d,]+)"),
-        ("PER", r"PER[\s|:|l|\|\(\)\d\.]*([\d\.]+)배"),
-        ("EPS", r"EPS[\s|:|l|\|\(\)\d\.]*([\d,]+)원"),
-        ("추정PER", r"추정PER[\s|:|l|\|\(\)\d\.]*([\d\.]+)배"),
-        ("추정EPS", r"추정EPS[\s|:|l|\|\(\)\d\.]*([\d,]+)원"),
-        ("PBR", r"PBR[\s|:|l|\|\(\)\d\.]*([\d\.]+)배"),
-        ("BPS", r"BPS[\s|:|l|\|\(\)\d\.]*([\d,]+)원"),
-        ("배당수익률", r"배당수익률[\s|:|l|\|\d\.]*([\d\.]+%)"),
-        ("동일업종 PER", r"동일업종 PER[\s|:|l|\|]*([\d\.]+)배"),
-        ("동일업종 등락률", r"동일업종 등락률[\s|:|l|\|]*([\-\+\d\.]+%)"),
-    ]
-    for key, pat in patterns:
-        m = re.search(pat, invest_info_text)
-        if m:
-            info[key] = m.group(1).strip()
-    print(f"[DEBUG] invest_info 파싱 결과(보강): {info}")
+    
+    # 입력값 검증
+    if not invest_info_text or not isinstance(invest_info_text, str):
+        if debug:
+            print("[WARNING] 유효하지 않은 투자정보 텍스트가 입력되었습니다.")
+        return info
+    
+    try:
+        # 줄바꿈으로 분리하여 각 라인을 개별적으로 처리
+        lines = invest_info_text.split('\n')
+        
+        for line in lines:
+            if not isinstance(line, str) or not line.strip():
+                continue
+                
+            line = line.strip()
+            
+            # 시가총액순위와 상장주식수를 별도로 처리
+            if line.startswith('시가총액순위'):
+                try:
+                    parts = re.split(r'[\s\t]+', line, maxsplit=1)
+                    if len(parts) > 1 and parts[1].strip():
+                        info['시가총액순위'] = parts[1].strip()
+                except Exception as e:
+                    print(f"[WARNING] 시가총액순위 파싱 중 오류: {e}")
+                continue
+                    
+            if line.startswith('상장주식수'):
+                try:
+                    parts = re.split(r'[\s\t]+', line, maxsplit=1)
+                    if len(parts) > 1 and parts[1].strip():
+                        info['상장주식수'] = parts[1].strip()
+                except Exception as e:
+                    print(f"[WARNING] 상장주식수 파싱 중 오류: {e}")
+                continue
+        
+        # PER 처리 (N/A 또는 숫자 값 처리)
+        try:
+            # 'PER' 또는 'PERlEPS'로 시작하는 줄에서만 추출, '추정PER' 등은 제외
+            per_match = re.search(r'^(PER(?:lEPS)?(?:\([^\)]*\))?)\s*[\n:|l|\|\s]*([\d\.,]+)\s*배', invest_info_text, re.MULTILINE)
+            if per_match:
+                info['PER'] = f"{per_match.group(2).replace(',', '')}배"
+            elif re.search(r'^PER[^\n]*N/A', invest_info_text, re.MULTILINE):
+                info['PER'] = 'N/A'
+            else:
+                if debug:
+                    print("[INFO] PER 정보를 찾을 수 없습니다.")
+        except Exception as e:
+            if debug:
+                print(f"[WARNING] PER 파싱 중 오류: {e}")
+            info['PER'] = 'N/A'  # 오류 발생 시 N/A로 설정
+
+        # 배당수익률 처리
+        try:
+            # '배당수익률'로 시작하는 줄의 다음~2번째 줄에서 %값 추출
+            lines = invest_info_text.splitlines()
+            found = False
+            for i, line in enumerate(lines):
+                if line.strip().startswith('배당수익률'):
+                    # 다음 줄~2번째 줄까지 %값 찾기
+                    for j in range(i+1, min(i+3, len(lines))):
+                        m = re.search(r'([\d\.]+)%', lines[j])
+                        if m:
+                            info['배당수익률'] = f"{m.group(1)}%"
+                            found = True
+                            break
+                    if not found:
+                        # 혹시 N/A가 있으면
+                        for j in range(i+1, min(i+3, len(lines))):
+                            if 'N/A' in lines[j]:
+                                info['배당수익률'] = 'N/A'
+                                found = True
+                                break
+                    break
+            if not found:
+                if debug:
+                    print("[INFO] 배당수익률 정보를 찾을 수 없습니다.")
+        except Exception as e:
+            if debug:
+                print(f"[WARNING] 배당수익률 파싱 중 오류: {e}")
+        
+        # 나머지 패턴들은 기존 방식으로 처리
+        patterns = [
+            ("시가총액", r"시가총액[\s|:|l|\|]*([\d,조억\s]+원)"),
+            ("액면가", r"액면가[\s|:|l|\|\d]*([\d,]+원)"),
+            ("외국인한도주식수", r"외국인한도주식수\(A\)[\s|:|l|\|]*([\d,]+)"),
+            ("외국인보유주식수", r"외국인보유주식수\(B\)[\s|:|l|\|]*([\d,]+)"),
+            ("외국인지분율", r"외국인지분율\(B/A\*100\)[\s|:|l|\|]*([\d\.]+%)"),
+            ("거래량", r"거래량[\s|:|l|\|]*([\d,]+)"),
+            ("지분가치\(EPS\)", r"지분가치\(EPS\)[\s|:|l|\|]*([\d,]+)원"),
+            ("순이익\(EPS\)", r"순이익\(EPS\)[\s|:|l|\|]*([\d,]+)원"),
+            ("영업이익\(EPS\)", r"영업이익\(EPS\)[\s|:|l|\|]*([\d,]+)원"),
+            ("PBR", r"PBR[\s|:|l|\|\(\)\d\.]*([\d\.]+)배"),
+            ("BPS", r"BPS[\s|:|l|\|\(\)\d\.]*([\d,]+)원"),
+            ("동일업종 PER", r"동일업종 PER[\s|:|l|\|]*([\d\.]+)배"),
+            ("동일업종 등락률", r"동일업종 등락률[\s|:|l|\|]*([\-\+\d\.]+%)"),
+        ]
+        
+        for key, pat in patterns:
+            try:
+                if key not in info:  # 이미 추출한 정보는 덮어쓰지 않음
+                    m = re.search(pat, invest_info_text)
+                    if m and m.group(1):
+                        info[key] = m.group(1).strip()
+            except Exception as e:
+                if debug:
+                    print(f"[WARNING] {key} 파싱 중 오류: {e}")
+        
+    except Exception as e:
+        if debug:
+            print(f"[ERROR] 투자정보 파싱 중 치명적 오류: {e}")
+    
+    if debug:
+        print(f"[DEBUG] invest_info 파싱 결과(보강): {info}")
     return info
 
 # ------------------------------------------------------------------
@@ -222,7 +309,7 @@ def capture_exchange_chart(keyword: str, progress_callback=None) -> str:
 # 작성일 : 2025-07-09
 # 기능 : 네이버 금융 종목 상세 페이지에서 wrap_company 영역을 캡처하고 저장하는 함수(주식 차트)
 # ------------------------------------------------------------------
-def capture_wrap_company_area(stock_code: str, progress_callback=None) -> (str, bool, str, str, dict, dict):
+def capture_wrap_company_area(stock_code: str, progress_callback=None, debug=False):
     """
     네이버 금융 종목 상세 페이지에서 wrap_company 영역을 캡처
     :param stock_code: 종목 코드 (예: 005930)
@@ -241,6 +328,7 @@ def capture_wrap_company_area(stock_code: str, progress_callback=None) -> (str, 
     invest_info_text = ""
     chart_info = {}
     invest_info = {}
+    summary_info_text = ""
 
     try:
         url = f"https://finance.naver.com/item/main.naver?code={stock_code}"
@@ -295,16 +383,26 @@ def capture_wrap_company_area(stock_code: str, progress_callback=None) -> (str, 
             width, height = 965, 465
 
         el = driver.find_element(By.CSS_SELECTOR, "div.wrap_company")
-        driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", el)
+        driver.execute_script("arguments[0].scrollIntoView({block: 'center'})", el)
         time.sleep(0.3)
+        
+        # 요소의 위치 가져오기 (고정된 너비/높이 사용)
+        location = el.location
+        left = int(location['x']) 
+        top_coord = int(location['y'])
+        
+        # 디버깅을 위한 로그 추가
+        log(f"Element position - x: {left}, y: {top_coord}, width: {width}, height: {height}")
 
         # 차트 영역 텍스트 추출
         try:
             chart_area_el = driver.find_element(By.CSS_SELECTOR, "div#chart_area")
             chart_text = chart_area_el.text.strip()
-            print(f"[DEBUG] chart_text 원본: {chart_text}")
+            if debug:
+                print(f"[DEBUG] chart_text 원본: {chart_text}")
             chart_info = parse_chart_text(chart_text)
-            print(f"[DEBUG] chart_info 파싱 결과: {chart_info}")
+            if debug:
+                print(f"[DEBUG] chart_info 파싱 결과: {chart_info}")
         except Exception as e:
             chart_text = ""
             chart_info = {}
@@ -314,27 +412,47 @@ def capture_wrap_company_area(stock_code: str, progress_callback=None) -> (str, 
         try:
             invest_info_el = driver.find_element(By.CSS_SELECTOR, "div.aside_invest_info")
             invest_info_text = invest_info_el.text.strip()
-            print(f"[DEBUG] invest_info_text 원본: {invest_info_text}")
-            invest_info = parse_invest_info_text(invest_info_text)
-            print(f"[DEBUG] invest_info 파싱 결과: {invest_info}")
+            if debug:
+                print(f"[DEBUG] invest_info_text 원본: {invest_info_text}")
+            invest_info = parse_invest_info_text(invest_info_text, debug=debug)
+            if debug:
+                print(f"[DEBUG] invest_info 파싱 결과: {invest_info}")
         except Exception as e:
             invest_info_text = ""
             invest_info = {}
             log(f"aside_invest_info 텍스트 추출 실패: {e}")
 
-        # 투자경고/주의/위험, 날짜 정보 추가 추출
+        # 기업개요(summary_info) 추출 (BeautifulSoup 활용)
         try:
-            special_status = []
-            for cls in ["warning", "caution", "danger"]:
-                for el in driver.find_elements(By.CSS_SELECTOR, f"em.{cls}"):
-                    text = el.text.strip()
-                    if text:
-                        special_status.append(text)
-            if special_status:
-                # chart_info에 특이상태로 추가
-                chart_info["특이상태"] = special_status
+            WebDriverWait(driver, 5).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, "div#summary_info"))
+            )
+            summary_info_el = driver.find_element(By.CSS_SELECTOR, "div#summary_info")
+            html = summary_info_el.get_attribute('innerHTML')
+            from bs4 import BeautifulSoup
+            soup = BeautifulSoup(html, 'html.parser')
+            p_tags = soup.find_all('p')
+            summary_info_text = "\n".join([p.get_text(strip=True) for p in p_tags if p.get_text(strip=True)])
+            if debug:
+                print(f"[DEBUG] summary_info_text: {summary_info_text}")
         except Exception as e:
-            pass
+            summary_info_text = ""
+            if debug:
+                print(f"[WARNING] summary_info(BeautifulSoup) 추출 실패: {e}")
+
+        # # 투자경고/주의/위험, 날짜 정보 추가 추출
+        # try:
+        #     special_status = []
+        #     for cls in ["warning", "caution", "danger"]:
+        #         for el in driver.find_elements(By.CSS_SELECTOR, f"em.{cls}"):
+        #             text = el.text.strip()
+        #             if text:
+        #                 special_status.append(text)
+        #     if special_status:
+        #         # chart_info에 특이상태로 추가
+        #         chart_info["특이상태"] = special_status
+        # except Exception as e:
+        #     pass
         try:
             date_els = driver.find_elements(By.CSS_SELECTOR, "em.date")
             for el in date_els:
@@ -354,79 +472,82 @@ def capture_wrap_company_area(stock_code: str, progress_callback=None) -> (str, 
                 spans = em.find_elements(By.TAG_NAME, "span")
                 if spans:
                     for span in spans:
-                        print(f"[DEBUG] 현재가 span 텍스트: '{span.text.strip()}'")
+                        if debug:
+                            print(f"[DEBUG] 현재가 span 텍스트: '{span.text.strip()}'")
                         price_str += span.text.strip()
                 else:
-                    print(f"[DEBUG] 현재가 em 텍스트(백업): '{em.text.strip()}'")
+                    if debug:
+                        print(f"[DEBUG] 현재가 em 텍스트(백업): '{em.text.strip()}'")
                     price_str += re.sub(r"[^\d,]", "", em.text)
             price_str = re.sub(r"[^\d,]", "", price_str)
-            print(f"[DEBUG] em 합친 price_str: '{price_str}'")
+            if debug:
+                print(f"[DEBUG] em 합친 price_str: '{price_str}'")
             if price_str and price_str != '0':
                 chart_info["현재가"] = price_str
-                print(f"[DEBUG] 현재가(모든 span 합침): {price_str}")
+                if debug:
+                    print(f"[DEBUG] 현재가(모든 span 합침): {price_str}")
             else:
-                print(f"[DEBUG] 현재가 추출 실패, price_str: '{price_str}'")
+                if debug:
+                    print(f"[DEBUG] 현재가 추출 실패, price_str: '{price_str}'")
         except Exception as e:
-            print(f"[DEBUG] 현재가(모든 span 합침) 추출 실패: {e}")
+            if debug:
+                print(f"[DEBUG] 현재가(모든 span 합침) 추출 실패: {e}")
 
         if progress_callback:
             progress_callback("화면 전체 스크린샷 캡처 중...")
 
-        screenshot_path = os.path.abspath("full_screenshot.png")
-        driver.save_screenshot(screenshot_path)
-        log(f"스크린샷 저장: {screenshot_path}, 존재여부: {os.path.exists(screenshot_path)}")
+        try:
+            # 스크린샷 캡처 및 메모리에서 바로 처리
+            screenshot = driver.get_screenshot_as_png()
+            image = Image.open(io.BytesIO(screenshot))
+            
+            # 요소의 위치에 맞게 이미지 자르기
+            cropped = image.crop((left, top_coord, left + width, top_coord + height))
+            log(f"Cropped image size: {cropped.size}")
+            
+            # 이미지 저장 경로 설정
+            today = get_today_kst_date_str()
+            current_dir = os.getcwd()
+            folder = os.path.join(current_dir, "주식차트", f"주식{today}")
+            os.makedirs(folder, exist_ok=True)
+            filename = f"{stock_code}_{clean_company_name}.png"
+            output_path = os.path.join(folder, filename)
+            
+            # 이미지 저장
+            cropped.save(output_path)
+            log(f"이미지 저장 완료: {output_path}, 파일 존재 여부: {os.path.exists(output_path)}")
+            
+            # 메모리 정리
+            del screenshot
+            del image
+            del cropped
+            
+        except Exception as e:
+            log(f"스크린샷 처리 중 오류 발생: {str(e)}")
+            raise
 
-        location = el.location
-        zoom = driver.execute_script("return window.devicePixelRatio || 1;")
-        start_x = int(location['x'] * zoom)
-        start_y = int(location['y'] * zoom)
-        left = max(0, start_x)
-        top = max(0, start_y)
-        right = left + width
-        bottom = top + height
-
-        image = Image.open(screenshot_path)
-        log(f"이미지 열기 성공: {screenshot_path}, 크기: {image.size}")
-
-        right = min(right, image.width)
-        bottom = min(bottom, image.height)
-        left = max(0, right - width)
-        top = max(0, bottom - height)
-
-        if progress_callback:
-            progress_callback("차트 이미지 잘라내기...")
-
-        cropped = image.crop((left, top, right, bottom))
-        log(f"이미지 크롭: left={left}, top={top}, right={right}, bottom={bottom}")
-
-        today = get_today_kst_date_str()
-        current_dir = os.getcwd()
-        folder = os.path.join(current_dir, "주식차트", f"주식{today}")
-        os.makedirs(folder, exist_ok=True)
-        filename = f"{stock_code}_{clean_company_name}.png"
-        output_path = os.path.join(folder, filename)
-        cropped.save(output_path)
-        log(f"크롭 이미지 저장: {output_path}, 존재여부: {os.path.exists(output_path)}")
-
-        if os.path.exists(screenshot_path):
-            os.remove(screenshot_path)
-            log(f"스크린샷 파일 삭제: {screenshot_path}")
+        if not os.path.exists(output_path):
+            log(f"이미지 저장 실패: {output_path}")
+            return "", False, chart_text, invest_info_text, chart_info, invest_info, summary_info_text
 
         if progress_callback:
             progress_callback("이미지를 클립보드에 복사 중...")
 
         try:
-            copy_image_to_clipboard(output_path)
-            log(f"클립보드 복사 성공: {output_path}")
+            import pyperclip
+            pyperclip.copy(output_path)
+            log("클립보드에 경로 복사 완료")
+        except ImportError:
+            log("pyperclip 모듈이 설치되어 있지 않아 클립보드 복사를 건너뜁니다.")
         except Exception as e:
             log(f"클립보드 복사 실패: {e}")
 
-        return output_path, True, chart_text, invest_info_text, chart_info, invest_info
+        return output_path, True, chart_text, invest_info_text, chart_info, invest_info, summary_info_text
 
     except Exception as e:
         log(f"오류 발생: {e}")
         print(f"오류 발생: {e}")
-        return None, False, chart_text, invest_info_text, chart_info, invest_info
+        return None, False, chart_text, invest_info_text, chart_info, invest_info, summary_info_text
 
     finally:
         try:
@@ -506,11 +627,12 @@ def capture_foreign_stock_chart(keyword: str, progress_callback=None) -> (str, b
         cropped = image.crop((left, start_y, left + width, end_y))
 
         today = get_today_kst_date_str()
+        safe_today = safe_filename(today)
         safe_keyword = "".join(c for c in keyword if c.isalnum() or c in ('_', '-'))
         # 한국 주식과 동일하게 저장
-        folder = os.path.join(os.getcwd(), "주식차트", f"주식{today}")
+        folder = os.path.join(os.getcwd(), "주식차트", f"주식{safe_today}")
         os.makedirs(folder, exist_ok=True)
-        filename = f"{get_today_kst_str()}_{safe_keyword}_구글해외주식.png"
+        filename = f"{safe_filename(get_today_kst_str())}_{safe_keyword}_구글해외주식.png"
         output_path = os.path.join(folder, filename)
         cropped.save(output_path)
 
@@ -640,12 +762,13 @@ def get_stock_info_from_search(keyword: str):
 # 작성일 : 2025-07-14
 # 기능 : 주식 키워드로 차트 이미지를 캡처하고, LLM에 기사 생성을 요청하는 함수
 # ------------------------------------------------------------------
-def capture_and_generate_news(keyword: str, domain: str = "stock", progress_callback=None):
+def capture_and_generate_news(keyword: str, domain: str = "stock", progress_callback=None, debug=False):
     """
     키워드와 도메인에 따라 정보성 뉴스를 생성한다.
     :param keyword: 종목명/통화명/코인명 등
     :param domain: "stock", "fx", "coin" 등
     :param progress_callback: 진행상황 콜백 함수(옵션)
+    :param debug: 디버그 출력 여부
     :return: LLM이 생성한 기사(제목, 본문, 해시태그)
     """
     from news.src.services.info_LLM import generate_info_news_from_text
@@ -654,19 +777,54 @@ def capture_and_generate_news(keyword: str, domain: str = "stock", progress_call
     if domain == "stock":
         stock_code = get_stock_info_from_search(keyword)
         if not stock_code:
+            # 해외주식/외국뉴스 처리: 이미지 캡처만 info_dict에 제공
+            image_path, success = capture_foreign_stock_chart(keyword, progress_callback=progress_callback)
+            if not image_path:
+                if progress_callback:
+                    progress_callback("해외주식 이미지 캡처에 실패했습니다.")
+                return None
+            info_dict['이미지'] = image_path
+            info_dict['키워드'] = keyword
+            if debug:
+                print("\n[LLM에 제공되는 정리된 정보 - 해외주식]")
+                for k, v in info_dict.items():
+                    print(f"{k}: {v}")
             if progress_callback:
-                progress_callback("주식 코드를 찾을 수 없습니다.")
-            return None
-        image_path, is_stock, chart_text, invest_info_text, chart_info, invest_info = capture_wrap_company_area(stock_code, progress_callback=progress_callback)
+                progress_callback("LLM 기사 생성 중...")
+            news = generate_info_news_from_text(keyword, info_dict, domain)
+            return news
+        image_path, is_stock, chart_text, invest_info_text, chart_info, invest_info, summary_info_text = capture_wrap_company_area(stock_code, progress_callback=progress_callback, debug=debug)
         if not image_path:
             if progress_callback:
                 progress_callback("이미지 캡처에 실패했습니다.")
             return None
         # chart_info와 invest_info를 합쳐 info_dict로 만들고 전체를 print로 출력
         info_dict = {**chart_info, **invest_info}
-        print(f"[DEBUG] info_dict 전체: {info_dict}")
-    # else: (환율, 코인 등) info_dict만 만들면 됨
-    # info_dict = ... (환율/코인 크롤링 및 파싱 결과)
+        # 기업개요도 info_dict에 추가
+        if summary_info_text:
+            info_dict['기업개요'] = summary_info_text
+        # 사람이 읽기 좋은 형태로 info_dict 전체를 출력 (debug일 때만)
+        if debug and '기업개요' in info_dict:
+            print("\n[기업개요]")
+            print(info_dict['기업개요'])
+        if debug:
+            print("\n[LLM에 제공되는 정리된 정보]")
+            for k, v in info_dict.items():
+                if k != '기업개요':
+                    print(f"{k}: {v}")
+    else:
+        # 해외주식/외국뉴스 처리: 이미지 캡처만 info_dict에 제공
+        image_path, success = capture_foreign_stock_chart(keyword, progress_callback=progress_callback)
+        if not image_path:
+            if progress_callback:
+                progress_callback("해외주식 이미지 캡처에 실패했습니다.")
+            return None
+        info_dict['이미지'] = image_path
+        info_dict['키워드'] = keyword
+        if debug:
+            print("\n[LLM에 제공되는 정리된 정보 - 해외주식]")
+            for k, v in info_dict.items():
+                print(f"{k}: {v}")
     if progress_callback:
         progress_callback("LLM 기사 생성 중...")
     news = generate_info_news_from_text(keyword, info_dict, domain)
@@ -718,3 +876,7 @@ def build_stock_prompt(today_kst):
         f"  - **주가 변동의 배경 및 향후 전망 (조심스러운 추측):** 오늘 주가 변동의 가능한 원인(예: 단기 투자 심리 위축)을 분석하고, 시장 전문가의 견해나 업황을 토대로 향후 주가 흐름에 대한 조심스러운 전망을 제시합니다.\n"
     )
     return stock_prompt
+
+def safe_filename(s):
+    # 파일명에 쓸 수 없는 문자 모두 _로 치환
+    return re.sub(r'[\\/:*?"<>|,\s]', '_', s)
