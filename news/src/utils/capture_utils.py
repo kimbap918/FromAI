@@ -51,6 +51,11 @@ def finance(stock_name):
     else:
         return None
 
+# ------------------------------------------------------------------
+# 작성자 : 최준혁
+# 작성일 : 2025-07-22
+# 기능 : 한국 주식 차트에서 거래정보를 가져오기 위한 정규표현식 패턴
+# ------------------------------------------------------------------
 def parse_chart_text(chart_text):
     info = {}
     patterns = [
@@ -75,6 +80,11 @@ def parse_chart_text(chart_text):
                 info[key] = cleaned_value
     return info
 
+# ------------------------------------------------------------------
+# 작성자 : 최준혁
+# 작성일 : 2025-07-22
+# 기능 : 투자정보 텍스트에서 정보를 가져오기 위한 기능 및 정규표현식 함수
+# ------------------------------------------------------------------
 def parse_invest_info_text(invest_info_text, debug=False):
     info = {}
     
@@ -164,7 +174,7 @@ def parse_invest_info_text(invest_info_text, debug=False):
             ("액면가", r"액면가[\s|:|l|\|\d]*([\d,]+원)"),
             ("외국인한도주식수", r"외국인한도주식수\(A\)[\s|:|l|\|]*([\d,]+)"),
             ("외국인보유주식수", r"외국인보유주식수\(B\)[\s|:|l|\|]*([\d,]+)"),
-            ("외국인지분율", r"외국인지분율\(B/A\*100\)[\s|:|l|\|]*([\d\.]+%)"),
+            ("외국인소진율", r"외국인소진율\(B/A\)[\s|:|l|\|]*([\d\.]+%)"),
             ("거래량", r"거래량[\s|:|l|\|]*([\d,]+)"),
             ("지분가치\(EPS\)", r"지분가치\(EPS\)[\s|:|l|\|]*([\d,]+)원"),
             ("순이익\(EPS\)", r"순이익\(EPS\)[\s|:|l|\|]*([\d,]+)원"),
@@ -208,14 +218,9 @@ def make_exchange_keyword(keyword: str) -> str:
 # 작성자 : 최준혁
 # 작성일 : 2025-07-10
 # 기능 : 네이버 검색에서 환율 차트를 찾아 캡처하고 저장하는 함수(환율 차트)
+# 반환값 : 저장된 이미지 경로
 # ------------------------------------------------------------------
 def capture_exchange_chart(keyword: str, progress_callback=None) -> str:
-    """
-    네이버 검색에서 환율 차트를 찾아 캡처하고 저장
-    :param keyword: 검색어 (예: "달러환율" 또는 "달러")
-    :param progress_callback: 진행상황 콜백 함수 (옵션)
-    :return: 저장된 이미지 경로
-    """
     if progress_callback:
         progress_callback("네이버 검색 페이지 접속 중...")
     keyword = make_exchange_keyword(keyword)
@@ -308,14 +313,9 @@ def capture_exchange_chart(keyword: str, progress_callback=None) -> str:
 # 작성자 : 최준혁
 # 작성일 : 2025-07-09
 # 기능 : 네이버 금융 종목 상세 페이지에서 wrap_company 영역을 캡처하고 저장하는 함수(주식 차트)
+# 반환값 : 저장된 이미지 경로, 성공 여부, 차트 영역 텍스트, 투자정보 텍스트, 차트 딕셔너리, 투자정보 딕셔너리
 # ------------------------------------------------------------------
 def capture_wrap_company_area(stock_code: str, progress_callback=None, debug=False):
-    """
-    네이버 금융 종목 상세 페이지에서 wrap_company 영역을 캡처
-    :param stock_code: 종목 코드 (예: 005930)
-    :param progress_callback: 진행상황 콜백 함수 (옵션)
-    :return: 저장된 이미지 경로, 성공 여부, 차트 영역 텍스트, 투자정보 텍스트, 차트 딕셔너리, 투자정보 딕셔너리
-    """
     def log(msg):
         with open("capture_log.txt", "a", encoding="utf-8") as f:
             f.write(f"[capture_wrap_company_area] {msg}\n")
@@ -679,18 +679,6 @@ def capture_stock_chart(keyword: str, progress_callback=None) -> str:
         return None
 
 
-
-# ------------------------------------------------------------------
-# 작성자 : 최준혁
-# 작성일 : 2025-07-09
-# 기능 : 네이버 검색에서 주식 종목 코드 추출
-# ------------------------------------------------------------------
-def get_stock_info_from_search(keyword: str):
-    import re
-    from selenium import webdriver
-    from selenium.webdriver.chrome.options import Options
-    import time
-
 # ------------------------------------------------------------------
 # 작성자 : 최준혁
 # 작성일 : 2025-07-09
@@ -761,17 +749,11 @@ def get_stock_info_from_search(keyword: str):
 # 작성자 : 최준혁
 # 작성일 : 2025-07-14
 # 기능 : 주식 키워드로 차트 이미지를 캡처하고, LLM에 기사 생성을 요청하는 함수
+# 반환값 : LLM이 생성한 기사(제목, 본문, 해시태그)
 # ------------------------------------------------------------------
 def capture_and_generate_news(keyword: str, domain: str = "stock", progress_callback=None, debug=False):
-    """
-    키워드와 도메인에 따라 정보성 뉴스를 생성한다.
-    :param keyword: 종목명/통화명/코인명 등
-    :param domain: "stock", "fx", "coin" 등
-    :param progress_callback: 진행상황 콜백 함수(옵션)
-    :param debug: 디버그 출력 여부
-    :return: LLM이 생성한 기사(제목, 본문, 해시태그)
-    """
     from news.src.services.info_LLM import generate_info_news_from_text
+
     info_dict = {}
     is_stock = (domain == "stock")
     if domain == "stock":

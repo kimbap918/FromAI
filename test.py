@@ -1,58 +1,157 @@
 import time
+import traceback
 from PIL import Image
-from selenium import webdriver
 from selenium.webdriver.common.by import By
-from news.src.utils.driver_utils import initialize_driver
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from news.src.utils.driver_utils import initialize_driver
 
-def get_foreign_stock_data_from_naver(driver, keyword: str):
+
+def get_stock_data_from_search(driver, keyword: str):
     """
-    네이버에서 해외 주식을 검색하고, 증권 페이지로 이동하여 텍스트 데이터를 추출
-    :param keyword: 검색할 종목명 또는 티커 (예: 'AAPL', '테슬라')
-    :return: 추출된 텍스트 데이터 딕셔너리
+    종목명을 네이버에서 검색한 후, 증권 정보 페이지로 이동하여 팝업을 닫고 데이터 추출
     """
-    
     stock_data = {}
-
     try:
-        # 1. 목표 URL로 직접 이동 (속도 개선)
-        # .O는 나스닥 종목을 의미, 다른 시장은 코드가 다를 수 있음
-        target_url = f"https://m.stock.naver.com/worldstock/stock/{keyword}.O/total"
-        print(f"🚀 {target_url} 로 직접 이동합니다...")
-        driver.get(target_url)
+        search_url = f"https://search.naver.com/search.naver?query={keyword}+주가"
+        print(f"\n🔍 검색 페이지 이동: {search_url}")
+        driver.get(search_url)
 
-        # 2. 팝업 닫기 (존재하는 경우)
-        try:
-            print("팝업 닫기 버튼을 기다립니다...")
-            # 버튼이 나타날 때까지 최대 5초 대기
-            close_button = WebDriverWait(driver, 5).until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, "button[class*='ModalFrame-module_button-close']"))
-            )
-            time.sleep(0.5) # 애니메이션 등을 위한 추가 대기
-            
-            print("JavaScript로 팝업 닫기 버튼을 클릭합니다.")
-            driver.execute_script("arguments[0].click();", close_button)
-            print("✅ 팝업 닫기 완료.")
-            time.sleep(0.5) # 팝업이 완전히 닫힐 때까지 대기
+        # 1. 차트 영역 대기 및 내부 canvas 완전 로딩까지 대기
+        chart_section = WebDriverWait(driver, 5).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, "section.sc_new.cs_stock"))
+        )
+        # 차트 내 canvas가 등장할 때까지 추가 대기
+        canvas = WebDriverWait(chart_section, 5).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, "div#stock_normal_chart3 canvas"))
+        )
+        # 필요시 약간의 여유 대기 (렌더링 지연 방지)
+        import time
+        time.sleep(0.5)
 
-        except Exception:
-            print("팝업이 없거나 닫는 데 실패했습니다. 데이터 추출을 계속 진행합니다.")
-
-        # 3. 데이터 추출 (새로운 네이버 모바일 증권 페이지 기준)
-        print("📊 데이터 추출 중...")
+        # 2. 전체 차트 wrap 기준 스크린샷
+        wrap_elem = driver.find_element(By.CSS_SELECTOR, "div.api_cs_wrap")
+        screenshot_path = f"{keyword}_chart.png"
+        import os, io
+        # 스크린샷 저장하고 성공 여부 확인
+        success = wrap_elem.screenshot(screenshot_path)
+        if not success or not os.path.exists(screenshot_path) or os.path.getsize(screenshot_path) == 0:
+            # 파일이 비정상적이면 메모리로 받아서 처리
+            png_bytes = wrap_elem.screenshot_as_png
+            original_img = Image.open(io.BytesIO(png_bytes))
+            original_img.save(screenshot_path)
+            print("⚠️ 파일로 저장 실패, 메모리 바이트로 대체 저장 완료.")
+        else:
+            original_img = Image.open(screenshot_path)
+        print("✅ 차트 wrap 스크린샷 저장 완료.")
         
-        # 페이지가 완전히 로드될 때까지 대기 (종목 이름이 나타날 때까지)
-        WebDriverWait(driver, 5).until(
+        # 원본 이미지 크기 확인
+        print(f"📏 원본 이미지 크기: {original_img.size} (가로 x 세로)")
+
+        # 3. 크롭 기준 좌표 계산 준비
+        wrap_location = wrap_elem.location
+        wrap_size = wrap_elem.size
+        # market_info는 있을 수도, 없을 수도 있음
+        from selenium.common.exceptions import NoSuchElementException
+        try:
+            market_elem = driver.find_element(By.CSS_SELECTOR, "div.market_info")
+            market_location = market_elem.location
+            market_size = market_elem.size
+        except NoSuchElementException:
+            market_location = {"x": 0, "y": 0}
+            market_size = {"width": 0, "height": 0}
+        
+        # 요소 위치 정보 출력
+        print(f"📍 wrap_elem 위치: x={wrap_location['x']}, y={wrap_location['y']}, width={wrap_size['width']}, height={wrap_size['height']}")
+        print(f"📍 market_elem 위치: x={market_location['x']}, y={market_location['y']}, width={market_size['width']}, height={market_size['height']}")
+
+        # 디스플레이 배율을 가져와 crop 좌표 보정
+        device_pixel_ratio = driver.execute_script("return window.devicePixelRatio")
+        print(f"🖥️ Device Pixel Ratio: {device_pixel_ratio}")
+
+        # 비율 조정: 좌우 여백 줄이고, 아래쪽 여백 추가
+        margin_x = 0  # 좌우 여백 제거
+        margin_bottom = int(wrap_size['height'] * 0.1)  # 아래쪽 10% 여백 추가
+
+        # wrap_elem을 이미 스크린샷했으므로 좌표를 wrap 내부 기준으로 계산
+        # invest_wrap 또는 fallback 요소 위치 계산
+        from selenium.common.exceptions import NoSuchElementException
+        rel_invest_bottom = None
+        try:
+            invest_elem = driver.find_element(By.CSS_SELECTOR, "div.invest_wrap._button_scroller")
+            invest_location = invest_elem.location
+            invest_size = invest_elem.size
+            print(f"📍 invest_elem 위치: x={invest_location['x']}, y={invest_location['y']}, width={invest_size['width']}, height={invest_size['height']}")
+            rel_invest_bottom = (invest_location['y'] - wrap_location['y']) + invest_size['height']
+        except NoSuchElementException:
+            print("⚠️ invest_wrap._button_scroller 요소를 찾지 못함, more_view 기준 사용 시도")
+            try:
+                more_view_elem = driver.find_element(By.CSS_SELECTOR, "div.more_view")
+                rel_invest_bottom = more_view_elem.location['y'] - wrap_location['y']
+                print(f"📍 more_view 위치: y={more_view_elem.location['y']}")
+            except NoSuchElementException:
+                print("⚠️ more_view 요소도 찾지 못함, wrap 전체 높이 사용")
+                rel_invest_bottom = wrap_size['height']
+
+        left = int(margin_x * device_pixel_ratio)
+        top = 0  # wrap 이미지의 상단부터
+        right = int((wrap_size['width'] - margin_x) * device_pixel_ratio)
+        bottom = int(rel_invest_bottom * device_pixel_ratio)
+        
+        print(f"📐 Crop 좌표 (배율 적용): left={left}, top={top}, right={right}, bottom={bottom}")
+        print(f"📐 Crop 크기: {right-left} x {bottom-top} (가로 x 세로)")
+
+        img = Image.open(screenshot_path)
+        img_width, img_height = img.size
+        
+        # crop 좌표를 원본 이미지 범위 내로 제한
+        left = max(0, min(left, img_width))
+        top = max(0, min(top, img_height))
+        right = max(left, min(right, img_width))
+        bottom = max(top, min(bottom, img_height))
+        
+        print(f"🔧 수정된 Crop 좌표: left={left}, top={top}, right={right}, bottom={bottom}")
+        print(f"🔧 수정된 Crop 크기: {right-left} x {bottom-top} (가로 x 세로)")
+        
+        cropped_img = img.crop((left, top, right, bottom))
+        cropped_img.save(screenshot_path)
+        print(f"✅ market_info 아래까지만 잘라서 '{screenshot_path}' 경로에 저장했습니다.")
+
+        # 2. "증권 정보 더보기" 클릭
+        more_view = chart_section.find_element(By.CSS_SELECTOR, "div.more_view a")
+        driver.execute_script("arguments[0].click();", more_view)
+        print("✅ '증권 정보 더보기' 클릭")
+
+        # 3. 증권 페이지 로딩 대기 (새 창/탭 전환 포함)
+        before_handles = driver.window_handles
+        driver.execute_script("arguments[0].click();", more_view)
+        time.sleep(1)
+        after_handles = driver.window_handles
+        if len(after_handles) > len(before_handles):
+            new_handle = list(set(after_handles) - set(before_handles))[0]
+            driver.switch_to.window(new_handle)
+            print("✅ 새 창/탭으로 전환 완료:", driver.current_url)
+        else:
+            print("ℹ️ 새 창/탭 없음, 기존 창에서 진행")
+        # URL 체크 대신 주요 요소 등장 대기
+        WebDriverWait(driver, 10).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, ".GraphMain_name__cEsOs"))
         )
+        time.sleep(1)
 
-        stock_data['ticker'] = keyword
-        stock_data['name'] = driver.find_element(By.CSS_SELECTOR, ".GraphMain_name__cEsOs").text
-        stock_data['price'] = driver.find_element(By.CSS_SELECTOR, ".GraphMain_price__H72B2").text
-        change_element = driver.find_element(By.CSS_SELECTOR, "div[class*='VGap_stockGap']")
-        change_parts = change_element.text.split('\n')
-        stock_data['change'] = ' '.join(list(dict.fromkeys(change_parts)))
+        # 4. 팝업 닫기 단계 생략 (팝업 무시)
+        # print("📦 팝업 처리 생략")
+
+        # 5. 데이터 추출 (상세 정보 포함)
+        print("📊 데이터 추출 중...")
+        WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, ".GraphMain_name__cEsOs"))
+        )
+        stock_data["keyword"] = keyword
+        stock_data["name"] = driver.find_element(By.CSS_SELECTOR, ".GraphMain_name__cEsOs").text
+        stock_data["price"] = driver.find_element(By.CSS_SELECTOR, ".GraphMain_price__H72B2").text
+        change_el = driver.find_element(By.CSS_SELECTOR, "div[class*='VGap_stockGap']")
+        stock_data["change"] = change_el.text.replace('\n', ' ')
 
         # 시간 정보 추출
         time_elements = driver.find_elements(By.CSS_SELECTOR, ".GraphMain_date__GglkR .GraphMain_time__38Tp2")
@@ -71,20 +170,18 @@ def get_foreign_stock_data_from_naver(driver, keyword: str):
         except Exception:
             print("⚠️ '종목정보 더보기' 버튼을 찾을 수 없거나 이미 모든 정보가 표시되어 있습니다.")
 
-        # 재무 정보 테이블 추출 (이제 모든 정보가 표시됨)
+        # 재무 정보 테이블 추출
         financial_info_list = driver.find_elements(By.CSS_SELECTOR, "ul.StockInfo_list__V96U6 > li.StockInfo_item__puHWj")
         for item in financial_info_list:
             try:
-                # 각 li 요소의 텍스트를 줄바꿈으로 분리
                 parts = item.text.split('\n')
                 if len(parts) >= 2:
-                    # 첫 줄은 제목, 나머지는 값
                     title = parts[0].strip()
                     value = " ".join(parts[1:]).strip()
-                    if title and value: # 제목과 값이 모두 유효한 경우에만 추가
+                    if title and value:
                         stock_data[title] = value
             except Exception:
-                continue # 특정 항목에서 오류 발생 시 다음으로 넘어감
+                continue
 
         # 기업 개요 정보 추출
         try:
@@ -93,144 +190,65 @@ def get_foreign_stock_data_from_naver(driver, keyword: str):
         except Exception:
             print("⚠️ 기업 개요 정보를 찾을 수 없습니다.")
 
-        print(f"✅ [{keyword}] 데이터 추출 성공!")
-
+        print("✅ 데이터 추출 완료")
         return stock_data
 
     except Exception as e:
         print(f"❌ 오류 발생: {e}")
+        traceback.print_exc()
         return None
 
 
-
-def get_foreign_stock_data_from_naver_direct(ticker: str):
+def wait_and_close_top10_popup(driver, timeout=7):
     """
-    종목 티커를 기반으로 네이버 증권 페이지 URL을 직접 생성하여 접속하고 데이터를 추출합니다.
-    모든 기능 테스트는 이 파일 안에서만 이루어집니다.
-    :param ticker: 해외주식 티커 (예: 'AAPL', 'TSLA')
-    :return: 추출된 텍스트 데이터 딕셔너리 또는 실패 시 None
+    WebDriverWait로 팝업 등장 대기 후 X버튼 클릭. timeout 내에 안 뜨면 그냥 넘어감.
     """
-    target_url = f"https://m.stock.naver.com/worldstock/stock/{ticker}/total"
-    print(f"🎯 [{ticker}] 목표 URL로 직접 이동: {target_url}")
-
-    # 기능 테스트를 위해 브라우저 창을 직접 확인합니다.
-    driver = initialize_driver(headless=False)
-    stock_data = {}
-
     try:
-        driver.get(target_url)
-
-        # 팝업 닫기 (존재하는 경우)
-        try:
-            close_button = WebDriverWait(driver, 3).until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, "button[class*='ModalFrame-module_button-close']"))
+        print("팝업이 뜨기를 기다립니다...")
+        close_btn = WebDriverWait(driver, timeout).until(
+            EC.element_to_be_clickable(
+                (By.CSS_SELECTOR, "button.BottomModalNoticeWrapper-module_button-close__dRRuc")
             )
-            time.sleep(0.5)
-            driver.execute_script("arguments[0].click();", close_button)
-            print("✅ 팝업 닫기 성공 또는 팝업 없음")
+        )
+        time.sleep(0.3)
+        driver.execute_script("arguments[0].click();", close_btn)
+        print("✅ 팝업 닫기 완료")
+    except Exception as e:
+        print(f"⚠️ {timeout}초 내에 팝업이 뜨지 않음 또는 닫기 실패: {e}")
+        # 필요시 DOM 강제 제거
+        try:
+            driver.execute_script('''
+                const el = document.querySelector('[class*="BottomModalNoticeWrapper-module_notice-wrapper"]');
+                if (el) el.remove();
+            ''')
+            print("✅ 팝업 DOM 제거 완료")
         except Exception:
-            pass # 팝업이 없으면 그냥 진행
+            pass
 
-        # 데이터 추출 (사용자가 알려준 새 선택자 기반)
-        WebDriverWait(driver, 5).until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, ".GraphMain_name__cEsOs"))
-        )
-
-        stock_data['ticker'] = ticker
-        stock_data['name'] = driver.find_element(By.CSS_SELECTOR, ".GraphMain_name__cEsOs").text
-        stock_data['price'] = driver.find_element(By.CSS_SELECTOR, ".GraphMain_price__H72B2").text
-        change_element = driver.find_element(By.CSS_SELECTOR, "div[class*='VGap_stockGap']")
-        stock_data['change'] = change_element.text
-
-
-
-        print(f"✅ [{ticker}] 데이터 추출 성공!")
-        return stock_data
-
-    except Exception as e:
-        print(f"❌ [{ticker}] 데이터 추출 중 오류 발생: {e}")
-        return None
-
-    finally:
-        print("테스트 종료. 브라우저를 닫습니다.")
-        if 'driver' in locals():
-            driver.quit()
-
-def capture_stock_chart_screenshot(driver, keyword):
-    """네이버 검색 결과에서 주식 차트를 스크린샷으로 저장합니다."""
-    try:
-        print(f"\n📈 '{keyword} 주가' 차트 스크린샷 캡처를 시작합니다...")
-        search_url = f"https://search.naver.com/search.naver?query={keyword}+주가"
-        driver.get(search_url)
-        print(f"✅ {search_url} 로 이동 완료.")
-
-        # 차트가 포함된 섹션 요소 기다리기
-        chart_section_selector = "section.sc_new.cs_stock"
-        chart_element = WebDriverWait(driver, 5).until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, chart_section_selector))
-        )
-        print("✅ 차트 영역 발견!")
-
-        # 실제 차트 그래픽(SVG path)이 렌더링될 때까지 대기
-        try:
-            print("⏳ 차트 그래픽이 렌더링되기를 기다립니다...")
-            chart_graphic_selector = f"{chart_section_selector} svg g path"
-            WebDriverWait(driver, 2).until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, chart_graphic_selector))
-            )
-            print("✅ 차트 렌더링 완료!")
-            time.sleep(0.5)  # 최종 렌더링 안정화를 위해 잠시 대기
-        except Exception as e:
-            print(f"❌ 차트 렌더링 대기 중 오류 발생: {e}")
-            print("⚠️ 렌더링 확인에 실패했지만, 스크린샷을 강행합니다.")
-
-        # 스크린샷 저장 후 자르기
-        screenshot_path = f"{keyword}_chart.png"
-        chart_element.screenshot(screenshot_path)
-        
-        # Pillow를 사용하여 이미지 하단 자르기
-        img = Image.open(screenshot_path)
-        width, height = img.size
-        # 아래쪽 정보 영역을 잘라내기 위해 높이 조정 
-        crop_area = (0, 0, width, height - 150)
-        cropped_img = img.crop(crop_area)
-        cropped_img.save(screenshot_path)
-        
-        print(f"✅ 차트 스크린샷을 잘라서 '{screenshot_path}' 경로에 저장했습니다.")
-        return True
-    except Exception as e:
-        print(f"❌ 차트 스크린샷 캡처 중 오류 발생: {e}")
-        return False
-
-# --- 실행 예시 ---
+# --- 실행 ---
 if __name__ == "__main__":
-    # 테스트하고 싶은 해외 종목을 여기에 입력하세요.
-    stock_keyword = "AAPL"
-    driver = None  # finally 블록에서 사용하기 위해 초기화
+    while True:
+        keyword = input("\n🔍 검색할 종목명 입력 (예: 삼성전자, 애플 / 종료: q): ").strip()
+        if keyword.lower() in ["q", "exit"]:
+            print("👋 종료합니다")
+            break
+        if not keyword:
+            print("⚠️ 종목명을 입력해주세요")
+            continue
 
-    try:
-        # 1. 드라이버 초기화
-        driver = initialize_driver(headless=False)
+        driver = None
+        try:
+            driver = initialize_driver(headless=True)
+            driver.set_window_size(1920, 1080)
 
-        # 2. 네이버 증권에서 데이터 스크래핑
-        print("--- 네이버 증권 데이터 스크래핑 시작 ---")
-        stock_data = get_foreign_stock_data_from_naver(driver, stock_keyword)
-
-        if stock_data:
-            print("\n--- 최종 추출 데이터 ---")
-            for key, value in stock_data.items():
-                print(f"{key}: {value}")
-            print("---------------------")
-
-            # 3. 네이버 검색에서 차트 스크린샷 캡처
-            capture_stock_chart_screenshot(driver, stock_keyword)
-        else:
-            print(f"\n{stock_keyword}에 대한 데이터 추출에 실패했습니다.")
-
-    except Exception as e:
-        print(f"전체 실행 중 오류가 발생했습니다: {e}")
-
-    finally:
-        if driver:
-            driver.quit()
-            print("\n👋 드라이버를 종료합니다.")
+            result = get_stock_data_from_search(driver, keyword)
+            if result:
+                print("\n📊 추출 결과:")
+                for k, v in result.items():
+                    print(f"{k}: {v}")
+            else:
+                print("❌ 데이터 수집 실패")
+        finally:
+            if driver:
+                driver.quit()
+                print("🔄 드라이버 재시작 완료")

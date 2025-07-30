@@ -40,8 +40,12 @@ def initialize_driver(headless: bool = True) -> 'webdriver.Chrome':
     chrome_options = Options()
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
-    chrome_options.add_argument("--window-size=1920,1080")
+    chrome_options.add_argument("--window-size=1920,1080") # 해상도 고정
+    chrome_options.add_argument("--force-device-scale-factor=1") # 배율 100% 강제
     chrome_options.add_argument("--disable-gpu")
+    # suppress verbose Chrome logs
+    chrome_options.add_argument("--log-level=3")  # fatal
+    chrome_options.add_argument("--disable-logging")
     chrome_options.add_argument("--disable-blink-features=AutomationControlled")
     chrome_options.add_experimental_option("excludeSwitches", ["enable-automation", "enable-logging"])
     chrome_options.add_experimental_option("useAutomationExtension", False)
@@ -53,7 +57,11 @@ def initialize_driver(headless: bool = True) -> 'webdriver.Chrome':
         chrome_options.add_argument("--headless=new")
 
     try:
-        service = Service()
+        import os
+        service = Service(
+            log_path='NUL' if os.name == 'nt' else os.devnull,
+            service_args=['--silent']
+        )
         driver = webdriver.Chrome(service=service, options=chrome_options)
         return driver
     except Exception as e:

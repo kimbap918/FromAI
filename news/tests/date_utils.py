@@ -1,5 +1,13 @@
 import re
-from datetime import datetime, date
+from datetime import date, datetime, timedelta
+import sys
+import os
+
+# 상위 디렉토리를 시스템 경로에 추가
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# capture_utils에서 get_today_kst_date_str 함수 가져오기
+from news.src.utils.capture_utils import get_today_kst_date_str
 
 # 날짜 패턴 정의 (긴 것 우선)
 patterns = {
@@ -97,34 +105,37 @@ def replace_date_in_sentence(sentence: str, today: date) -> str:
             matched_spans.append((start, start + len(new_expr)))
     return sentence
 
-# 사용 예시
-today = date(2025, 7, 4)
+# 현재 날짜 가져오기
+today_str = get_today_kst_date_str()
+today = datetime.strptime(today_str, '%Y-%m-%d').date()
+tomorrow = today + timedelta(days=1)
+yesterday = today - timedelta(days=1)
+
+print(f"오늘 날짜: {today_str}")
+print("-" * 50)
+
+# 테스트 케이스
 test_cases = [
-    # 일 단독
-    "7월 4일",
-    "7월 4일 출시", # -> 4일 출시
-    "7월 5일 공개", # -> 오는 5일 공개
-    "7월 2일 오픈", # -> 지난 2일 오픈
-    "6월 15일 종료", # -> 지난 15일 종료
-
-    # 월 단독
-    "7월 행사 개최", # -> 7월 행사 개최
-    "6월 발표했다", # -> 지난 6월 발표했다
-    "8월 오픈 예정", # -> 오는 8월 오픈 예정
-    "5월 논의됐다", # -> 지난 5월 논의됐다
-
-    # 년 단독
-    "2025년 출시", # -> 25년 출시
-    "25년 출시", # -> 25년 출시
-    "2024년 시공 완료", # -> 지난 24년 시공 완료
-    "2027년 개봉", # -> 오는 27년 개봉
-
-    # 년+월
-    "2025년 7월 행사", # -> 25년 7월 행사
-    "2025년 6월 출시", # -> 지난 25년 6월 출시
-    "2025년 8월 방영", # -> 오는 25년 8월 방영
-    "2026년 3월 공개", # -> 지난 26년 3월 공개
-    "2024년 12월 오픈", # -> 지난 24년 12월 오픈
+    # 일 단위 테스트
+    f"{today.month}월 {today.day}일 15시 20분",
+    f"{today.month}월 {today.day}일 출발",
+    f"{today.month}월 {tomorrow.day}일 도착",
+    f"{yesterday.month}월 {yesterday.day}일 종료",
+    
+    # 월 단위 테스트
+    f"{today.month}월 초 개장",
+    f"{today.month}월 중순 출시",
+    f"{today.month}월 말 완료",
+    
+    # 연도 포함 테스트
+    f"{today.year}년 {today.month}월 {today.day}일 행사",
+    f"{today.year}년 {today.month}월 {tomorrow.day}일 오픈",
+    f"{today.year}년 {yesterday.month}월 {yesterday.day}일 마감",
+    
+    # 다양한 시나리오
+    f"{today.month}월 {today.day}일부터 {today.month}월 {today.day + 3}일까지 할인",
+    f"{yesterday.month}월 {yesterday.day}일부터 {today.month}월 {today.day}까지 전시",
+    f"{today.month}월 {today.day}일 {today.hour}시 정각 시작"
 
     # 년+월+일
     "2025년 7월 2일 개봉", # -> 지난 2일 개봉
@@ -138,8 +149,17 @@ test_cases = [
     "2025년 8월까지 착공", # -> 지난 8월까지 착공
     "2027년 5월까지 개발 완료", # -> 오는 5월까지 개발 완료
     "8월 개막 예정", # -> 오는 8월 개막 예정
-    "5월 20일 발표했다" # -> 지난 20일 발표했다
+    "5월 20일 발표했다" # -> 지난 20일
 ]
 
-for s in test_cases:
-    print(replace_date_in_sentence(s, today))
+# 테스트 실행
+for case in test_cases:
+    try:
+        result = replace_date_in_sentence(case, today)
+        print(f"원본: {case}")
+        print(f"변환: {result}")
+        print("-" * 50)
+    except Exception as e:
+        print(f"오류 발생: {case}")
+        print(f"에러 메시지: {str(e)}")
+        print("-" * 50)

@@ -9,6 +9,7 @@ from PyQt5.QtCore import Qt
 from news.src.components.news_tab import NewsTab
 from news.src.components.stock_tab import StockTab
 from news.src.components.hwan_tab import HwanTab
+from news.src.components.toss_tab import TossTab
 
 # ------------------------------------------------------------------
 # 작성자 : 최준혁
@@ -35,6 +36,7 @@ class MainWindow(QMainWindow):
         tab_widget.addTab(NewsTab(), "📰 뉴스 재구성")
         tab_widget.addTab(HwanTab(), "💱 환율 차트")
         tab_widget.addTab(StockTab(), "📈 주식 차트")
+        tab_widget.addTab(TossTab(), "📈 토스 인기 종목")
         layout.addWidget(tab_widget)
 
         # 상태 라벨

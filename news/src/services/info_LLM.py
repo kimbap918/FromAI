@@ -22,10 +22,10 @@ genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
 BASE_SYSTEM_PROMPT = (
     """
     [System Message]
-    사용자가 키워드, 텍스트 정보, 그리고 관련 이미지를 제공합니다.
+    사용자가 키워드, 텍스트 정보 혹은 키워드 관련 이미지를 제공합니다.
     당신은 제공된 모든 정보를 종합적으로 분석하여 독자가 이해하기 쉬운 기사 문체로 작성하는 데이터 기반 정보 전달 전문 기자입니다.
     날씨, 주식, 환율, 복권 등 다양한 주제의 데이터를 이미지로 받아 해석하여 독자가 이해하기 쉽고 객관적인 정보를 전달하는 기사를 작성합니다.
-    해당 메세지를 읽고 나서 아래의 [News Generation Process (Step-by-Step Execution)], [Special Rules for...]를 순서대로 읽은 후 [Output Format]에 따라 출력합니다.
+    해당 메세지를 읽고 나서 아래의 [News Generation Process (Step-by-Step Execution)], [Special Rules for...], [Style and Content Guidance for...] 및 [user message]를 순서대로 읽은 후 [Output Format]에 따라 출력합니다.
 
     [News Generation Process (Step-by-Step Execution)]
     1. 제공된 정보 인식 및 유효성 검증
@@ -68,7 +68,12 @@ BASE_SYSTEM_PROMPT = (
 """
 )
 
-
+# ------------------------------------------------------------------
+# 작성자 : 최준혁
+# 작성일 : 2025-07-25
+# 기능 : 시스템 프롬프트를 생성하는 함수
+# 반환값 : 시스템 프롬프트
+# ------------------------------------------------------------------
 def build_system_prompt(keyword, today_kst, is_stock=False):
     prompt = BASE_SYSTEM_PROMPT.format(keyword=keyword, today_kst=today_kst)
     if is_stock:
@@ -78,26 +83,31 @@ def build_system_prompt(keyword, today_kst, is_stock=False):
     return prompt
 
 
-
-def generate_info_news(keyword: str, image_path: str, is_stock: bool):
-    """
-    주식 관련 이미지를 LLM(Gemini Vision)에 입력하여 기사 생성.
-    :param stock_name: 주식명 또는 키워드
-    :param image_path: 캡처 이미지 경로
-    :return: LLM이 생성한 기사(제목, 본문, 해시태그)
-    """
-    today_kst = get_today_kst_str()
-    system_prompt = build_system_prompt(keyword, today_kst, is_stock=is_stock)
-
-    user_message = f"아래 이미지는 '{keyword}' 관련 이미지 입니다. 이미지의 내용을 면밀히 분석해 기사 형식으로 작성하세요."
-
-
-    model = genai.GenerativeModel(
+# ------------------------------------------------------------------
+# 작성자 : 최준혁
+# 작성일 : 2025-07-25
+# 기능 : Gemini 모델을 초기화하고 반환하는 함수 
+# 반환값 : 초기화된 Gemini 모델
+# ------------------------------------------------------------------
+def get_model(system_prompt: str):
+    return genai.GenerativeModel(
         model_name='gemini-2.5-flash',
         system_instruction=system_prompt
     )
 
+# ------------------------------------------------------------------
+# 작성자 : 최준혁
+# 작성일 : 2025-07-25
+# 기능 : 주식 관련 이미지를 LLM(Gemini Vision)에 입력하여 기사 생성.
+# 반환값 : LLM이 생성한 기사(제목, 본문, 해시태그)
+# ------------------------------------------------------------------
+def generate_info_news(keyword: str, image_path: str, is_stock: bool):
+    today_kst = get_today_kst_str()
+    system_prompt = build_system_prompt(keyword, today_kst, is_stock=is_stock)
+    user_message = f"아래 이미지는 '{keyword}' 관련 이미지 입니다. 이미지의 내용을 면밀히 분석해 기사 형식으로 작성하세요."
+
     try:
+        model = get_model(system_prompt)
         img = Image.open(image_path)
         response = model.generate_content([
             user_message,
@@ -108,13 +118,16 @@ def generate_info_news(keyword: str, image_path: str, is_stock: bool):
         print(f"Gemini Vision API 호출 중 오류 발생: {e}")
         return None
 
-
+# ------------------------------------------------------------------
+# 작성자 : 최준혁
+# 작성일 : 2025-07-25
+# 기능 : 정보성 뉴스 생성 (info_dict는 도메인별로 정제된 데이터)
+# 반환값 : LLM이 생성한 기사(제목, 본문, 해시태그)
+# ------------------------------------------------------------------
 def generate_info_news_from_text(keyword: str, info_dict: dict, domain: str = "generic"):
-    """
-    도메인(주식, 환율, 코인 등)에 상관없이 정보성 뉴스 생성 (info_dict는 도메인별로 정제된 데이터)
-    """
     today_kst = get_today_kst_str()
     system_prompt = build_system_prompt(keyword, today_kst, is_stock=(domain=="stock"))
+    model = get_model(system_prompt)
 
     # 도메인별 프롬프트/정보 포맷 분기
     if domain == "stock":
@@ -149,7 +162,7 @@ def generate_info_news_from_text(keyword: str, info_dict: dict, domain: str = "g
             f"[정보]\n{info_str}"
         )
 
-    print("\n[키워드 정보(user message)]\n" + user_message + "\n")
+    print("\n[user message]\n" + user_message + "\n")
 
     model = genai.GenerativeModel(
         model_name='gemini-2.5-flash',
