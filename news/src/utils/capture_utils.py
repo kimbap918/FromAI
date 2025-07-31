@@ -3,6 +3,7 @@
 import os
 import time
 import io
+
 from datetime import datetime, timedelta
 try:
     from zoneinfo import ZoneInfo
@@ -51,11 +52,6 @@ def finance(stock_name):
     else:
         return None
 
-# ------------------------------------------------------------------
-# 작성자 : 최준혁
-# 작성일 : 2025-07-22
-# 기능 : 한국 주식 차트에서 거래정보를 가져오기 위한 정규표현식 패턴
-# ------------------------------------------------------------------
 def parse_chart_text(chart_text):
     info = {}
     patterns = [
@@ -81,10 +77,74 @@ def parse_chart_text(chart_text):
     return info
 
 # ------------------------------------------------------------------
-# 작성자 : 최준혁
+# 작성자 : 곽은규
 # 작성일 : 2025-07-22
-# 기능 : 투자정보 텍스트에서 정보를 가져오기 위한 기능 및 정규표현식 함수
+# 기능 : 현재 KST 시간을 'DD일 오후 HH시 MM분' 또는 'DD일 오전 HH시 MM분' 형식으로 반환합니다.
 # ------------------------------------------------------------------
+
+def convert_get_today_kst_str() -> str:
+
+    try:
+        from zoneinfo import ZoneInfo
+        now_kst = datetime.now(ZoneInfo('Asia/Seoul'))
+    except ImportError:
+        import pytz
+        now_kst = datetime.now(pytz.timezone('Asia/Seoul'))
+    if now_kst.hour > 15 or (now_kst.hour == 15 and now_kst.minute >= 30):
+        return f"네이버페이증권에 따르면 {now_kst.day}일 KRX 장마감"
+
+    am_pm = "오전" if now_kst.hour < 12 else "오후"
+    hour_12 = now_kst.hour % 12
+    if hour_12 == 0:
+        hour_12 = 12
+    
+    return f"네이버페이증권에 따르면 {now_kst.day}일 {am_pm} {hour_12}시 {now_kst.minute}분"
+
+# ------------------------------------------------------------------
+# 작성자 : 곽은규
+# 작성일 : 2025-07-22
+# 기능 : 완성된 기사 메모장에 저장하고 파일열기 함수입니다.
+# ------------------------------------------------------------------
+import platform 
+
+def save_news_to_file(keyword: str, domain: str, news_content: str, save_dir: str = "생성된 기사"):
+    if not news_content or not news_content.strip():
+            print("[WARNING] 저장할 뉴스 내용이 비어 있습니다. 파일 저장을 건너뜁니다.")
+            return None
+        
+    current_dir = os.getcwd()
+    today_date_str = get_today_kst_date_str() # "20250731" 형식의 오늘 날짜 문자열 가져오기
+    base_save_dir = os.path.join(current_dir, save_dir)
+    full_save_dir = os.path.join(base_save_dir, f"기사{today_date_str}")
+    os.makedirs(full_save_dir, exist_ok=True)
+
+    safe_k = safe_filename(keyword)
+    
+    # 파일명은 날짜/시간 없이 '키워드_도메인_news.txt'로 통일
+    filename = f"{safe_k}_{domain}_news.txt"
+    file_path = os.path.join(full_save_dir, filename)
+    
+    try:
+        with open(file_path, 'w', encoding='utf-8') as f:
+            f.write(news_content)
+        # print(f"뉴스 기사 저장 경로: {os.path.abspath(file_path)}")
+        try:
+            current_os = platform.system()
+            print(f"현재 운영체제: {current_os}")
+            if platform.system() == "Windows":
+                os.startfile(file_path)
+            elif current_os == "Darwin": # macOS
+                subprocess.run(["open", file_path])
+            else:
+                print(f"지원하지 않는 운영체제입니다. 파일 자동 열기를 건너뜁니다: {file_path}")
+        except Exception as open_err:
+            print(f"저장된 파일 열기 중 오류 발생: {open_err}")
+        return os.path.abspath(file_path)
+    except Exception as e:
+        print(f"뉴스 기사 저장 중 오류 발생: {e}")
+        return None
+
+
 def parse_invest_info_text(invest_info_text, debug=False):
     info = {}
     
@@ -218,9 +278,14 @@ def make_exchange_keyword(keyword: str) -> str:
 # 작성자 : 최준혁
 # 작성일 : 2025-07-10
 # 기능 : 네이버 검색에서 환율 차트를 찾아 캡처하고 저장하는 함수(환율 차트)
-# 반환값 : 저장된 이미지 경로
 # ------------------------------------------------------------------
 def capture_exchange_chart(keyword: str, progress_callback=None) -> str:
+    """
+    네이버 검색에서 환율 차트를 찾아 캡처하고 저장
+    :param keyword: 검색어 (예: "달러환율" 또는 "달러")
+    :param progress_callback: 진행상황 콜백 함수 (옵션)
+    :return: 저장된 이미지 경로
+    """
     if progress_callback:
         progress_callback("네이버 검색 페이지 접속 중...")
     keyword = make_exchange_keyword(keyword)
@@ -313,9 +378,14 @@ def capture_exchange_chart(keyword: str, progress_callback=None) -> str:
 # 작성자 : 최준혁
 # 작성일 : 2025-07-09
 # 기능 : 네이버 금융 종목 상세 페이지에서 wrap_company 영역을 캡처하고 저장하는 함수(주식 차트)
-# 반환값 : 저장된 이미지 경로, 성공 여부, 차트 영역 텍스트, 투자정보 텍스트, 차트 딕셔너리, 투자정보 딕셔너리
 # ------------------------------------------------------------------
 def capture_wrap_company_area(stock_code: str, progress_callback=None, debug=False):
+    """
+    네이버 금융 종목 상세 페이지에서 wrap_company 영역을 캡처
+    :param stock_code: 종목 코드 (예: 005930)
+    :param progress_callback: 진행상황 콜백 함수 (옵션)
+    :return: 저장된 이미지 경로, 성공 여부, 차트 영역 텍스트, 투자정보 텍스트, 차트 딕셔너리, 투자정보 딕셔너리
+    """
     def log(msg):
         with open("capture_log.txt", "a", encoding="utf-8") as f:
             f.write(f"[capture_wrap_company_area] {msg}\n")
@@ -558,96 +628,143 @@ def capture_wrap_company_area(stock_code: str, progress_callback=None, debug=Fal
 
 # ------------------------------------------------------------------
 # 작성자 : 최준혁
-# 작성일 : 2025-07-10
-# 기능 : 네이버 검색에서 외국 주식 차트를 찾아 캡처하고 저장하는 함수(외국 주식 차트)
+# 작성일 : 2025-07-31
+# 기능 : 네이버에서 해외주식 차트와 텍스트 정보를 추출하는 함수 (test.py 기반)
 # ------------------------------------------------------------------
-def capture_foreign_stock_chart(keyword: str, progress_callback=None) -> (str, bool):
+def capture_naver_foreign_stock_chart(keyword: str, progress_callback=None):
     """
-    구글 검색 결과에서 외국주식 차트+시세(구글 파이낸스 위젯) 영역을 캡처합니다.
-    :param keyword: 예) '팔란티어 주가', 'AAPL', '테슬라 주가'
-    :return: 저장된 이미지 경로 (또는 None)
+    네이버에서 해외주식 차트 캡처 및 상세 정보 크롤링
     """
-    # '구글' 또는 '구글주가'는 '알파벳 주가'로 변환
-    if keyword.replace(' ', '') in ['구글', '구글주가']:
-        keyword = '알파벳 주가'
-    elif '주가' not in keyword:
-        keyword = f"{keyword} 주가"
-    if progress_callback:
-        progress_callback("구글 검색 페이지 접속 중...")
-    print(f"[DEBUG] capture_foreign_stock_chart 진입: {keyword}")
-    driver = initialize_driver()
+    from PIL import Image
+    import io, os, time, traceback
+    from selenium.webdriver.common.by import By
+    from selenium.webdriver.support.ui import WebDriverWait
+    from selenium.webdriver.support import expected_conditions as EC
+    from selenium.common.exceptions import NoSuchElementException
+    from news.src.utils.driver_utils import initialize_driver
+
+    driver = None
+    stock_data = {}
+
     try:
-        # 구글 검색 결과 페이지로 이동
-        url = f"https://www.google.com/search?q={keyword}"
-        driver.get(url)
         if progress_callback:
-            progress_callback("페이지 로딩 대기 중...")
-        WebDriverWait(driver, 3).until(
-            lambda d: d.execute_script("return document.readyState") == "complete"
+            progress_callback("드라이버 초기화 중...")
+        driver = initialize_driver(headless=True)
+        driver.set_window_size(1920, 1080)
+
+        search_url = f"https://search.naver.com/search.naver?query={keyword}+주가"
+        if progress_callback:
+            progress_callback(f"네이버 검색 페이지 이동: {search_url}")
+        driver.get(search_url)
+
+        # 1. 차트 영역 대기
+        chart_section = WebDriverWait(driver, 5).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, "section.sc_new.cs_stock"))
         )
-        time.sleep(0.5)  # 위젯 로딩 대기
 
-        if progress_callback:
-            progress_callback("차트 영역 찾는 중...")
-        # 구글 파이낸스 위젯 영역 찾기
         try:
-            chart_el = driver.find_element(By.CSS_SELECTOR, "div.aviV4d")
-            print("[DEBUG] selector 성공: div.aviV4d")
+            canvas = WebDriverWait(chart_section, 5).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, "div#stock_normal_chart3 canvas"))
+            )
+            time.sleep(0.5)  # 렌더링 안정화를 위한 짧은 대기
         except Exception as e:
-            print(f"[DEBUG] selector 실패: div.aviV4d / {e}")
-            chart_el = None
-
-        if not chart_el:
             if progress_callback:
-                progress_callback("❌ 구글에서 차트 영역을 찾을 수 없습니다.")
-            print("❌ 구글에서 차트 영역을 찾을 수 없습니다.")
-            return None, False
+                progress_callback(f"⚠️ 캔버스를 찾지 못했습니다: {e}")
 
-        driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", chart_el)
+        # 2. wrap_elem 스크린샷 저장
+        wrap_elem = driver.find_element(By.CSS_SELECTOR, "div.api_cs_wrap")
+        screenshot_path = f"{keyword}_chart.png"
+        success = wrap_elem.screenshot(screenshot_path)
+        if not success or not os.path.exists(screenshot_path):
+            png_bytes = wrap_elem.screenshot_as_png
+            Image.open(io.BytesIO(png_bytes)).save(screenshot_path)
+
+        # 3. crop 좌표 계산 (invest_wrap, more_view 기준)
+        try:
+            invest_elem = driver.find_element(By.CSS_SELECTOR, "div.invest_wrap._button_scroller")
+            rel_invest_bottom = (invest_elem.location['y'] - wrap_elem.location['y']) + invest_elem.size['height']
+        except NoSuchElementException:
+            try:
+                more_view_elem = driver.find_element(By.CSS_SELECTOR, "div.more_view")
+                rel_invest_bottom = more_view_elem.location['y'] - wrap_elem.location['y']
+            except NoSuchElementException:
+                rel_invest_bottom = wrap_elem.size['height']
+
+        dpr = driver.execute_script("return window.devicePixelRatio")
+        left, top = 0, 0
+        right = int(wrap_elem.size['width'] * dpr)
+        bottom = int(rel_invest_bottom * dpr)
+
+        img = Image.open(screenshot_path)
+        img = img.crop((left, top, right, bottom))
+        img.save(screenshot_path)
+
+        if progress_callback:
+            progress_callback("✅ 차트 캡처 완료")
+
+        # 4. "증권 정보 더보기" 클릭 및 새 창 전환
+        more_view = chart_section.find_element(By.CSS_SELECTOR, "div.more_view a")
+        before_handles = driver.window_handles
+        driver.execute_script("arguments[0].click();", more_view)
         time.sleep(0.5)
+        after_handles = driver.window_handles
+        if len(after_handles) > len(before_handles):
+            new_handle = list(set(after_handles) - set(before_handles))[0]
+            driver.switch_to.window(new_handle)
 
-        zoom = driver.execute_script("return window.devicePixelRatio || 1;")
-        location = chart_el.location
-        size = chart_el.size
+        WebDriverWait(driver, 5).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, ".GraphMain_name__cEsOs"))
+        )
 
-        top_offset = 55
-        bottom_offset = 100
+        # 5. 데이터 추출
+        stock_data["keyword"] = keyword
+        stock_data["name"] = driver.find_element(By.CSS_SELECTOR, ".GraphMain_name__cEsOs").text
+        stock_data["price"] = driver.find_element(By.CSS_SELECTOR, ".GraphMain_price__H72B2").text
+        change_el = driver.find_element(By.CSS_SELECTOR, "div[class*='VGap_stockGap']")
+        stock_data["change"] = change_el.text.replace("\n", " ")
 
-        start_y = int(location['y'] * zoom) - top_offset
-        end_y = int((location['y'] + size['height']) * zoom) - bottom_offset
-        left = int(location['x'] * zoom)
-        width = int(size['width'] * zoom)
+        time_elements = driver.find_elements(By.CSS_SELECTOR, ".GraphMain_date__GglkR .GraphMain_time__38Tp2")
+        if len(time_elements) >= 2:
+            stock_data["korea_time"] = time_elements[0].text.replace("\n", " ")
+            stock_data["us_time"] = time_elements[1].text.replace("\n", " ")
+
+        # '종목정보 더보기' 클릭
+        try:
+            more_info_button = WebDriverWait(driver, 5).until(
+                EC.element_to_be_clickable((By.CSS_SELECTOR, "a.StockInfo_btnFold__XEUUS"))
+            )
+            driver.execute_script("arguments[0].click();", more_info_button)
+            time.sleep(0.5)
+        except:
+            pass
+
+        # 재무 정보
+        financial_items = driver.find_elements(By.CSS_SELECTOR, "ul.StockInfo_list__V96U6 > li.StockInfo_item__puHWj")
+        for item in financial_items:
+            parts = item.text.split("\n")
+            if len(parts) >= 2:
+                stock_data[parts[0].strip()] = " ".join(parts[1:]).strip()
+
+        # 기업 개요
+        try:
+            overview = driver.find_element(By.CSS_SELECTOR, "div.Overview_text__zT3AI")
+            stock_data["기업 개요"] = overview.text.strip()
+        except:
+            pass
 
         if progress_callback:
-            progress_callback("화면 전체 스크린샷 캡처 중...")
-        screenshot = driver.get_screenshot_as_png()
-        image = Image.open(io.BytesIO(screenshot))
-        if progress_callback:
-            progress_callback("차트 이미지 잘라내기...")
-        cropped = image.crop((left, start_y, left + width, end_y))
+            progress_callback("✅ 데이터 추출 완료")
 
-        today = get_today_kst_date_str()
-        safe_today = safe_filename(today)
-        safe_keyword = "".join(c for c in keyword if c.isalnum() or c in ('_', '-'))
-        # 한국 주식과 동일하게 저장
-        folder = os.path.join(os.getcwd(), "주식차트", f"주식{safe_today}")
-        os.makedirs(folder, exist_ok=True)
-        filename = f"{safe_filename(get_today_kst_str())}_{safe_keyword}_구글해외주식.png"
-        output_path = os.path.join(folder, filename)
-        cropped.save(output_path)
-
-        if progress_callback:
-            progress_callback("이미지를 클립보드에 복사 중...")
-        copy_image_to_clipboard(output_path)
-        print(f"✅ 구글 차트 캡처 및 클립보드 복사 완료: {output_path}")
-        return output_path, True
+        return screenshot_path, stock_data, True
 
     except Exception as e:
-        print(f"[ERROR] 구글 해외주식 캡처 중 예외 발생: {e}")
-        return None, False
-    finally:
-        driver.quit()
+        print(f"❌ 오류: {e}")
+        traceback.print_exc()
+        return None, {}, False
 
+    finally:
+        if driver:
+            driver.quit()
 
 # ------------------------------------------------------------------
 # 작성자 : 최준혁
@@ -673,7 +790,7 @@ def capture_stock_chart(keyword: str, progress_callback=None) -> str:
                 keyword = '알파벳 주가'
             elif '주가' not in keyword:
                 keyword = f"{keyword} 주가"
-            return capture_foreign_stock_chart(keyword, progress_callback=progress_callback)
+            return capture_naver_foreign_stock_chart(keyword, progress_callback=progress_callback)
     except Exception as e:
         print(f"[ERROR] capture_stock_chart에서 예외 발생: {e}")
         return None
@@ -749,23 +866,33 @@ def get_stock_info_from_search(keyword: str):
 # 작성자 : 최준혁
 # 작성일 : 2025-07-14
 # 기능 : 주식 키워드로 차트 이미지를 캡처하고, LLM에 기사 생성을 요청하는 함수
-# 반환값 : LLM이 생성한 기사(제목, 본문, 해시태그)
 # ------------------------------------------------------------------
 def capture_and_generate_news(keyword: str, domain: str = "stock", progress_callback=None, debug=False):
+    """
+    키워드와 도메인에 따라 정보성 뉴스를 생성한다.
+    :param keyword: 종목명/통화명/코인명 등
+    :param domain: "stock", "fx", "coin" 등
+    :param progress_callback: 진행상황 콜백 함수(옵션)
+    :param debug: 디버그 출력 여부
+    :return: LLM이 생성한 기사(제목, 본문, 해시태그)
+    """
     from news.src.services.info_LLM import generate_info_news_from_text
-
     info_dict = {}
     is_stock = (domain == "stock")
     if domain == "stock":
         stock_code = get_stock_info_from_search(keyword)
         if not stock_code:
             # 해외주식/외국뉴스 처리: 이미지 캡처만 info_dict에 제공
-            image_path, success = capture_foreign_stock_chart(keyword, progress_callback=progress_callback)
+            image_path, stock_data, success = capture_naver_foreign_stock_chart(keyword, progress_callback=progress_callback)
             if not image_path:
                 if progress_callback:
                     progress_callback("해외주식 이미지 캡처에 실패했습니다.")
                 return None
-            info_dict['이미지'] = image_path
+            if not stock_data:
+                if progress_callback:
+                    progress_callback("해외주식 데이터 크롤링에 실패했습니다.")
+                return None
+            info_dict = dict(stock_data)
             info_dict['키워드'] = keyword
             if debug:
                 print("\n[LLM에 제공되는 정리된 정보 - 해외주식]")
@@ -774,6 +901,10 @@ def capture_and_generate_news(keyword: str, domain: str = "stock", progress_call
             if progress_callback:
                 progress_callback("LLM 기사 생성 중...")
             news = generate_info_news_from_text(keyword, info_dict, domain)
+
+            if news: # news 변수에 값이 있을 경우에만 저장
+                save_news_to_file(keyword, domain, news)
+
             return news
         image_path, is_stock, chart_text, invest_info_text, chart_info, invest_info, summary_info_text = capture_wrap_company_area(stock_code, progress_callback=progress_callback, debug=debug)
         if not image_path:
@@ -795,9 +926,9 @@ def capture_and_generate_news(keyword: str, domain: str = "stock", progress_call
                 if k != '기업개요':
                     print(f"{k}: {v}")
     else:
-        # 해외주식/외국뉴스 처리: 이미지 캡처만 info_dict에 제공
-        image_path, success = capture_foreign_stock_chart(keyword, progress_callback=progress_callback)
-        if not image_path:
+        # 해외주식/외국뉴스 처리
+        image_path, stock_data, success = capture_naver_foreign_stock_chart(keyword, progress_callback=progress_callback)
+        if not image_path or not success:
             if progress_callback:
                 progress_callback("해외주식 이미지 캡처에 실패했습니다.")
             return None
@@ -810,6 +941,10 @@ def capture_and_generate_news(keyword: str, domain: str = "stock", progress_call
     if progress_callback:
         progress_callback("LLM 기사 생성 중...")
     news = generate_info_news_from_text(keyword, info_dict, domain)
+
+    if news: # news 변수에 값이 있을 경우에만 저장
+        save_news_to_file(keyword, domain, news)
+
     return news
 
 def build_stock_prompt(today_kst):
@@ -823,39 +958,51 @@ def build_stock_prompt(today_kst):
             continue
     if not date_obj:
         date_obj = datetime.now()
+    now_time = convert_get_today_kst_str()
+    print("now_time 호출 결과:",  now_time)
     today_day = str(date_obj.day)
     yesterday = date_obj - timedelta(days=1)
     before_yesterday = date_obj - timedelta(days=2)
     yesterday_day = str(yesterday.day)
     before_yesterday_day = str(before_yesterday.day)
     stock_prompt = (
+
         "[Special Rules for Stock-Related News]\n"
-        f"- 주식 기사 제목 작성 시 규칙\n"
-        f"   - 5.제목 작성 방식에 따라 제목을 작성하되, 아래의 내용을 추가로 고려합니다.\n"
-        f"   - 금액에는 반드시 콤마(,)를 표기할 것 (예: 64,600원)\n"
-        f"   - 날짜는 \"7월 8일\"과 같이 \"월 일\" 형식으로 기입할 것\n"
+        f"1. 제목 작성 시 규칙\n"
+        f"   - 금액에는 천단위는 반드시 콤마(,)를 표기할 것 (예: 64,600원)\n"
+        f"   - **반드시 날짜는 \"7월 8일\"과 같이 \"월 일\" 형식으로 기입할 것\n**"
         f"   - 가격과 등락률을 표시할때는 함께 표기할 것\n"
-        f"   - 예시: \"(키워드) O월 O일 주가 00,000원, 0.00% 하락/상승/보합\"\n\n"
-        f"- 시제는 기사 작성 시점을 현재 시간 및 이미지 차트에 표기된 기준일과 시점을 아래의 기준으로 구분합니다.\n"
-        f"   - 예시:\n"
+        f"   - 키워드 뒤에 반드시 콤마(,)를 표기하고 난 후 날짜를 표현한 후 내용을 이어 붙일것\n"
+        f"   - '전일 대비'와 같은 비교 표현은 사용하지 않는다."
+        f"   - 주가 정보 포함 시: 단, '장중' 이라는 단어는 날짜 뒤에 붙어서 나오거나 [등락률] 앞에 나올 것.\n"
+        f"   - 시제는 기사 작성 시점을 반드시 기준일과 시점(예: 장마감, 장중 등)을 아래의 기준으로 구분한다.\n"
+        f"   - **주가 정보는 간결하게 포함하며, 장이 마감되었을 경우에만 제목의 가장 마지막에 \"[변동 방향/상태] 마감\" 형식으로 추가할 것.**\n"
+        f"2. 본문 작성 시 규칙\n"
+        f"   - 첫줄에 날짜와 \"{now_time} 기준,\" 분까지 표기해서 표시할것, 그 이후는 [News Generation Process] 내용에 충실할 것\n "
+        f"   - 날짜는 \"{today_day}일\", \"{yesterday_day}일\"처럼 **일(day)만** 표기 (월은 생략)\n"
+        f"   - '전일' 이나 '전 거래일'이라는 표현하지 말 것, 대신 반드시 **\"지난 {yesterday_day}일\", \"지난 {before_yesterday_day}일\"**처럼 날짜를 명시할 것\n"
+        f"   - 날짜가 포함된 시간 표현은 \"{today_kst} 오전 10시 56분\" → **\"{today_day}일 오전 10시 56분\"** 형식으로 변환\n"
+        f"   - **절대로 '이날', '금일', '당일'과 같은 표현을 사용하지 말 것.** 대신 오늘 날짜인 \"{today_day}일\"로 반드시 바꿔서 명시**할 것.\n\n"
+        f"3. 시제는 기사 작성 시점을 반드시 기준일과 시점(예: 장마감, 장중 등)을 아래의 기준으로 구분한다.\n"
+        f"   - 장 시작 전: \"장 시작 전\"\n"
         f"   - 장중 (오전 9:00 ~ 오후 3:30): \"장중\"\n"
         f"   - 장 마감 후 (오후 3:30 이후): \"장 마감 후\"\n\n"
-        f"- 국내 주식의 경우, (KST, Asia/Seoul) 기준으로 종가 및 날짜 비교 시 매주 월요일에는 지난주 금요일 종가와 비교합니다.\n"
+        f"4. 국내 주식의 경우, (KST, Asia/Seoul) 기준으로 종가 및 날짜 비교 시 매주 월요일에는 지난주 금요일 종가와 비교할 것\n"
         f"   - 예시:\n"
-        f"   - (오늘이 2025년 7월 14일이 월요일인 경우) 지난 11일 종가는 31,300원이었으며, 14일은 이에 비해 소폭 하락한 상태다.\n"
-        f"   - (오늘이 2025년 7월 15일이 화요일인 경우) 지난 14일 종가는 31,300원이었으며, 15일은 이에 비해 소폭 하락한 상태다.\n\n"
-        f"- 거래대금은 반드시 **억 단위, 천만 단위로 환산**하여 정확히 표기합니다.\n"
+        f"   - (2025년 7월 14일이 월요일인 경우) 지난 11일 종가는 31,300원이었으며, 14일은 이에 비해 소폭 하락한 상태다.\n"
+        f"   - (2025년 7월 15일이 화요일인 경우) 지난 14일 종가는 31,300원이었으며, 15일은 이에 비해 소폭 하락한 상태다.\n\n"
+        f"5. 거래대금은 반드시 **억 단위, 천만 단위로 환산**하여 정확히 표기할 것\n"
         f"   - 예시: \"135,325백만\" → \"1,353억 2,500만 원\" / \"15,320백만\" → \"153억 2,000만 원\" / \"3,210백만\" → \"32억 1,000만 원\" / \"850백만\" → \"8억 5,000만 원\"\n\n"
-       
-        f"[Style and Content Guidance for Stock News]\n"
-        f"- **객관적인 사실을 기반으로 작성하되, 필요에 따라 '으로 해석된다', '으로 보인다', '가능성이 있다' 등 조심스러운 추측성 표현을 사용하여 독자의 이해를 돕고 문맥을 풍부하게 합니다.**\n"
-        f"- 투자 권유나 확정적인 예측은 엄격히 금지합니다. 이는 [News Generation Process]의 '객관성 유지' 지침을 주식 뉴스에 한해 오버라이드합니다.\n"
-        f"  - **주식 변동의 핵심 요약:** 기사 첫 문단에 주가(종가), 등락률 등 가장 중요한 정보를 제시합니다.\n"
-        f"  - **장중 주가 흐름:** 시가, 고가, 저가를 언급하며 하루 동안의 주가 추이를 설명합니다.\n"
-        f"  - **거래 동향 분석:** 거래량과 거래대금 수치를 제시하고, 이 수치가 주가 변동에 어떤 의미를 가지는지 분석합니다.\n"
-        f"  - **주요 재무 지표 해설:** PER, PBR, 배당수익률 등 주요 지표를 제시하고 그 의미를 간략히 설명합니다. 서술은 문장의 연결이 자연스럽게 이어지게 하며 해당 수치를 너무 나열하듯이 서술하지 않습니다.\n"
-        f"  - **기업 개요 및 시장 위치:** 해당 기업의 주요 사업 분야와 시장 내 위치(예: 코스피 시총 1위)를 언급하여 기업에 대한 이해를 돕습니다. 구체적 정보를 파악하기 힘든 경우, 서술하지 않습니다.\n"
-        f"  - **주가 변동의 배경 및 향후 전망 (조심스러운 추측):** 오늘 주가 변동의 가능한 원인(예: 단기 투자 심리 위축)을 분석하고, 시장 전문가의 견해나 업황을 토대로 향후 주가 흐름에 대한 조심스러운 전망을 제시합니다.\n"
+        f"6. 출력 형식 적용 (최종 제공)\n"
+        f"   - 기사 생성 후, 아래 출력 형식에 맞춰 제공\n"
+        f"   - 최종 출력은 [제목], [해시태그], [본문]의 세 섹션으로 명확히 구분하여 작성할 것.\n\n"
+        f"[Style]\n"
+        f"- 반드시 장 시작/장중/장 마감 시점에 따라 서술 시제 변경\n"
+        f"- 전일 대비 등락과 연속 흐름을 조건별로 구분해 자연스럽게 서술하도록 지시할 것.\n"
+        f"- 기업과 주식 관련 정보는 구체적인 수치와 함께 명시할 것.\n"
+        f"- 단순 데이터 나열을 금지하며, 원인과 결과를 엮어 [News Generation Process] 기반으로 구성할 것.\n"
+        f"- **'관심, 주목, 기대, 풀이' 등 시장의 감정이나 기자의 주관이 담긴 표현을 절대 사용하지 않는다.\n**"
+        f"- ** 마지막은 기업 개요 참고해서 ‘~을 주력으로 하는 기업이다’ 형식으로 엄격히 1줄 이하로 요약 설명으로 작성할 것.(단, 설립이야기는 제외할 것)\n**"
     )
     return stock_prompt
 

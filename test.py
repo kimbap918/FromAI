@@ -30,6 +30,7 @@ def get_stock_data_from_search(driver, keyword: str):
         time.sleep(0.5)
 
         # 2. 전체 차트 wrap 기준 스크린샷
+
         wrap_elem = driver.find_element(By.CSS_SELECTOR, "div.api_cs_wrap")
         screenshot_path = f"{keyword}_chart.png"
         import os, io
@@ -197,33 +198,6 @@ def get_stock_data_from_search(driver, keyword: str):
         print(f"❌ 오류 발생: {e}")
         traceback.print_exc()
         return None
-
-
-def wait_and_close_top10_popup(driver, timeout=7):
-    """
-    WebDriverWait로 팝업 등장 대기 후 X버튼 클릭. timeout 내에 안 뜨면 그냥 넘어감.
-    """
-    try:
-        print("팝업이 뜨기를 기다립니다...")
-        close_btn = WebDriverWait(driver, timeout).until(
-            EC.element_to_be_clickable(
-                (By.CSS_SELECTOR, "button.BottomModalNoticeWrapper-module_button-close__dRRuc")
-            )
-        )
-        time.sleep(0.3)
-        driver.execute_script("arguments[0].click();", close_btn)
-        print("✅ 팝업 닫기 완료")
-    except Exception as e:
-        print(f"⚠️ {timeout}초 내에 팝업이 뜨지 않음 또는 닫기 실패: {e}")
-        # 필요시 DOM 강제 제거
-        try:
-            driver.execute_script('''
-                const el = document.querySelector('[class*="BottomModalNoticeWrapper-module_notice-wrapper"]');
-                if (el) el.remove();
-            ''')
-            print("✅ 팝업 DOM 제거 완료")
-        except Exception:
-            pass
 
 # --- 실행 ---
 if __name__ == "__main__":

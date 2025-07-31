@@ -80,23 +80,23 @@ class StockTab(QWidget):
         layout.addWidget(input_group)
 
         button_layout = QHBoxLayout()
-        self.capture_btn = QPushButton("📊 차트 캡처")
+        self.capture_btn = QPushButton("📰 기사 생성")
         self.capture_btn.clicked.connect(self.capture_chart)
         self.reset_btn = QPushButton("🔄 리셋")
         self.reset_btn.clicked.connect(self.reset_inputs)
         self.cancel_btn = QPushButton("❌ 취소")
         self.cancel_btn.clicked.connect(self.cancel_capture)
         self.cancel_btn.setEnabled(False)
-        self.open_folder_btn = QPushButton("📁 폴더 열기")
-        self.open_folder_btn.clicked.connect(self.open_folder)
-        self.open_chatbot_btn = QPushButton("🌐 챗봇 열기")
-        self.open_chatbot_btn.clicked.connect(lambda: webbrowser.open(STOCK_CHATBOT_URL))
+        self.open_chart_folder_btn = QPushButton("📁 차트 폴더 열기")
+        self.open_chart_folder_btn.clicked.connect(self.open_folder)
+        self.open_article_folder_btn = QPushButton("📰 기사 폴더 열기")
+        self.open_article_folder_btn.clicked.connect(self.open_article_folder)
 
         button_layout.addWidget(self.capture_btn)
         button_layout.addWidget(self.reset_btn)
         button_layout.addWidget(self.cancel_btn)
-        button_layout.addWidget(self.open_folder_btn)
-        button_layout.addWidget(self.open_chatbot_btn)
+        button_layout.addWidget(self.open_chart_folder_btn)
+        button_layout.addWidget(self.open_article_folder_btn)
         layout.addLayout(button_layout)
 
         self.progress_label = QLabel("")
@@ -139,6 +139,22 @@ class StockTab(QWidget):
                 os.system(f"xdg-open {folder_path}")
         else:
             QMessageBox.information(self, "폴더 없음", "아직 캡처된 이미지가 없습니다.")
+
+    # ------------------------------------------------------------------
+    # 기사 폴더 열기 (오늘 날짜 기준)
+    # ------------------------------------------------------------------
+    def open_article_folder(self):
+        today = datetime.now().strftime('%Y%m%d')
+        folder_path = os.path.join("생성된 기사", f"기사{today}")
+        if os.path.exists(folder_path):
+            if platform.system() == "Windows":
+                os.startfile(folder_path)
+            elif platform.system() == "Darwin":
+                os.system(f"open {folder_path}")
+            elif platform.system() == "Linux":
+                os.system(f"xdg-open {folder_path}")
+        else:
+            QMessageBox.information(self, "폴더 없음", "아직 생성된 기사가 없습니다.")
 
     # ------------------------------------------------------------------
     # 작성자 : 최준혁

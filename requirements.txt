@@ -10,3 +10,5 @@ newspaper3k
 requests
 python-dotenv
 finance-datareader
+jinja2
+openpyxl

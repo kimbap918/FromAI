@@ -1,5 +1,13 @@
 import requests
 import pandas as pd
+import os, shutil
+from datetime import datetime
+from news.src.utils.capture_utils import (
+    capture_wrap_company_area,
+    capture_naver_foreign_stock_chart,
+    get_stock_info_from_search,
+    capture_and_generate_news
+)
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0",
@@ -20,17 +28,12 @@ PAYLOAD = {
     "tag": "all"
 }
 
-# ------------------------------------------------------------------
-# 작성자 : 최준혁
-# 작성일 : 2025-07-31
-# 기능 : 토스증권 API를 이용한 종목 데이터 추출
-# ------------------------------------------------------------------
+# ✅ 토스증권 API 데이터 가져오기
 def get_toss_stock_data(debug=False):
     ranking_url = "https://wts-cert-api.tossinvest.com/api/v2/dashboard/wts/overview/ranking"
     res = requests.post(ranking_url, headers=HEADERS, json=PAYLOAD)
     products = res.json().get("result", {}).get("products", [])
 
-    # 🔹 productCode → (name, rank) 매핑 생성
     code_to_info = {p["productCode"]: (p["name"], p["rank"]) for p in products}
 
     codes_str = "%2C".join(code_to_info.keys())
@@ -58,17 +61,11 @@ def get_toss_stock_data(debug=False):
             "등락률(%)": change_rate
         })
 
-    # 🔹 rank 기준으로 정렬
     df = pd.DataFrame(rows)
     df = df.sort_values(by="순위").reset_index(drop=True)
     return df.drop(columns=["순위"])
 
-
-# ------------------------------------------------------------------
-# 작성자 : 최준혁
-# 작성일 : 2025-07-31
-# 기능 : 토스증권 API를 이용한 종목 데이터 필터링
-# ------------------------------------------------------------------
+# ✅ 필터링
 def filter_toss_data(df, min_pct=None, max_pct=None, min_price=None, up_check=False, down_check=False, limit=None):
     df_filtered = df.copy()
 
@@ -77,7 +74,7 @@ def filter_toss_data(df, min_pct=None, max_pct=None, min_price=None, up_check=Fa
     if max_pct is not None:
         df_filtered = df_filtered[df_filtered["등락률(%)"] <= max_pct]
     if min_price is not None:
-        df_filtered = df_filtered[df_filtered["현재가KRW_숫자"] >= min_price]  # 🔹 숫자 컬럼으로 비교
+        df_filtered = df_filtered[df_filtered["현재가KRW_숫자"] >= min_price]
 
     if up_check and not down_check:
         df_filtered = df_filtered[df_filtered["등락"] == "UP"]
@@ -87,31 +84,43 @@ def filter_toss_data(df, min_pct=None, max_pct=None, min_price=None, up_check=Fa
     if limit:
         df_filtered = df_filtered.head(limit)
 
-    return df_filtered.drop(columns=["현재가KRW_숫자"])  # UI에는 숫자 컬럼 제거
+    return df_filtered.drop(columns=["현재가KRW_숫자"])
 
+# ✅ 기사 + 차트 생성
+def generate_toss_articles_and_charts(names, folder, progress_callback=None, cancel_flag=None):
+    success_cnt = 0
 
-# ------------------------------------------------------------------
-# 작성자 : 최준혁
-# 작성일 : 2025-07-31
-# 기능 : 토스증권 API를 이용한 종목 데이터 스타일링 (색상 표시)
-# ------------------------------------------------------------------
-def style_toss_df(df):
-    df = df.copy()
-    df["등락률(%)"] = df["등락률(%)"].apply(lambda x: f"{x:.2f}%" if x is not None else "")
+    for name in names:
+        if cancel_flag and cancel_flag():
+            if progress_callback:
+                progress_callback("❌ 작업 취소됨")
+            break
 
-    def color_change(val):
-        if val == "UP":
-            return "color: red; font-weight: bold"
-        elif val == "DOWN":
-            return "color: blue; font-weight: bold"
-        return "color: black"
+        if progress_callback:
+            progress_callback(f"📄 {name} 기사+차트 생성 중...")
 
-    styled = (
-        df.style
-        .applymap(color_change, subset=["등락"])
-        .set_properties(**{"text-align": "center"})
-        .set_properties(subset=["등락률(%)", "현재가(KRW)"], **{"text-align": "right"})
-    )
+        stock_code = get_stock_info_from_search(name)
+        img_path = None
 
-    return styled
+        if stock_code:
+            img_path, *_ = capture_wrap_company_area(stock_code)
+        else:
+            img_path, _, _ = capture_naver_foreign_stock_chart(name)
 
+        safe_name = "".join(c if c.isalnum() or c in " _-" else "_" for c in name)
+
+        if img_path and os.path.exists(img_path):
+            new_img_path = os.path.join(folder, f"{safe_name}_chart.png")
+            try:
+                shutil.move(img_path, new_img_path)
+            except:
+                shutil.copy(img_path, new_img_path)
+
+        news = capture_and_generate_news(name, domain="stock")
+        if news:
+            news_path = os.path.join(folder, f"{safe_name}_기사.txt")
+            with open(news_path, "w", encoding="utf-8") as f:
+                f.write(news)
+            success_cnt += 1
+
+    return success_cnt
