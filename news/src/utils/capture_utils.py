@@ -91,14 +91,14 @@ def convert_get_today_kst_str() -> str:
         import pytz
         now_kst = datetime.now(pytz.timezone('Asia/Seoul'))
     if now_kst.hour > 15 or (now_kst.hour == 15 and now_kst.minute >= 30):
-        return f"네이버페이증권에 따르면 {now_kst.day}일 KRX 장마감"
+        return f" {now_kst.day}일 KRX 장마감"
 
     am_pm = "오전" if now_kst.hour < 12 else "오후"
     hour_12 = now_kst.hour % 12
     if hour_12 == 0:
         hour_12 = 12
     
-    return f"네이버페이증권에 따르면 {now_kst.day}일 {am_pm} {hour_12}시 {now_kst.minute}분"
+    return f"{now_kst.day}일 {am_pm} {hour_12}시 {now_kst.minute}분"
 
 # ------------------------------------------------------------------
 # 작성자 : 곽은규
@@ -288,23 +288,25 @@ def capture_exchange_chart(keyword: str, progress_callback=None) -> str:
     """
     if progress_callback:
         progress_callback("네이버 검색 페이지 접속 중...")
+
     keyword = make_exchange_keyword(keyword)
     driver = initialize_driver()
+
     try:
         url = f"https://search.naver.com/search.naver?query={keyword}"
         driver.get(url)
+
         if progress_callback:
             progress_callback("페이지 로딩 대기 중...")
         WebDriverWait(driver, 3).until(
             lambda d: d.execute_script("return document.readyState") == "complete"
         )
-        time.sleep(0.5)  # 페이지 로딩을 위한 대기 시간 증가
+        time.sleep(0.5)
 
         # 환율 차트 영역 찾기
         if progress_callback:
             progress_callback("차트 영역 찾는 중...")
-        top = None
-        bottom = None
+        top, bottom = None, None
         try:
             top = driver.find_element(By.CSS_SELECTOR, "div.exchange_top.up")
             bottom = driver.find_element(By.CSS_SELECTOR, "div.invest_wrap")
@@ -324,12 +326,16 @@ def capture_exchange_chart(keyword: str, progress_callback=None) -> str:
                 pass
         if not top:
             try:
-                elements = driver.find_elements(By.XPATH, "//*[contains(text(), '환율') or contains(text(), '달러') or contains(text(), '엔화')]")
+                elements = driver.find_elements(
+                    By.XPATH,
+                    "//*[contains(text(), '환율') or contains(text(), '달러') or contains(text(), '엔화')]"
+                )
                 if elements:
                     top = elements[0]
                     bottom = driver.find_element(By.CSS_SELECTOR, "div.invest_wrap")
             except:
                 pass
+
         if not top or not bottom:
             if progress_callback:
                 progress_callback("❌ 환율 차트 영역을 찾을 수 없습니다.")
@@ -345,34 +351,37 @@ def capture_exchange_chart(keyword: str, progress_callback=None) -> str:
         if progress_callback:
             progress_callback("화면 전체 스크린샷 캡처 중...")
         screenshot = driver.get_screenshot_as_png()
-        image = Image.open(io.BytesIO(screenshot))
 
-        top_coord = max(0, start_y)
-        bottom_coord = min(image.height, end_y - 20)
-        left_offset = 395
-        crop_width = 670
+        with Image.open(io.BytesIO(screenshot)).convert("RGB") as image:
+            top_coord = max(0, start_y)
+            bottom_coord = min(image.height, end_y - 20)
+            left_offset = 395
+            crop_width = 670
 
-        if progress_callback:
-            progress_callback("차트 이미지 잘라내기...")
-        cropped = image.crop((left_offset, top_coord, left_offset + crop_width, bottom_coord))
+            if progress_callback:
+                progress_callback("차트 이미지 잘라내기...")
+            cropped = image.crop((left_offset, top_coord, left_offset + crop_width, bottom_coord)).convert("RGB")
 
-        currency = top.text.split('\n')[0].strip().replace(' ', '') or "환율"
-        today = get_today_kst_date_str()
-        current_dir = os.getcwd()
-        folder = os.path.join(current_dir, "환율차트", f"환율{today}")
-        os.makedirs(folder, exist_ok=True)
-        filename = f"{get_today_kst_str()}_{currency}_환율차트.png"
-        output_path = os.path.join(folder, filename)
-        cropped.save(output_path)
-        
+            currency = top.text.split('\n')[0].strip().replace(' ', '') or "환율"
+            today = get_today_kst_date_str()
+            current_dir = os.getcwd()
+            folder = os.path.join(current_dir, "환율차트", f"환율{today}")
+            os.makedirs(folder, exist_ok=True)
+            filename = f"{currency}_환율차트.png"
+            output_path = os.path.join(folder, filename)
+
+            cropped.save(output_path, format="PNG")
+            cropped.close()
+
         if progress_callback:
             progress_callback("이미지를 클립보드에 복사 중...")
         copy_image_to_clipboard(output_path)
-        
+
         return output_path
 
     finally:
         driver.quit()
+
 
 # ------------------------------------------------------------------
 # 작성자 : 최준혁
@@ -960,13 +969,32 @@ def build_stock_prompt(today_kst):
         date_obj = datetime.now()
     now_time = convert_get_today_kst_str()
     print("now_time 호출 결과:",  now_time)
-    today_day = str(date_obj.day)
-    yesterday = date_obj - timedelta(days=1)
-    before_yesterday = date_obj - timedelta(days=2)
-    yesterday_day = str(yesterday.day)
-    before_yesterday_day = str(before_yesterday.day)
-    stock_prompt = (
+    if date_obj.weekday() == 0:  # 월요일은 0
+        yesterday = date_obj - timedelta(days=3) # 금요일
+    else:
+        yesterday = date_obj - timedelta(days=1)
 
+    before_yesterday = yesterday - timedelta(days=1)
+    today_day_str = str(date_obj.day)
+    print(f"today_day_str: {today_day_str}")
+
+    if date_obj.month != yesterday.month:
+        yesterday_str = f"지난달 {yesterday.day}"
+    else:
+        yesterday_str = f"지난 {yesterday.day}"
+    print(f"yesterday_str: {yesterday_str}")
+
+    if yesterday.month != before_yesterday.month:
+        before_yesterday_str = f"지난달 {before_yesterday.day}"
+    else:
+        before_yesterday_str = f"지난 {before_yesterday.day}"
+    print(f"before_yesterday_str: {before_yesterday_str}")  
+    # today_day = str(date_obj.day)
+    # yesterday = date_obj - timedelta(days=1)
+    # before_yesterday = date_obj - timedelta(days=2)
+    # yesterday_day = str(yesterday.day)
+    # before_yesterday_day = str(before_yesterday.day)
+    stock_prompt = (
         "[Special Rules for Stock-Related News]\n"
         f"1. 제목 작성 시 규칙\n"
         f"   - 금액에는 천단위는 반드시 콤마(,)를 표기할 것 (예: 64,600원)\n"
@@ -978,11 +1006,11 @@ def build_stock_prompt(today_kst):
         f"   - 시제는 기사 작성 시점을 반드시 기준일과 시점(예: 장마감, 장중 등)을 아래의 기준으로 구분한다.\n"
         f"   - **주가 정보는 간결하게 포함하며, 장이 마감되었을 경우에만 제목의 가장 마지막에 \"[변동 방향/상태] 마감\" 형식으로 추가할 것.**\n"
         f"2. 본문 작성 시 규칙\n"
-        f"   - 첫줄에 날짜와 \"{now_time} 기준,\" 분까지 표기해서 표시할것, 그 이후는 [News Generation Process] 내용에 충실할 것\n "
-        f"   - 날짜는 \"{today_day}일\", \"{yesterday_day}일\"처럼 **일(day)만** 표기 (월은 생략)\n"
-        f"   - '전일' 이나 '전 거래일'이라는 표현하지 말 것, 대신 반드시 **\"지난 {yesterday_day}일\", \"지난 {before_yesterday_day}일\"**처럼 날짜를 명시할 것\n"
-        f"   - 날짜가 포함된 시간 표현은 \"{today_kst} 오전 10시 56분\" → **\"{today_day}일 오전 10시 56분\"** 형식으로 변환\n"
-        f"   - **절대로 '이날', '금일', '당일'과 같은 표현을 사용하지 말 것.** 대신 오늘 날짜인 \"{today_day}일\"로 반드시 바꿔서 명시**할 것.\n\n"
+        f"   - 첫줄에 날짜와 \"{now_time} 기준, 네이버페이 증권에 따르면\" 분까지 표기해서 표시할것, 그 이후는 [News Generation Process] 내용에 충실할 것\n "
+        f"   - 날짜는 반드시 **\"{today_day_str}일\", \"{yesterday.day}일\"처럼 일(day)만** 표기 (월은 생략)\n"
+        f"   - '전일' 이나 '전 거래일'이라는 표현하지 말 것, 대신 반드시 **\"{yesterday_str}일\", \"{before_yesterday_str}일\"**처럼 날짜를 명시할 것\n"
+        f"   - 날짜가 포함된 시간 표현은 \"{today_kst} 오전 10시 56분\" → **\"{today_day_str}일 오전 10시 56분\"** 형식으로 변환\n"
+        f"   - **절대로 '이날', '금일', '당일'과 같은 표현을 사용하지 말 것.** 대신 오늘 날짜인 \"{today_day_str}일\"로 반드시 바꿔서 명시**할 것.\n\n"
         f"3. 시제는 기사 작성 시점을 반드시 기준일과 시점(예: 장마감, 장중 등)을 아래의 기준으로 구분한다.\n"
         f"   - 장 시작 전: \"장 시작 전\"\n"
         f"   - 장중 (오전 9:00 ~ 오후 3:30): \"장중\"\n"
