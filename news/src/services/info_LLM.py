@@ -4,7 +4,7 @@ import sys
 from PIL import Image
 from dotenv import load_dotenv
 # 절대경로 import로 수정
-from news.src.utils.capture_utils import get_today_kst_str, build_stock_prompt
+from news.src.utils.common_utils import get_today_kst_str, build_stock_prompt
 
 # .env 파일 경로를 빌드/개발 환경 모두에서 안전하게 지정
 if hasattr(sys, '_MEIPASS'):

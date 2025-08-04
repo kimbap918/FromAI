@@ -9,7 +9,7 @@ import subprocess
 import webbrowser
 from datetime import datetime
 
-from news.src.utils.capture_utils import capture_exchange_chart
+from news.src.utils.exchange_utils import capture_exchange_chart
 
 CHATBOT_URL = "https://chatgpt.com/g/g-67a44d9d833c8191bf2974019d233d4e-jeongboseong-gisa-caesbos-culceo-sanggwaneobseum"
 

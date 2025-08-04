@@ -1,29 +1,11 @@
-# utils/driver_utils.py
-
+# ------------------------------------------------------------------
+# 작성자 : 최준혁
+# 기능 : 셀레니움 크롬 드라이버 초기화 모듈
+# ------------------------------------------------------------------
 import os
-import platform
-import requests
-from bs4 import BeautifulSoup
-from newspaper import Article
-from typing import Callable, Optional, Tuple
-
-try:
-    from selenium import webdriver
-    SELENIUM_AVAILABLE = True
-except ImportError:
-    SELENIUM_AVAILABLE = False
-
-import re
+from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
-import time
-
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from PIL import Image
-from datetime import datetime
-import io
 
 
 # ------------------------------------------------------------------
@@ -57,7 +39,6 @@ def initialize_driver(headless: bool = True) -> 'webdriver.Chrome':
         chrome_options.add_argument("--headless=new")
 
     try:
-        import os
         service = Service(
             log_path='NUL' if os.name == 'nt' else os.devnull,
             service_args=['--silent']

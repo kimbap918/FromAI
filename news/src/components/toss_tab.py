@@ -15,7 +15,7 @@ from news.src.services import toss_service
 class TossWorker(QThread):
     finished = pyqtSignal(pd.DataFrame, str)
 
-    def __init__(self, min_pct, max_pct, min_price, up_check, down_check, limit):
+    def __init__(self, min_pct, max_pct, min_price, up_check, down_check, limit, start_rank=1, end_rank=None):
         super().__init__()
         self.min_pct = min_pct
         self.max_pct = max_pct
@@ -23,10 +23,12 @@ class TossWorker(QThread):
         self.up_check = up_check
         self.down_check = down_check
         self.limit = limit
+        self.start_rank = start_rank
+        self.end_rank = end_rank
 
     def run(self):
         try:
-            df = toss_service.get_toss_stock_data()
+            df = toss_service.get_toss_stock_data(start_rank=self.start_rank, end_rank=self.end_rank)
             filtered = toss_service.filter_toss_data(
                 df,
                 self.min_pct,
@@ -75,8 +77,27 @@ class TossTab(QWidget):
         self.limit_input = QLineEdit()
         self.limit_input.setPlaceholderText("가져올 개수")
 
-        for w in [self.min_pct_input, self.max_pct_input, self.min_price_input, self.up_check, self.down_check, self.limit_input]:
-            input_layout.addWidget(w)
+        self.start_rank_input = QLineEdit()
+        self.start_rank_input.setPlaceholderText("시작 순위 (예: 1)")
+        self.end_rank_input = QLineEdit()
+        self.end_rank_input.setPlaceholderText("끝 순위 (예: 30)")
+
+        input_layout.addWidget(self.start_rank_input)
+        input_layout.addWidget(self.end_rank_input)
+        input_layout.addWidget(self.min_pct_input)
+        input_layout.addWidget(self.max_pct_input)
+        input_layout.addWidget(self.min_price_input)
+        input_layout.addWidget(self.up_check)
+        input_layout.addWidget(self.down_check)
+        input_layout.addWidget(self.limit_input)
+
+        # 엔터 입력 시 조회
+        self.start_rank_input.returnPressed.connect(self.start_extraction)
+        self.end_rank_input.returnPressed.connect(self.start_extraction)
+        self.min_pct_input.returnPressed.connect(self.start_extraction)
+        self.max_pct_input.returnPressed.connect(self.start_extraction)
+        self.min_price_input.returnPressed.connect(self.start_extraction)
+        self.limit_input.returnPressed.connect(self.start_extraction)
 
         input_group.setLayout(input_layout)
         layout.addWidget(input_group)
@@ -135,10 +156,12 @@ class TossTab(QWidget):
 
     def start_extraction(self):
         try:
-            min_pct = float(self.min_pct_input.text()) if self.min_pct_input.text() else None
-            max_pct = float(self.max_pct_input.text()) if self.max_pct_input.text() else None
-            min_price = int(self.min_price_input.text()) if self.min_price_input.text() else None
-            limit = int(self.limit_input.text()) if self.limit_input.text() else None
+            min_pct = float(self.min_pct_input.text().strip()) if self.min_pct_input.text().strip() else None
+            max_pct = float(self.max_pct_input.text().strip()) if self.max_pct_input.text().strip() else None
+            min_price = int(self.min_price_input.text().strip()) if self.min_price_input.text().strip() else None
+            limit = int(self.limit_input.text().strip()) if self.limit_input.text().strip() else None
+            start_rank = int(self.start_rank_input.text().strip()) if self.start_rank_input.text().strip() else 1
+            end_rank = int(self.end_rank_input.text().strip()) if self.end_rank_input.text().strip() else None
         except ValueError:
             QMessageBox.warning(self, "입력 오류", "숫자 입력값을 확인하세요.")
             return
@@ -147,7 +170,9 @@ class TossTab(QWidget):
             min_pct, max_pct, min_price,
             self.up_check.isChecked(),
             self.down_check.isChecked(),
-            limit
+            limit,
+            start_rank,
+            end_rank
         )
         self.worker.finished.connect(self.on_finished)
         self.worker.start()

@@ -25,7 +25,7 @@ PAYLOAD = {
 # 작성일 : 2025-07-31
 # 기능 : 토스증권 API를 이용한 종목 데이터 추출
 # ------------------------------------------------------------------
-def get_toss_stock_data(debug=False):
+def get_toss_stock_data(debug=False, start_rank=1, end_rank=None):
     ranking_url = "https://wts-cert-api.tossinvest.com/api/v2/dashboard/wts/overview/ranking"
     res = requests.post(ranking_url, headers=HEADERS, json=PAYLOAD)
     products = res.json().get("result", {}).get("products", [])
@@ -58,10 +58,14 @@ def get_toss_stock_data(debug=False):
             "등락률(%)": change_rate
         })
 
-    # 🔹 rank 기준으로 정렬
+    # 🔹 rank 기준으로 정렬 및 범위 필터링
     df = pd.DataFrame(rows)
     df = df.sort_values(by="순위").reset_index(drop=True)
-    return df.drop(columns=["순위"])
+    if end_rank is None:
+        end_rank = df["순위"].max()
+    df = df[(df["순위"] >= start_rank) & (df["순위"] <= end_rank)]
+    df = df.reset_index(drop=True)
+    return df  # 순위 컬럼 유지
 
 
 # ------------------------------------------------------------------

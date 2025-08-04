@@ -9,7 +9,7 @@ import webbrowser
 import os
 from datetime import datetime
 
-from news.src.utils.capture_utils import capture_and_generate_news
+from news.src.utils.common_utils import capture_and_generate_news
 
 STOCK_CHATBOT_URL = "https://chatgpt.com/g/g-67a44d9d833c8191bf2974019d233d4e-jeongboseong-gisa-caesbos-culceo-sanggwaneobseum"
 
