@@ -133,10 +133,22 @@ def _extract_stock_data(driver: WebDriver, keyword: str) -> Dict:
         By.CSS_SELECTOR, 
         "ul.StockInfo_list__V96U6 > li.StockInfo_item__puHWj"
     )
-    for item in financial_items:
+    for idx, item in enumerate(financial_items):
         parts = item.text.split("\n")
-        if len(parts) >= 2:
-            stock_data[parts[0].strip()] = " ".join(parts[1:]).strip()
+        # 값이 N/A인 경우 예외 처리
+        if any(p.strip() == "N/A" for p in parts):
+            stock_data[parts[0].strip()] = "N/A"
+            print(" 재무 정보 : ", parts[0].strip(), "N/A")
+        elif len(parts) >= 2:
+            if 8 <= idx <= 15 and len(parts) >= 3:
+                stock_data[parts[0].strip()] = parts[2].strip()
+                print(" 재무 정보 : ", parts[0].strip(), parts[2].strip())
+            else:
+                stock_data[parts[0].strip()] = " ".join(parts[1:]).strip()
+                print(" 재무 정보 : ", parts[0].strip(), " ".join(parts[1:]).strip())
+        else:
+            stock_data[parts[0].strip()] = ""
+            print(" 재무 정보 : ", parts[0].strip())
     
     # 기업 개요 추출
     try:

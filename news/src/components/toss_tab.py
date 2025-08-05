@@ -192,7 +192,7 @@ class TossTab(QWidget):
                 QMessageBox.No
             )
             if reply == QMessageBox.Yes:
-                from news.src.utils.capture_utils import capture_and_generate_news
+                from news.src.utils.common_utils import capture_and_generate_news
                 from datetime import datetime
                 import os
                 today = datetime.now().strftime('%Y%m%d')

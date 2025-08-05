@@ -1,0 +1,132 @@
+[capture_wrap_company_area] Element position - x: 464, y: 232, width: 965, height: 505
+[capture_wrap_company_area] Cropped image size: (965, 505)
+[capture_wrap_company_area] 이미지 저장 완료: C:\Users\TDI\Desktop\FromAI\주식차트\주식20250805\247540_에코프로비엠.png, 파일 존재 여부: True
+[capture_wrap_company_area] 클립보드에 경로 복사 완료
+[capture_wrap_company_area] Element position - x: 464, y: 232, width: 965, height: 505
+[capture_wrap_company_area] Cropped image size: (965, 505)
+[capture_wrap_company_area] 이미지 저장 완료: C:\Users\TDI\Desktop\FromAI\주식차트\주식20250805\005930_삼성전자.png, 파일 존재 여부: True
+[capture_wrap_company_area] 클립보드에 경로 복사 완료
+[capture_wrap_company_area] Element position - x: 464, y: 232, width: 965, height: 505
+[capture_wrap_company_area] Cropped image size: (965, 505)
+[capture_wrap_company_area] 이미지 저장 완료: C:\Users\TDI\Desktop\FromAI\주식차트\주식20250805\006400_삼성SDI.png, 파일 존재 여부: True
+[capture_wrap_company_area] 클립보드에 경로 복사 완료
+[capture_wrap_company_area] Element position - x: 464, y: 232, width: 965, height: 505
+[capture_wrap_company_area] Cropped image size: (965, 505)
+[capture_wrap_company_area] 이미지 저장 완료: C:\Users\TDI\Desktop\FromAI\주식차트\주식20250805\034020_두산에너빌리티.png, 파일 존재 여부: True
+[capture_wrap_company_area] 클립보드에 경로 복사 완료
+[capture_wrap_company_area] Element position - x: 464, y: 232, width: 965, height: 505
+[capture_wrap_company_area] Cropped image size: (965, 505)
+[capture_wrap_company_area] 이미지 저장 완료: C:\Users\TDI\Desktop\FromAI\주식차트\주식20250805\086520_에코프로.png, 파일 존재 여부: True
+[capture_wrap_company_area] 클립보드에 경로 복사 완료
+[capture_wrap_company_area] Element position - x: 464, y: 232, width: 965, height: 505
+[capture_wrap_company_area] Cropped image size: (965, 505)
+[capture_wrap_company_area] 이미지 저장 완료: C:\Users\TDI\Desktop\FromAI\주식차트\주식20250805\010140_삼성중공업.png, 파일 존재 여부: True
+[capture_wrap_company_area] 클립보드에 경로 복사 완료
+[capture_wrap_company_area] Element position - x: 464, y: 232, width: 965, height: 505
+[capture_wrap_company_area] Cropped image size: (965, 505)
+[capture_wrap_company_area] 이미지 저장 완료: C:\Users\TDI\Desktop\FromAI\주식차트\주식20250805\035720_카카오.png, 파일 존재 여부: True
+[capture_wrap_company_area] 클립보드에 경로 복사 완료
+[capture_wrap_company_area] Element position - x: 464, y: 232, width: 965, height: 505
+[capture_wrap_company_area] Cropped image size: (965, 505)
+[capture_wrap_company_area] 이미지 저장 완료: C:\Users\TDI\Desktop\FromAI\주식차트\주식20250805\042660_한화오션.png, 파일 존재 여부: True
+[capture_wrap_company_area] 클립보드에 경로 복사 완료
+[capture_wrap_company_area] Element position - x: 464, y: 232, width: 965, height: 505
+[capture_wrap_company_area] Cropped image size: (965, 505)
+[capture_wrap_company_area] 이미지 저장 완료: C:\Users\TDI\Desktop\FromAI\주식차트\주식20250805\000660_SK하이닉스.png, 파일 존재 여부: True
+[capture_wrap_company_area] 클립보드에 경로 복사 완료
+[capture_wrap_company_area] Element position - x: 464, y: 232, width: 965, height: 505
+[capture_wrap_company_area] Cropped image size: (965, 505)
+[capture_wrap_company_area] 이미지 저장 완료: C:\Users\TDI\Desktop\FromAI\주식차트\주식20250805\439260_대한조선.png, 파일 존재 여부: True
+[capture_wrap_company_area] 클립보드에 경로 복사 완료
+[capture_wrap_company_area] Element position - x: 464, y: 232, width: 965, height: 505
+[capture_wrap_company_area] Cropped image size: (965, 505)
+[capture_wrap_company_area] 이미지 저장 완료: C:\Users\TDI\Desktop\FromAI\주식차트\주식20250805\326030_SK바이오팜.png, 파일 존재 여부: True
+[capture_wrap_company_area] 클립보드에 경로 복사 완료
+[capture_wrap_company_area] Element position - x: 464, y: 232, width: 965, height: 505
+[capture_wrap_company_area] Cropped image size: (965, 505)
+[capture_wrap_company_area] 이미지 저장 완료: C:\Users\TDI\Desktop\FromAI\주식차트\주식20250805\450080_에코프로머티.png, 파일 존재 여부: True
+[capture_wrap_company_area] 클립보드에 경로 복사 완료
+[capture_wrap_company_area] Element position - x: 464, y: 232, width: 965, height: 505
+[capture_wrap_company_area] Cropped image size: (965, 505)
+[capture_wrap_company_area] 이미지 저장 완료: C:\Users\TDI\Desktop\FromAI\주식차트\주식20250805\009830_한화솔루션.png, 파일 존재 여부: True
+[capture_wrap_company_area] 클립보드에 경로 복사 완료
+[capture_wrap_company_area] Element position - x: 464, y: 232, width: 965, height: 505
+[capture_wrap_company_area] Cropped image size: (965, 505)
+[capture_wrap_company_area] 이미지 저장 완료: C:\Users\TDI\Desktop\FromAI\주식차트\주식20250805\035420_NAVER.png, 파일 존재 여부: True
+[capture_wrap_company_area] 클립보드에 경로 복사 완료
+[capture_wrap_company_area] Element position - x: 464, y: 232, width: 965, height: 505
+[capture_wrap_company_area] Cropped image size: (965, 505)
+[capture_wrap_company_area] 이미지 저장 완료: C:\Users\TDI\Desktop\FromAI\주식차트\주식20250805\066970_엘앤에프.png, 파일 존재 여부: True
+[capture_wrap_company_area] 클립보드에 경로 복사 완료
+[capture_wrap_company_area] Element position - x: 464, y: 232, width: 965, height: 505
+[capture_wrap_company_area] Cropped image size: (965, 505)
+[capture_wrap_company_area] 이미지 저장 완료: C:\Users\TDI\Desktop\FromAI\주식차트\주식20250805\373220_LG에너지솔루션.png, 파일 존재 여부: True
+[capture_wrap_company_area] 클립보드에 경로 복사 완료
+[capture_wrap_company_area] Element position - x: 464, y: 232, width: 965, height: 505
+[capture_wrap_company_area] Cropped image size: (965, 505)
+[capture_wrap_company_area] 이미지 저장 완료: C:\Users\TDI\Desktop\FromAI\주식차트\주식20250805\064350_현대로템.png, 파일 존재 여부: True
+[capture_wrap_company_area] 클립보드에 경로 복사 완료
+[capture_wrap_company_area] Element position - x: 464, y: 232, width: 965, height: 505
+[capture_wrap_company_area] Cropped image size: (965, 505)
+[capture_wrap_company_area] 이미지 저장 완료: C:\Users\TDI\Desktop\FromAI\주식차트\주식20250805\009830_한화솔루션.png, 파일 존재 여부: True
+[capture_wrap_company_area] 클립보드에 경로 복사 완료
+[capture_wrap_company_area] Element position - x: 464, y: 232, width: 965, height: 505
+[capture_wrap_company_area] Cropped image size: (965, 505)
+[capture_wrap_company_area] 이미지 저장 완료: C:\Users\TDI\Desktop\FromAI\주식차트\주식20250805\247540_에코프로비엠.png, 파일 존재 여부: True
+[capture_wrap_company_area] 클립보드에 경로 복사 완료
+[capture_wrap_company_area] Element position - x: 464, y: 232, width: 965, height: 505
+[capture_wrap_company_area] Cropped image size: (965, 505)
+[capture_wrap_company_area] 이미지 저장 완료: C:\Users\TDI\Desktop\FromAI\주식차트\주식20250805\278470_에이피알.png, 파일 존재 여부: True
+[capture_wrap_company_area] 클립보드에 경로 복사 완료
+[capture_wrap_company_area] Element position - x: 464, y: 232, width: 965, height: 505
+[capture_wrap_company_area] Cropped image size: (965, 505)
+[capture_wrap_company_area] 이미지 저장 완료: C:\Users\TDI\Desktop\FromAI\주식차트\주식20250805\035420_NAVER.png, 파일 존재 여부: True
+[capture_wrap_company_area] 클립보드에 경로 복사 완료
+[capture_wrap_company_area] Element position - x: 464, y: 232, width: 965, height: 505
+[capture_wrap_company_area] Cropped image size: (965, 505)
+[capture_wrap_company_area] 이미지 저장 완료: C:\Users\TDI\Desktop\FromAI\주식차트\주식20250805\010140_삼성중공업.png, 파일 존재 여부: True
+[capture_wrap_company_area] 클립보드에 경로 복사 완료
+[capture_wrap_company_area] Element position - x: 464, y: 232, width: 965, height: 505
+[capture_wrap_company_area] Cropped image size: (965, 505)
+[capture_wrap_company_area] 이미지 저장 완료: C:\Users\TDI\Desktop\FromAI\주식차트\주식20250805\006400_삼성SDI.png, 파일 존재 여부: True
+[capture_wrap_company_area] 클립보드에 경로 복사 완료
+[capture_wrap_company_area] Element position - x: 464, y: 232, width: 965, height: 465
+[capture_wrap_company_area] Cropped image size: (965, 465)
+[capture_wrap_company_area] 이미지 저장 완료: C:\Users\TDI\Desktop\FromAI\주식차트\주식20250805\439580_블루엠텍.png, 파일 존재 여부: True
+[capture_wrap_company_area] 클립보드에 경로 복사 완료
+[capture_wrap_company_area] Element position - x: 464, y: 232, width: 965, height: 505
+[capture_wrap_company_area] Cropped image size: (965, 505)
+[capture_wrap_company_area] 이미지 저장 완료: C:\Users\TDI\Desktop\FromAI\주식차트\주식20250805\229640_LS에코에너지.png, 파일 존재 여부: True
+[capture_wrap_company_area] 클립보드에 경로 복사 완료
+[capture_wrap_company_area] Element position - x: 464, y: 232, width: 965, height: 505
+[capture_wrap_company_area] Cropped image size: (965, 505)
+[capture_wrap_company_area] 이미지 저장 완료: C:\Users\TDI\Desktop\FromAI\주식차트\주식20250805\377300_카카오페이.png, 파일 존재 여부: True
+[capture_wrap_company_area] 클립보드에 경로 복사 완료
+[capture_wrap_company_area] Element position - x: 464, y: 232, width: 965, height: 465
+[capture_wrap_company_area] Cropped image size: (965, 465)
+[capture_wrap_company_area] 이미지 저장 완료: C:\Users\TDI\Desktop\FromAI\주식차트\주식20250805\333430_일승.png, 파일 존재 여부: True
+[capture_wrap_company_area] 클립보드에 경로 복사 완료
+[capture_wrap_company_area] Element position - x: 464, y: 232, width: 965, height: 505
+[capture_wrap_company_area] Cropped image size: (965, 505)
+[capture_wrap_company_area] 이미지 저장 완료: C:\Users\TDI\Desktop\FromAI\주식차트\주식20250805\071970_HD현대마린엔진.png, 파일 존재 여부: True
+[capture_wrap_company_area] 클립보드에 경로 복사 완료
+[capture_wrap_company_area] Element position - x: 464, y: 232, width: 965, height: 505
+[capture_wrap_company_area] Cropped image size: (965, 505)
+[capture_wrap_company_area] 이미지 저장 완료: C:\Users\TDI\Desktop\FromAI\주식차트\주식20250805\000270_기아.png, 파일 존재 여부: True
+[capture_wrap_company_area] 클립보드에 경로 복사 완료
+[capture_wrap_company_area] Element position - x: 464, y: 232, width: 965, height: 505
+[capture_wrap_company_area] Cropped image size: (965, 505)
+[capture_wrap_company_area] 이미지 저장 완료: C:\Users\TDI\Desktop\FromAI\주식차트\주식20250805\278470_에이피알.png, 파일 존재 여부: True
+[capture_wrap_company_area] 클립보드에 경로 복사 완료
+[capture_wrap_company_area] Element position - x: 464, y: 232, width: 965, height: 505
+[capture_wrap_company_area] Cropped image size: (965, 505)
+[capture_wrap_company_area] 이미지 저장 완료: C:\Users\TDI\Desktop\FromAI\주식차트\주식20250805\475560_더본코리아.png, 파일 존재 여부: True
+[capture_wrap_company_area] 클립보드에 경로 복사 완료
+[capture_wrap_company_area] Element position - x: 464, y: 232, width: 965, height: 505
+[capture_wrap_company_area] Cropped image size: (965, 505)
+[capture_wrap_company_area] 이미지 저장 완료: C:\Users\TDI\Desktop\FromAI\주식차트\주식20250805\023530_롯데쇼핑.png, 파일 존재 여부: True
+[capture_wrap_company_area] 클립보드에 경로 복사 완료
+[capture_wrap_company_area] Element position - x: 480, y: 232, width: 965, height: 505
+[capture_wrap_company_area] Cropped image size: (965, 505)
+[capture_wrap_company_area] 이미지 저장 완료: /Users/sopung/Downloads/FromAI 2/주식차트/주식20250805/005930_삼성전자.png, 파일 존재 여부: True
+[capture_wrap_company_area] 클립보드에 경로 복사 완료
