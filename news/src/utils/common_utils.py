@@ -7,6 +7,8 @@ import re
 import subprocess
 import platform
 from datetime import datetime, timedelta
+from typing import Optional
+from shutil import copyfile
 
 try:
     from zoneinfo import ZoneInfo
@@ -55,13 +57,13 @@ def safe_filename(s):
 # 작성일 : 2025-07-30
 # 기능 : 뉴스를 파일로 저장하는 함수
 # ------------------------------------------------------------------
-def save_news_to_file(keyword: str, domain: str, news_content: str, save_dir: str = "생성된 기사"):
+def save_news_to_file(keyword: str, domain: str, news_content: str, save_dir: str = "생성된 기사", open_after_save: bool = True):
     if not news_content or not news_content.strip():
         print("[WARNING] 저장할 뉴스 내용이 비어 있습니다. 파일 저장을 건너뜁니다.")
         return None
         
     current_dir = os.getcwd()
-    today_date_str = get_today_kst_date_str()  # "20250731" 형식의 오늘 날짜 문자열
+    today_date_str = get_today_kst_date_str()
     base_save_dir = os.path.join(current_dir, save_dir)
     full_save_dir = os.path.join(base_save_dir, f"기사{today_date_str}")
     os.makedirs(full_save_dir, exist_ok=True)
@@ -75,12 +77,13 @@ def save_news_to_file(keyword: str, domain: str, news_content: str, save_dir: st
         try:
             current_os = platform.system()
             print(f"현재 운영체제: {current_os}")
-            if current_os == "Windows":
-                os.startfile(file_path)
-            elif current_os == "Darwin":  # macOS
-                subprocess.run(["open", file_path])
-            else:
-                print(f"지원하지 않는 운영체제입니다. 파일 자동 열기를 건너뜁니다: {file_path}")
+            if open_after_save:
+                if current_os == "Windows":
+                    os.startfile(file_path)
+                elif current_os == "Darwin":  # macOS
+                    subprocess.run(["open", file_path])
+                else:
+                    print(f"지원하지 않는 운영체제입니다. 파일 자동 열기를 건너뜁니다: {file_path}")
         except Exception as open_err:
             print(f"저장된 파일 열기 중 오류 발생: {open_err}")
         return os.path.abspath(file_path)
@@ -151,73 +154,116 @@ def capture_stock_chart(keyword: str, progress_callback=None) -> str:
 # 작성일 : 2025-07-25
 # 기능 : 차트를 캡처하고 LLM을 통해 뉴스를 생성하는 함수
 # ------------------------------------------------------------------
-def capture_and_generate_news(keyword: str, domain: str = "stock", progress_callback=None, debug=False):
+def capture_and_generate_news(keyword: str, domain: str = "stock", progress_callback=None, debug=False, open_after_save=True, custom_save_dir: Optional[str] = None):
     from news.src.services.info_LLM import generate_info_news_from_text
+    from news.src.utils.foreign_utils import capture_naver_foreign_stock_chart
+    from news.src.utils.domestic_utils import capture_wrap_company_area
     info_dict = {}
     is_stock = (domain == "stock")
+
+    def save_news_and_image(news, image_path=None):
+        today_str = get_today_kst_date_str()
+
+        # ✅ 저장 경로 설정
+        if custom_save_dir:
+            base_dir = custom_save_dir
+            sub_dir = f"토스{today_str}"
+        else:
+            base_dir = os.path.join(os.getcwd(), "생성된 기사")
+            sub_dir = f"기사{today_str}"
+
+        full_dir = os.path.join(base_dir, sub_dir)
+        os.makedirs(full_dir, exist_ok=True)
+
+        # 기사 저장
+        safe_k = safe_filename(keyword)
+        news_path = os.path.join(full_dir, f"{safe_k}_{domain}_news.txt")
+        if not os.path.exists(news_path):
+            with open(news_path, "w", encoding="utf-8") as f:
+                f.write(news)
+            if open_after_save:
+                try:
+                    if platform.system() == "Windows":
+                        os.startfile(news_path)
+                    elif platform.system() == "Darwin":
+                        subprocess.run(["open", news_path])
+                except Exception as e:
+                    print(f"[WARNING] 메모장 열기 실패: {e}")
+        else:
+            print(f"[INFO] 뉴스 파일 중복되어 저장 생략: {news_path}")
+
+        # 이미지 저장
+        if image_path and os.path.exists(image_path):
+            if custom_save_dir:
+                try:
+                    image_save_path = os.path.join(full_dir, f"{safe_k}_chart.png")
+                    copyfile(image_path, image_save_path)
+                    print(f"[INFO] 차트 이미지 저장 완료: {image_save_path}")
+
+                    # 루트 경로에 저장된 이미지라면 삭제
+                    if os.path.dirname(image_path) == os.getcwd():
+                        os.remove(image_path)
+                        print(f"[INFO] 루트 이미지 삭제 완료: {image_path}")
+                except Exception as e:
+                    print(f"[ERROR] 이미지 저장 실패: {e}")
+
     if domain == "stock":
         stock_code = get_stock_info_from_search(keyword)
+
         if not stock_code:
-            from news.src.utils.foreign_utils import capture_naver_foreign_stock_chart
+            # 🔹 해외 주식 처리
             image_path, stock_data, success = capture_naver_foreign_stock_chart(keyword, progress_callback=progress_callback)
-            if not image_path:
+            if not image_path or not stock_data:
                 if progress_callback:
-                    progress_callback("해외주식 이미지 캡처에 실패했습니다.")
-                return None
-            if not stock_data:
-                if progress_callback:
-                    progress_callback("해외주식 데이터 크롤링에 실패했습니다.")
+                    progress_callback("해외주식 데이터 수집 실패")
                 return None
             info_dict = dict(stock_data)
-            info_dict['키워드'] = keyword
+            info_dict["키워드"] = keyword
             if debug:
-                print("\n[LLM에 제공되는 정리된 정보 - 해외주식]")
-                for k, v in info_dict.items():
-                    print(f"{k}: {v}")
+                print("[DEBUG] 해외주식 정보:\n", info_dict)
             if progress_callback:
                 progress_callback("LLM 기사 생성 중...")
             news = generate_info_news_from_text(keyword, info_dict, domain)
             if news:
-                save_news_to_file(keyword, domain, news)
+                save_news_and_image(news, image_path)
             return news
-        from news.src.utils.domestic_utils import capture_wrap_company_area
+
+        # 🔹 국내 주식 처리
         image_path, is_stock, chart_text, invest_info_text, chart_info, invest_info, summary_info_text = capture_wrap_company_area(
             stock_code, progress_callback=progress_callback, debug=debug
         )
         if not image_path:
             if progress_callback:
-                progress_callback("이미지 캡처에 실패했습니다.")
+                progress_callback("국내주식 이미지 캡처 실패")
             return None
         info_dict = {**chart_info, **invest_info}
         if summary_info_text:
-            info_dict['기업개요'] = summary_info_text
-        if debug and '기업개요' in info_dict:
-            print("\n[기업개요]")
-            print(info_dict['기업개요'])
+            info_dict["기업개요"] = summary_info_text
         if debug:
-            print("\n[LLM에 제공되는 정리된 정보]")
-            for k, v in info_dict.items():
-                if k != '기업개요':
-                    print(f"{k}: {v}")
+            print("[DEBUG] 국내 주식 정보:\n", info_dict)
+        if progress_callback:
+            progress_callback("LLM 기사 생성 중...")
+        news = generate_info_news_from_text(keyword, info_dict, domain)
+        if news:
+            save_news_and_image(news, image_path)
+        return news
+
     else:
-        from news.src.utils.foreign_utils import capture_naver_foreign_stock_chart
+        # 🔹 기타 도메인 (coin, fx 등)
         image_path, stock_data, success = capture_naver_foreign_stock_chart(keyword, progress_callback=progress_callback)
         if not image_path or not success:
             if progress_callback:
-                progress_callback("해외주식 이미지 캡처에 실패했습니다.")
+                progress_callback("이미지 캡처 실패")
             return None
-        info_dict['이미지'] = image_path
-        info_dict['키워드'] = keyword
+        info_dict = {"이미지": image_path, "키워드": keyword}
         if debug:
-            print("\n[LLM에 제공되는 정리된 정보 - 해외주식]")
-            for k, v in info_dict.items():
-                print(f"{k}: {v}")
-    if progress_callback:
-        progress_callback("LLM 기사 생성 중...")
-    news = generate_info_news_from_text(keyword, info_dict, domain)
-    if news:
-        save_news_to_file(keyword, domain, news)
-    return news
+            print("[DEBUG] 기타 도메인 정보:\n", info_dict)
+        if progress_callback:
+            progress_callback("LLM 기사 생성 중...")
+        news = generate_info_news_from_text(keyword, info_dict, domain)
+        if news:
+            save_news_and_image(news, image_path)
+        return news
 
 # ------------------------------------------------------------------
 # 작성자 : 곽은규

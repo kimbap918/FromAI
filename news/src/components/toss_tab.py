@@ -15,7 +15,7 @@ from news.src.services import toss_service
 class TossWorker(QThread):
     finished = pyqtSignal(pd.DataFrame, str)
 
-    def __init__(self, min_pct, max_pct, min_price, up_check, down_check, limit, start_rank=1, end_rank=None):
+    def __init__(self, min_pct, max_pct, min_price, up_check, down_check, limit, start_rank=1, end_rank=None, only_domestic=False, only_foreign=False):
         super().__init__()
         self.min_pct = min_pct
         self.max_pct = max_pct
@@ -25,10 +25,17 @@ class TossWorker(QThread):
         self.limit = limit
         self.start_rank = start_rank
         self.end_rank = end_rank
+        self.only_domestic = only_domestic
+        self.only_foreign = only_foreign
 
     def run(self):
         try:
-            df = toss_service.get_toss_stock_data(start_rank=self.start_rank, end_rank=self.end_rank)
+            df = toss_service.get_toss_stock_data(
+                start_rank=self.start_rank,
+                end_rank=self.end_rank,
+                only_domestic=self.only_domestic,
+                only_foreign=self.only_foreign
+            )
             filtered = toss_service.filter_toss_data(
                 df,
                 self.min_pct,
@@ -61,48 +68,81 @@ class TossTab(QWidget):
         title.setAlignment(Qt.AlignCenter)
         layout.addWidget(title)
 
+        from PyQt5.QtWidgets import QGridLayout
         input_group = QGroupBox("필터 입력")
-        input_layout = QVBoxLayout()
+        input_layout = QGridLayout()
 
+        # 입력 필드 생성
         self.min_pct_input = QLineEdit()
-        self.min_pct_input.setPlaceholderText("최소 등락률 %")
+        self.min_pct_input.setPlaceholderText('최소 등락률 (예: 5)')
+        
         self.max_pct_input = QLineEdit()
-        self.max_pct_input.setPlaceholderText("최대 등락률 %")
+        self.max_pct_input.setPlaceholderText('최대 등락률 (예: 10)')
+        
         self.min_price_input = QLineEdit()
-        self.min_price_input.setPlaceholderText("최소 현재가 (KRW)")
-
-        self.up_check = QCheckBox("상승만")
-        self.down_check = QCheckBox("하락만")
-
+        self.min_price_input.setPlaceholderText('최소 가격 (예: 1000)')
+        
         self.limit_input = QLineEdit()
-        self.limit_input.setPlaceholderText("가져올 개수")
-
+        self.limit_input.setPlaceholderText('가져올 개수 (예: 10)')
+        
         self.start_rank_input = QLineEdit()
-        self.start_rank_input.setPlaceholderText("시작 순위 (예: 1)")
+        self.start_rank_input.setPlaceholderText('시작 순위 (기본: 1)')
+        
         self.end_rank_input = QLineEdit()
-        self.end_rank_input.setPlaceholderText("끝 순위 (예: 30)")
+        self.end_rank_input.setPlaceholderText('끝 순위 (기본: 100)')
+        self.up_check = QCheckBox()
+        self.down_check = QCheckBox()
+        self.domestic_check = QCheckBox()
+        self.foreign_check = QCheckBox()
 
-        input_layout.addWidget(self.start_rank_input)
-        input_layout.addWidget(self.end_rank_input)
-        input_layout.addWidget(self.min_pct_input)
-        input_layout.addWidget(self.max_pct_input)
-        input_layout.addWidget(self.min_price_input)
-        input_layout.addWidget(self.up_check)
-        input_layout.addWidget(self.down_check)
-        input_layout.addWidget(self.limit_input)
+        # 순위
+        input_layout.addWidget(QLabel("순위:"), 0, 0)
+        input_layout.addWidget(self.start_rank_input, 0, 1)
+        input_layout.addWidget(self.end_rank_input, 0, 2)
 
-        # 엔터 입력 시 조회
-        self.start_rank_input.returnPressed.connect(self.start_extraction)
-        self.end_rank_input.returnPressed.connect(self.start_extraction)
-        self.min_pct_input.returnPressed.connect(self.start_extraction)
-        self.max_pct_input.returnPressed.connect(self.start_extraction)
-        self.min_price_input.returnPressed.connect(self.start_extraction)
-        self.limit_input.returnPressed.connect(self.start_extraction)
+        # 등락률
+        input_layout.addWidget(QLabel("등락률(%):"), 1, 0)
+        input_layout.addWidget(self.min_pct_input, 1, 1)
+        input_layout.addWidget(self.max_pct_input, 1, 2)
+
+        # 현재가
+        input_layout.addWidget(QLabel("최소 현재가:"), 2, 0)
+        input_layout.addWidget(self.min_price_input, 2, 1, 1, 2)
+
+        # 상승/하락
+        dir_widget = QWidget()
+        dir_hbox = QHBoxLayout(dir_widget)
+        dir_hbox.setContentsMargins(0, 0, 0, 0)
+        dir_hbox.setSpacing(10)
+        dir_hbox.addWidget(QLabel("상승"))
+        dir_hbox.addWidget(self.up_check)
+        dir_hbox.addWidget(QLabel("하락"))
+        dir_hbox.addWidget(self.down_check)
+        dir_hbox.addStretch()
+        input_layout.addWidget(QLabel("상승/하락:"), 3, 0)
+        input_layout.addWidget(dir_widget, 3, 1, 1, 2)
+
+        # 국내/해외 
+        market_widget = QWidget()
+        market_hbox = QHBoxLayout(market_widget)
+        market_hbox.setContentsMargins(0, 0, 0, 0)
+        market_hbox.setSpacing(10)
+        market_hbox.addWidget(QLabel("국내"))
+        market_hbox.addWidget(self.domestic_check)
+        market_hbox.addWidget(QLabel("해외"))
+        market_hbox.addWidget(self.foreign_check)
+        market_hbox.addStretch()
+        input_layout.addWidget(QLabel("국내/해외:"), 4, 0)
+        input_layout.addWidget(market_widget, 4, 1, 1, 2)
+        
+        # 개수
+        input_layout.addWidget(QLabel("가져올 개수:"), 5, 0)
+        input_layout.addWidget(self.limit_input, 5, 1, 1, 2)
 
         input_group.setLayout(input_layout)
         layout.addWidget(input_group)
 
-        # 버튼을 한 줄(HBox)로 배치
+        # 버튼을 한 줄(HBox)로 배치 (필터 바로 아래)
         button_layout = QHBoxLayout()
         self.extract_btn = QPushButton("📊 조회")
         self.extract_btn.clicked.connect(self.start_extraction)
@@ -127,7 +167,7 @@ class TossTab(QWidget):
 
         layout.addLayout(button_layout)
 
-        # ✅ 표 형태로 결과를 표시
+        # ✅ 표 형태로 결과를 표시 
         self.result_table = QTableWidget()
         layout.addWidget(self.result_table)
 
@@ -172,7 +212,9 @@ class TossTab(QWidget):
             self.down_check.isChecked(),
             limit,
             start_rank,
-            end_rank
+            end_rank,
+            self.domestic_check.isChecked(),
+            self.foreign_check.isChecked()
         )
         self.worker.finished.connect(self.on_finished)
         self.worker.start()
@@ -200,7 +242,12 @@ class TossTab(QWidget):
                 os.makedirs(toss_folder, exist_ok=True)
                 success_cnt = 0
                 for name in names:
-                    news = capture_and_generate_news(name, domain="stock")
+                    news = capture_and_generate_news(
+                        name,
+                        domain="toss",
+                        open_after_save=False,
+                        custom_save_dir=os.path.join(os.getcwd(), "토스기사")
+                    )
                     if news:
                         # 기사 저장 (토스 폴더에 저장)
                         filename = f"{name}_toss_news.txt"

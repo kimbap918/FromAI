@@ -6,6 +6,7 @@ import os
 import time
 import io
 import traceback
+from datetime import datetime
 from typing import Tuple, Dict, Optional, Callable
 from PIL import Image
 from selenium.webdriver.common.by import By
@@ -14,6 +15,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import NoSuchElementException, TimeoutException
 from news.src.utils.driver_utils import initialize_driver
+from news.src.utils.common_utils import safe_filename 
 
 # ------------------------------------------------------------------
 # 작성자 : 최준혁
@@ -183,7 +185,6 @@ def capture_naver_foreign_stock_chart(
     """
     driver = None
     stock_data = {}
-    screenshot_path = f"{keyword}_chart.png"
 
     try:
         # 1. 드라이버 설정 및 초기 페이지 로드
@@ -191,37 +192,51 @@ def capture_naver_foreign_stock_chart(
         
         # 2. 차트 캡처
         screenshot_path, chart_section = _capture_chart_section(driver, keyword, progress_callback)
-        
+
+        # ✅ 저장 폴더 설정: 주식차트/주식YYYYMMDD/
+        today_str = datetime.now().strftime('%Y%m%d')
+        folder = os.path.join(os.getcwd(), "주식차트", f"주식{today_str}")
+        os.makedirs(folder, exist_ok=True)
+        final_image_path = os.path.join(folder, f"{safe_filename(keyword)}_chart.png")
+
+        # 이미지 이동 (원본은 삭제)
+        if os.path.exists(screenshot_path):
+            os.replace(screenshot_path, final_image_path)
+            screenshot_path = final_image_path
+        else:
+            print(f"[WARNING] 스크린샷 파일 없음: {screenshot_path}")
+            return None, {}, False
+
         # 3. 상세 페이지로 이동
         more_view = chart_section.find_element(By.CSS_SELECTOR, "div.more_view a")
         before_handles = driver.window_handles
         driver.execute_script("arguments[0].click();", more_view)
-        
+
         # 새 창으로 전환
         time.sleep(0.5)
         new_window = [h for h in driver.window_handles if h not in before_handles]
         if new_window:
             driver.switch_to.window(new_window[0])
-        
+
         # 4. 상세 데이터 추출
         WebDriverWait(driver, 5).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, ".GraphMain_name__cEsOs"))
         )
-        
+
         stock_data = _extract_stock_data(driver, keyword)
-        
+
         if progress_callback:
             progress_callback("✅ 데이터 추출 완료")
-            
+
         return screenshot_path, stock_data, True
-        
+
     except Exception as e:
         if progress_callback:
             progress_callback(f"❌ 오류 발생: {str(e)}")
         print(f"❌ 오류: {e}")
         traceback.print_exc()
         return None, {}, False
-        
+
     finally:
         if driver:
             driver.quit()
