@@ -207,7 +207,7 @@ def capture_and_generate_news(keyword: str, domain: str = "stock", progress_call
                 except Exception as e:
                     print(f"[ERROR] 이미지 저장 실패: {e}")
 
-    if domain == "stock":
+    if domain in ["stock", "toss"]:  # "toss" 도메인도 국내주식과 동일하게 처리
         stock_code = get_stock_info_from_search(keyword)
 
         if not stock_code:
