@@ -14,7 +14,8 @@ news/src/
 │   ├── hwan_tab.py             # 환율 탭 UI 및 기능
 │   ├── news_tab.py             # 뉴스 탭 UI 및 기능
 │   ├── stock_tab.py            # 주식 탭 UI 및 기능
-│   └── toss_tab.py             # 토스 관련 탭 UI 및 기능
+│   ├── toss_tab.py             # 토스 관련 탭 UI 및 기능
+│   └── settings_dialog.py      # API KEY 설정 관련 기능     
 ├── services/
 │   ├── article_generator.py    # 기사 생성 관련 서비스 로직
 │   ├── info_LLM.py             # 정보 요약/생성 LLM 서비스
@@ -43,6 +44,7 @@ news/src/
 | news_tab.py    | 뉴스 관련 탭 UI 및 기능 구현      |
 | stock_tab.py   | 주식 관련 탭 UI 및 기능 구현      |
 | toss_tab.py    | 토스 관련 탭 UI 및 기능 구현      |
+| settings_dialog.py    | API KEY 설정 관련 UI 기능 구현     |
 
 ## 2. services
 
@@ -79,27 +81,5 @@ news/src/
 
 ---
 
-## 2. services
 
-- LLM(대형 언어 모델) 기반의 서비스 로직이 구현되어 있습니다.
-- 각 파일은 특정 도메인(뉴스, 주식)에 특화된 LLM 서비스 기능을 제공합니다.
-
-| 파일명           | 설명(예상)                                 |
-|------------------|----------------------------------------|
-| news_LLM.py      | 뉴스 요약/분석 등 뉴스 관련 LLM 서비스      |
-| stock_LLM.py     | 주식 정보 분석 등 주식 관련 LLM 서비스      |
-
-## 3. utils
-
-- 각종 유틸리티 함수 및 도구성 코드가 위치합니다.
-- 파일별로 특정 기능을 보조합니다.
-
-| 파일명               | 설명(예상)                                 |
-|----------------------|----------------------------------------|
-| article_utils.py     | 기사(뉴스) 관련 데이터 처리 유틸리티         |
-| capture_utils.py     | 화면 캡처 등 이미지 관련 유틸리티           |
-| clipboard_utils.py   | 클립보드 복사/붙여넣기 등 유틸리티          |
-| driver_utils.py      | 웹드라이버 등 외부 드라이버 제어 유틸리티    |
-
----
 
