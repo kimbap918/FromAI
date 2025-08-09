@@ -24,7 +24,6 @@ genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
 # 작성일 : 2025-07-17
 # 기능 : 정보성 기사 챗봇, 공동 PROMPT 작성
 # ------------------------------------------------------------------
-
 BASE_SYSTEM_PROMPT = (
     """
     [System Message]
@@ -39,7 +38,6 @@ BASE_SYSTEM_PROMPT = (
     - 당신의 최우선 역할은 '전문 기자'로서, 데이터 속에서 이야기를 발굴하여 독자에게 전달하는 것입니다. 이것이 모든 작업의 핵심 목표입니다.
     - 특정 주제(예: 주식)에 대한 **[Special Rules for Stock-Related News]**이 별도로 제공됩니다.
     - 전제적인 구조와 [News Generation Process (Step-by-Step Execution)]를 따른 후 **[Special Rules for Stock-Related News]**을 준수해야 합니다.
-    
 
     - **정리하자면 순서는 [News Generation Process (Step-by-Step Execution)] 먼저 따른후 [Special Rules for Stock-Related News]를 적용시켜야합니다.**
     
@@ -59,8 +57,7 @@ BASE_SYSTEM_PROMPT = (
 
     4. 본문 작성 (종합 분석 기반)
     - **텍스트 정보와 이미지 분석 결과를 종합하여** 객관적인 시황 정보를 전달하는 기사 형식으로 작성합니다.
-    - **뉴스 문체 (~이다, ~했다 체 사용)**를 사용합니다.
-    - **핵심 요약으로 시작**: 기사 첫 문단에 현재 시점의 가장 중요한 정보(예: 현재가, 등락률, 주요 현상)를 요약하여 제시하세요.
+    - **핵심 요약으로 시작**: 기사 첫 문단에 현재 시점의 가장 중요한 정보를 요약하여 제시하세요.
     - **데이터 기반 서사 구축**:
         당신은 데이터의 관계를 파악하여 이야기를 만드는 전문 기자입니다.
         아래의 원칙에 따라 데이터를 유기적으로 해석하고 연결하여 하나의 완성된 글로 만드세요.
@@ -69,21 +66,20 @@ BASE_SYSTEM_PROMPT = (
             모든 데이터 중 가장 중요하고 의미 있는 핵심 결과를 전체 이야기의 흐름을 이끌어가는 자연스러운 시작점 역할을 해야 한다.
         2. 과정 묘사:
             시작점, 경유지(최고/최저), 도착점 데이터를 단순히 나열하지 않는다.
-            이들을 종합하여 해당 기간 움직임의 과정을 하나의 통합된 문장으로 묘사해야 한다.
+            각 사실을 분리하여 명확하게 제시하고, 종합적으로 전체적인 변동성만을 묘사한다.
             변화의 과정이 안정적이었는지, 변동성이 컸는지, 혹은 특정 방향으로 꾸준히 움직였는지를 서술한다.
         3. 비교를 통한 의미 해석:
             현재의 결과를 과거의 데이터와 비교하여 그 변화가 가지는 상대적인 의미와 맥락을 설명한다.
-            이 비교를 통해 긍정적/부정적 흐름, 추세의 지속/반전 등 변화의 방향성을 명확히 한다.
+            이 비교를 통해 긍정적/부정적 흐름, 변화의 방향성을 명확히 한다.
         4. 데이터 간의 논리적 연결:
             하나의 현상(핵심 지표의 변화)을 설명할 때, 다른 종류의 데이터(보조 지표)를 그 현상의 근거 혹은 원인으로 연결하여 분석의 깊이를 더해야 한다.
             두 데이터 간의 논리적 인과 관계나 상관 관계를 서술하여 주장에 대한 설득력을 높인다.
 
     - **객관성 유지**: 추측이나 예측성 표현('~일 전망이다', '~할 것으로 보인다')은 절대 사용하지 않습니다.
-    - **문체**: 뉴스 기사 문체(~이다, ~했다)를 일관되게 사용하고, 서식(볼드, 기울임)은 사용하지 마세요. 등의 표현은 절대 사용하지 않습니다.)
+    - **문체**: 뉴스 기사 문체(~이다, ~했다)를 일관되게 사용하고, 서식(볼드, 기울임)은 절대 사용하지 않습니다.
     - **가독성 원칙 준수**: 전문 용어를 사용할 경우, 독자의 이해를 돕기 위해 필요한 경우 간결한 부연 설명을 덧붙입니다.
     - 입력된 키워드(종목명)를 3~5회 자연스럽게 포함합니다.
-    - 볼드체, 기울임체 등 서식은 사용하지 않습니다.
-    - Markdown 문법을 사용하지 않습니다.
+    - **Markdown 문법을 절대 사용하지 않습니다.**
 
     5. 제목 작성 방식
     - **생성된 본문을 기반으로 추천 제목 3개 제공**
@@ -92,7 +88,7 @@ BASE_SYSTEM_PROMPT = (
     - **완전한 문장형이 아닌 핵심 키워드 중심으로 구성**
     - **궁금증을 유발할 수 있도록 작성하되, 특수문자 없이 표현하며 본문의 핵심 내용이나 주요 결과를 간결하게 요약하여 포함**
     - **수식어가 수식받는 대상 앞에 위치하도록 작성하고, 숫자 정보가 여러 개일 경우 의미상 중요한 정보를 먼저 배치할 것**
-    - **말줄임표"..." 사용금지, 말줄임표 "⋯", 마침표(.) 사용 금지, 특수문자 (?, !, " 등) 사용 금지**
+    - **말줄임표("...", "⋯"), 마침표(.), 물음표(?), 느낌표(!), 괄호((), []) 등과 같은 특수문자를 사용하지 말 것.**
 
     6. 출력 형식 적용 (최종 제공)
     기사 생성 후, 아래 출력 형식에 맞춰 제공
@@ -150,12 +146,23 @@ def generate_info_news_from_text(keyword: str, info_dict: dict, domain: str = "g
     도메인(주식, 환율, 코인 등)에 상관없이 정보성 뉴스 생성 (info_dict는 도메인별로 정제된 데이터)
     """
     today_kst = get_today_kst_str()
-    system_prompt = build_system_prompt(keyword, today_kst, is_stock=(domain=="stock"))
+    system_prompt = build_system_prompt(keyword, today_kst, is_stock = domain in ["stock", "toss"])
+
+    def _format_dict_for_prompt(data_dict):
+        lines = []
+        for key, value in data_dict.items():
+            if isinstance(value, dict):
+                lines.append(f"{key}:")
+                for sub_key, sub_value in value.items():
+                    lines.append(f"  {sub_key}: {sub_value}")
+            else:
+                lines.append(f"{key}: {value}")
+        return "\n".join(lines)
+
+    info_str = _format_dict_for_prompt(info_dict)
 
     # 도메인별 프롬프트/정보 포맷 분기
-    if domain == "stock":
-        info_str = "\n".join([f"{k}: {v}" for k, v in info_dict.items()])
-        # 해외주식 여부 판단: info_dict에 'name', 'price', 'change' 등 주요 필드가 있으면 해외주식으로 간주
+    if domain in ["stock", "toss"]:
         is_foreign_stock = any(k in info_dict for k in ["name", "price", "change", "기업 개요"]) and (info_dict.get("키워드", "") == keyword)
         if is_foreign_stock:
             user_message = (
@@ -172,7 +179,6 @@ def generate_info_news_from_text(keyword: str, info_dict: dict, domain: str = "g
                 f"[주식 정보]\n{info_str}"
             )
     elif domain == "fx":
-        info_str = "\n".join([f"{k}: {v}" for k, v in info_dict.items()])
         user_message = (
             f"아래는 '{keyword}'의 환율 정보입니다. "
             f"이 데이터는 모두 '{keyword}'(통화)의 실제 환율 정보입니다. "
@@ -180,7 +186,6 @@ def generate_info_news_from_text(keyword: str, info_dict: dict, domain: str = "g
             f"[환율 정보]\n{info_str}"
         )
     elif domain == "coin":
-        info_str = "\n".join([f"{k}: {v}" for k, v in info_dict.items()])
         user_message = (
             f"아래는 '{keyword}'의 암호화폐(코인) 정보입니다. "
             f"이 데이터는 모두 '{keyword}'(코인)의 실제 시세 및 정보입니다. "
@@ -188,7 +193,6 @@ def generate_info_news_from_text(keyword: str, info_dict: dict, domain: str = "g
             f"[코인 정보]\n{info_str}"
         )
     else:
-        info_str = "\n".join([f"{k}: {v}" for k, v in info_dict.items()])
         user_message = (
             f"아래는 '{keyword}'의 정보입니다. "
             f"이 데이터를 바탕으로 기사 형식으로 분석해 주세요.\n"

@@ -17,6 +17,8 @@ from selenium.common.exceptions import NoSuchElementException, TimeoutException
 from news.src.utils.driver_utils import initialize_driver
 from news.src.utils.common_utils import safe_filename 
 
+W = WebDriverWait
+
 # ------------------------------------------------------------------
 # 작성자 : 최준혁
 # 작성일 : 2025-08-01
@@ -35,7 +37,7 @@ def _setup_driver(progress_callback: Optional[Callable[[str], None]] = None) -> 
 # 작성일 : 2025-08-01
 # 기능 : 차트 섹션을 캡처하고 이미지 파일로 저장하는 함수
 # ------------------------------------------------------------------
-def _capture_chart_section(driver: WebDriver, keyword: str, progress_callback: Optional[Callable[[str], None]] = None) -> str:
+def _capture_chart_section(driver: WebDriver, keyword: str, progress_callback: Optional[Callable[[str], None]] = None, custom_save_dir: Optional[str] = None) -> str:
     """차트 섹션을 캡처하고 이미지 파일로 저장합니다."""
     if progress_callback:
         progress_callback(f"네이버 검색 페이지 이동: {keyword}")
@@ -60,7 +62,14 @@ def _capture_chart_section(driver: WebDriver, keyword: str, progress_callback: O
     
     # 스크린샷 촬영
     wrap_elem = driver.find_element(By.CSS_SELECTOR, "div.api_cs_wrap")
-    screenshot_path = f"{keyword}_chart.png"
+
+    if custom_save_dir:
+        folder = custom_save_dir
+    else:
+        today_str = datetime.now().strftime('%Y%m%d')
+        folder = os.path.join(os.getcwd(), "주식차트", f"주식{today_str}")
+    os.makedirs(folder, exist_ok=True)
+    screenshot_path = os.path.join(folder, f"{safe_filename(keyword)}_chart.png")
     
     # 스크린샷 저장 시도 (두 가지 방법으로 시도)
     try:
@@ -111,14 +120,60 @@ def _extract_stock_data(driver: WebDriver, keyword: str) -> Dict:
     change_el = driver.find_element(By.CSS_SELECTOR, "div[class*='VGap_stockGap']")
     stock_data["change"] = change_el.text.replace("\n", " ")
     
-    # 시간 정보
-    time_elements = driver.find_elements(
-        By.CSS_SELECTOR, 
-        ".GraphMain_date__GglkR .GraphMain_time__38Tp2"
-    )
-    if len(time_elements) >= 2:
-        stock_data["korea_time"] = time_elements[0].text.replace("\n", " ")
-        stock_data["us_time"] = time_elements[1].text.replace("\n", " ")
+    # 시간 정보 및 마감 상태 확인
+    try:
+        # 마감 상태 확인
+        market_status = ""
+        try:
+            # 실시간 상태 (GraphMain_status__knYp9)
+            market_status_elem = driver.find_element(By.CSS_SELECTOR, ".GraphMain_status__knYp9")
+            market_status = market_status_elem.text.strip()
+            
+            # 마감 상태인지 확인 (GraphMain_close__atwpF 클래스 포함 여부)
+            try:
+                if market_status_elem.get_attribute("class").find("GraphMain_close__atwpF") != -1:
+                    market_status += " (마감)"
+            except:
+                pass
+                
+        except NoSuchElementException:
+            pass
+            
+        time_elements = driver.find_elements(
+            By.CSS_SELECTOR, 
+            ".GraphMain_date__GglkR .GraphMain_time__38Tp2"
+        )
+        
+        if len(time_elements) >= 2:
+            korea_time = time_elements[0].text.replace("\n", " ")
+            us_time = time_elements[1].text.replace("\n", " ")
+            
+            # 마감 상태가 감지된 경우
+            if market_status and "마감" in market_status:
+                us_time = f"{us_time} (장 마감)"
+                
+            stock_data["korea_time"] = korea_time
+            stock_data["us_time"] = us_time
+            
+        else:
+            # 시간 요소가 없을 경우 (장 마감 후 등)
+            now = datetime.now()
+            korea_time = now.strftime('한국 %m.%d. %H:%M')
+            us_time = now.strftime('해외 %m.%d. %H:%M')
+            
+            # 마감 상태가 감지된 경우
+            if market_status and "마감" in market_status:
+                us_time = f"{us_time} (장 마감)"
+                
+            stock_data["korea_time"] = korea_time
+            stock_data["us_time"] = us_time
+            
+    except Exception as e:
+        # 예외 발생 시 기본값 설정
+        now = datetime.now()
+        stock_data["korea_time"] = now.strftime('한국 %m.%d. %H:%M')
+        stock_data["us_time"] = now.strftime('해외 %m.%d. %H:%M')
+        print(f"시간 정보 추출 중 오류 발생: {e}")
     
     # 추가 정보 펼치기 시도
     try:
@@ -153,12 +208,55 @@ def _extract_stock_data(driver: WebDriver, keyword: str) -> Dict:
             print(" 재무 정보 : ", parts[0].strip())
     
     # 기업 개요 추출
+    # try:
+    #     overview = driver.find_element(By.CSS_SELECTOR, "div.Overview_text__zT3AI")
+    #     stock_data["기업 개요"] = overview.text.strip()
+    # except NoSuchElementException:
+    #     pass
+
     try:
-        overview = driver.find_element(By.CSS_SELECTOR, "div.Overview_text__zT3AI")
-        stock_data["기업 개요"] = overview.text.strip()
-    except NoSuchElementException:
+        # After Market 정보 컨테이너 대기
+        box = WebDriverWait(driver, 3).until(EC.presence_of_element_located(
+            (By.CSS_SELECTOR, "div[class*='StockInfoPreAfter_article']")
+        ))
+
+        # find_elements를 사용하여 요소가 없어도 오류가 나지 않도록 처리
+        price_elems = box.find_elements(By.CSS_SELECTOR, "span[class*='StockInfoPreAfter_num']")
+        change_amt_elems = box.find_elements(By.CSS_SELECTOR, "span[class*='StockInfoPreAfter_numGap'] div:nth-of-type(1)")
+        change_pct_elems = box.find_elements(By.CSS_SELECTOR, "span[class*='StockInfoPreAfter_numGap'] div:nth-of-type(2)")
+        status_elems = box.find_elements(By.CSS_SELECTOR, "span[class*='marketStatus']")
+        # time_elems = box.find_elements(By.CSS_SELECTOR, "div[class*='StockInfoPreAfter_time']")
+
+        # 요소가 존재하는 경우에만 텍스트 추출
+        price = price_elems[0].text.strip() if price_elems else "N/A"
+        change_amt = change_amt_elems[0].text.strip() if change_amt_elems else "N/A"
+        change_pct = change_pct_elems[0].text.strip() if change_pct_elems else "N/A"
+        status = status_elems[0].text.strip() if status_elems else "N/A"
+
+        # 시간 정보 파싱
+        # times = {}
+        # if time_elems:
+        #     for t in time_elems:
+        #         txt = t.text.strip()
+        #         if '한국' in txt:
+        #             times['한국'] = txt.replace('한국', '').strip()
+        #         elif '미국' in txt:
+        #             time_part = txt.split('•')[0]
+        #             times['미국'] = time_part.replace('미국', '').strip()
+        
+        # 모든 정보가 수집되었을 때만 딕셔너리에 추가
+        if price != "N/A":
+            stock_data["시간 외 거래"] = {
+                "상태": status,
+                "가격": price,
+                "전일대비": change_amt,
+                "등락률": change_pct
+                # "시간": times
+            }
+
+    except Exception as e:
+        print(f"[DEBUG] 시간 외 거래 정보를 찾을 수 없거나 처리 중 오류 발생: {e}")
         pass
-    
     return stock_data
 
 # ------------------------------------------------------------------
@@ -168,7 +266,8 @@ def _extract_stock_data(driver: WebDriver, keyword: str) -> Dict:
 # ------------------------------------------------------------------
 def capture_naver_foreign_stock_chart(
     keyword: str, 
-    progress_callback: Optional[Callable[[str], None]] = None
+    progress_callback: Optional[Callable[[str], None]] = None,
+    custom_save_dir: Optional[str] = None
 ) -> Tuple[Optional[str], Dict, bool]:
     """
     네이버에서 해외 주식 차트 캡처 및 상세 정보 크롤링 함수
@@ -191,19 +290,9 @@ def capture_naver_foreign_stock_chart(
         driver = _setup_driver(progress_callback)
         
         # 2. 차트 캡처
-        screenshot_path, chart_section = _capture_chart_section(driver, keyword, progress_callback)
+        screenshot_path, chart_section = _capture_chart_section(driver, keyword, progress_callback, custom_save_dir)
 
-        # ✅ 저장 폴더 설정: 주식차트/주식YYYYMMDD/
-        today_str = datetime.now().strftime('%Y%m%d')
-        folder = os.path.join(os.getcwd(), "주식차트", f"주식{today_str}")
-        os.makedirs(folder, exist_ok=True)
-        final_image_path = os.path.join(folder, f"{safe_filename(keyword)}_chart.png")
-
-        # 이미지 이동 (원본은 삭제)
-        if os.path.exists(screenshot_path):
-            os.replace(screenshot_path, final_image_path)
-            screenshot_path = final_image_path
-        else:
+        if not screenshot_path or not os.path.exists(screenshot_path):
             print(f"[WARNING] 스크린샷 파일 없음: {screenshot_path}")
             return None, {}, False
 

@@ -57,15 +57,20 @@ def safe_filename(s):
 # 작성일 : 2025-07-30
 # 기능 : 뉴스를 파일로 저장하는 함수
 # ------------------------------------------------------------------
-def save_news_to_file(keyword: str, domain: str, news_content: str, save_dir: str = "생성된 기사", open_after_save: bool = True):
+def save_news_to_file(keyword: str, domain: str, news_content: str, save_dir: str = "생성된 기사", open_after_save: bool = True, custom_save_dir: Optional[str] = None):
     if not news_content or not news_content.strip():
         print("[WARNING] 저장할 뉴스 내용이 비어 있습니다. 파일 저장을 건너뜁니다.")
         return None
         
-    current_dir = os.getcwd()
-    today_date_str = get_today_kst_date_str()
-    base_save_dir = os.path.join(current_dir, save_dir)
-    full_save_dir = os.path.join(base_save_dir, f"기사{today_date_str}")
+    if custom_save_dir:
+        full_save_dir = custom_save_dir
+    else:
+        current_dir = os.getcwd()
+        today_date_str = get_today_kst_date_str()
+        base_save_dir = os.path.join(current_dir, save_dir)
+        # 도메인별로 다른 폴더명을 사용하도록 수정
+        folder_prefix = "토스" if domain == "toss" else "기사"
+        full_save_dir = os.path.join(base_save_dir, f"{folder_prefix}{today_date_str}")
     os.makedirs(full_save_dir, exist_ok=True)
     safe_k = safe_filename(keyword)
     filename = f"{safe_k}_{domain}_news.txt"
@@ -154,10 +159,19 @@ def capture_stock_chart(keyword: str, progress_callback=None) -> str:
 # 작성일 : 2025-07-25
 # 기능 : 차트를 캡처하고 LLM을 통해 뉴스를 생성하는 함수
 # ------------------------------------------------------------------
-def capture_and_generate_news(keyword: str, domain: str = "stock", progress_callback=None, debug=False, open_after_save=True, custom_save_dir: Optional[str] = None):
+def capture_and_generate_news(keyword: str, domain: str = "stock", progress_callback=None, is_running_callback=None, step_callback=None, debug=False, open_after_save=True, custom_save_dir: Optional[str] = None):
     from news.src.services.info_LLM import generate_info_news_from_text
     from news.src.utils.foreign_utils import capture_naver_foreign_stock_chart
     from news.src.utils.domestic_utils import capture_wrap_company_area
+
+    total_steps = 3 # 1: 정보 조회, 2: 이미지 캡처, 3: 기사 생성
+    current_step = 0
+
+    def report_step():
+        nonlocal current_step
+        current_step += 1
+        if step_callback:
+            step_callback(current_step, total_steps)
     info_dict = {}
     is_stock = (domain == "stock")
 
@@ -166,91 +180,116 @@ def capture_and_generate_news(keyword: str, domain: str = "stock", progress_call
 
         # ✅ 저장 경로 설정
         if custom_save_dir:
-            base_dir = custom_save_dir
-            sub_dir = f"토스{today_str}"
+            full_dir = custom_save_dir
         else:
             base_dir = os.path.join(os.getcwd(), "생성된 기사")
             sub_dir = f"기사{today_str}"
-
-        full_dir = os.path.join(base_dir, sub_dir)
+            full_dir = os.path.join(base_dir, sub_dir)
         os.makedirs(full_dir, exist_ok=True)
 
         # 기사 저장
         safe_k = safe_filename(keyword)
         news_path = os.path.join(full_dir, f"{safe_k}_{domain}_news.txt")
-        if not os.path.exists(news_path):
-            with open(news_path, "w", encoding="utf-8") as f:
-                f.write(news)
-            if open_after_save:
-                try:
-                    if platform.system() == "Windows":
-                        os.startfile(news_path)
-                    elif platform.system() == "Darwin":
-                        subprocess.run(["open", news_path])
-                except Exception as e:
-                    print(f"[WARNING] 메모장 열기 실패: {e}")
-        else:
-            print(f"[INFO] 뉴스 파일 중복되어 저장 생략: {news_path}")
+        with open(news_path, "w", encoding="utf-8") as f:
+            f.write(news)
+        if open_after_save:
+            try:
+                if platform.system() == "Windows":
+                    os.startfile(news_path)
+                elif platform.system() == "Darwin":
+                    subprocess.run(["open", news_path])
+            except Exception as e:
+                print(f"[WARNING] 메모장 열기 실패: {e}")
 
-        # 이미지 저장
-        if image_path and os.path.exists(image_path):
-            if custom_save_dir:
-                try:
-                    image_save_path = os.path.join(full_dir, f"{safe_k}_chart.png")
-                    copyfile(image_path, image_save_path)
-                    print(f"[INFO] 차트 이미지 저장 완료: {image_save_path}")
 
-                    # 루트 경로에 저장된 이미지라면 삭제
-                    if os.path.dirname(image_path) == os.getcwd():
-                        os.remove(image_path)
-                        print(f"[INFO] 루트 이미지 삭제 완료: {image_path}")
-                except Exception as e:
-                    print(f"[ERROR] 이미지 저장 실패: {e}")
+        # Toss 탭에서는 이미지 저장 로직 제거 (이미지가 없는 경우가 있으므로 안전하게 처리)
+        if domain == "toss" and image_path and os.path.exists(image_path):
+            print(f"[INFO] Toss 탭: 이미지 저장 생략 - {image_path}")
+            pass  # Toss 탭에서는 이미지 저장을 하지 않음
 
-    if domain in ["stock", "toss"]:  # "toss" 도메인도 국내주식과 동일하게 처리
+    if domain in ["stock", "toss"]:  # "toss"와 "stock" 도메인 처리
         stock_code = get_stock_info_from_search(keyword)
+        report_step() # 1. 정보 조회 완료
 
         if not stock_code:
             # 🔹 해외 주식 처리
-            image_path, stock_data, success = capture_naver_foreign_stock_chart(keyword, progress_callback=progress_callback)
+            if progress_callback:
+                progress_callback(f"{keyword} 해외주식 정보 조회 중...")
+            image_path, stock_data, success = capture_naver_foreign_stock_chart(keyword, progress_callback=progress_callback, custom_save_dir=custom_save_dir)
+            report_step() # 2. 이미지 캡처 완료
             if not image_path or not stock_data:
                 if progress_callback:
                     progress_callback("해외주식 데이터 수집 실패")
                 return None
-            info_dict = dict(stock_data)
-            info_dict["키워드"] = keyword
-            if debug:
-                print("[DEBUG] 해외주식 정보:\n", info_dict)
+            
+            info_dict = stock_data
             if progress_callback:
                 progress_callback("LLM 기사 생성 중...")
             news = generate_info_news_from_text(keyword, info_dict, domain)
+            report_step() # 3. 기사 생성 완료
             if news:
                 save_news_and_image(news, image_path)
             return news
 
-        # 🔹 국내 주식 처리
-        image_path, is_stock, chart_text, invest_info_text, chart_info, invest_info, summary_info_text = capture_wrap_company_area(
-            stock_code, progress_callback=progress_callback, debug=debug
-        )
+        # 🔹 국내 주식 처리 (Toss 탭 제외)
+        if domain == "toss":
+            # Toss 탭의 경우, 이미지 경로는 None으로 설정하고 차트 정보만 가져옴
+            if progress_callback:
+                progress_callback(f"{keyword} Toss 종목 정보 조회 중...")
+            
+            # Toss 탭에서는 Toss 기사 폴더에 차트와 기사를 각각 1개씩만 저장
+            if progress_callback:
+                progress_callback(f"{keyword} Toss 종목 정보 조회 중...")
+                
+            # Toss 기사 폴더 경로 설정
+            if custom_save_dir:
+                toss_save_dir = custom_save_dir
+            else:
+                today_str = get_today_kst_date_str()
+                toss_save_dir = os.path.join(os.getcwd(), "Toss기사", f"기사{today_str}")
+                
+            # 차트 정보 가져오기 (Toss 기사 폴더에 저장)
+            image_path, is_stock, chart_text, invest_info_text, chart_info, invest_info, summary_info_text = capture_wrap_company_area(
+                stock_code, 
+                progress_callback=progress_callback, 
+                debug=debug,
+                custom_save_dir=toss_save_dir,
+                is_running_callback=is_running_callback
+            )
+        else:
+            # 일반 주식의 경우 기존 로직 유지
+            if progress_callback:
+                progress_callback(f"{keyword} 국내주식 정보 조회 중...")
+            image_path, is_stock, chart_text, invest_info_text, chart_info, invest_info, summary_info_text = capture_wrap_company_area(
+                stock_code, 
+                progress_callback=progress_callback, 
+                debug=debug, 
+                custom_save_dir=custom_save_dir,
+                is_running_callback=is_running_callback
+            )
+        report_step() # 2. 이미지 캡처 완료
         if not image_path:
             if progress_callback:
                 progress_callback("국내주식 이미지 캡처 실패")
             return None
         info_dict = {**chart_info, **invest_info}
-        if summary_info_text:
-            info_dict["기업개요"] = summary_info_text
+        # if summary_info_text:
+        #     info_dict["기업개요"] = summary_info_text
         if debug:
             print("[DEBUG] 국내 주식 정보:\n", info_dict)
         if progress_callback:
             progress_callback("LLM 기사 생성 중...")
         news = generate_info_news_from_text(keyword, info_dict, domain)
+        report_step() # 3. 기사 생성 완료
         if news:
             save_news_and_image(news, image_path)
         return news
 
     else:
+        report_step() # 1. 정보 조회 완료 (기타 도메인은 조회 단계가 없으므로 바로 호출)
         # 🔹 기타 도메인 (coin, fx 등)
-        image_path, stock_data, success = capture_naver_foreign_stock_chart(keyword, progress_callback=progress_callback)
+        image_path, stock_data, success = capture_naver_foreign_stock_chart(keyword, progress_callback=progress_callback, custom_save_dir=custom_save_dir)
+        report_step() # 2. 이미지 캡처 완료
         if not image_path or not success:
             if progress_callback:
                 progress_callback("이미지 캡처 실패")
@@ -281,15 +320,19 @@ def build_stock_prompt(today_kst):
             continue
     if not date_obj:
         date_obj = datetime.now()
+
     now_time = convert_get_today_kst_str()
     print("now_time 호출 결과:", now_time)
+
     if date_obj.weekday() == 0:  # 월요일은 0
         yesterday = date_obj - timedelta(days=3)
     else:
         yesterday = date_obj - timedelta(days=1)
     before_yesterday = yesterday - timedelta(days=1)
+    
     today_day_str = str(date_obj.day)
     print(f"today_day_str: {today_day_str}")
+
     if date_obj.month != yesterday.month:
         yesterday_str = f"지난달 {yesterday.day}"
     else:
@@ -299,32 +342,66 @@ def build_stock_prompt(today_kst):
         before_yesterday_str = f"지난달 {before_yesterday.day}"
     else:
         before_yesterday_str = f"지난 {before_yesterday.day}"
-    print(f"before_yesterday_str: {before_yesterday_str}")  
+    print(f"before_yesterday_str: {before_yesterday_str}") 
+
+    #############
+    # 'O월 O일' 형식으로 날짜를 변환하는 내부 함수
+    def format_month_day(date_obj):
+        # ... (기존 코드) ...
+        if platform.system() == "Windows":
+            return date_obj.strftime("%#m월 %#d일")
+        else:
+            return date_obj.strftime("%-m월 %-d일")
+    
+    today_month_day_format = format_month_day(date_obj)    
+
+    if "장마감" in now_time:
+        title_time_format = f"\"{today_month_day_format}\" (제목 끝에 '[변동 방향/상태] 마감' 형식으로 추가할 것)"
+    else:
+        title_time_format = f"\"{today_month_day_format} 장중\""
+        
+    today_month_day = format_month_day(date_obj)
+    print(f"월과 일: {today_month_day_format}")
+    print(title_time_format)
+        
+
+    # 원하는 형식의 최종 문자열을 생성
+    output_current_day = f"{today_day_str}일(미국 동부 기준 {yesterday.day}일)"
+    output_previous_day = f"{yesterday_str}일(미국 동부 기준 {before_yesterday.day}일)"
+    
+    print(output_current_day)
+    print(output_previous_day)
+
     stock_prompt = (
         "[Special Rules for Stock-Related News]\n"
         f"1. 제목 작성 시 규칙\n"
+        f"   - **순서는 키워드,\"{title_time_format}\",내용 순으로 생성하고, 키워드 뒤에는 반드시 콤마(,)를 표기할 것.**\n"
         f"   - 금액에는 천단위는 반드시 콤마(,)를 표기할 것 (예: 64,600원)\n"
-        f"   - **반드시 날짜는 \"O월 O일\"과 같이 \"월 일\" 형식으로 기입할 것\n**"
-        f"   - 가격과 등락률을 표시할때는 함께 표기할 것\n"
-        f"   - 키워드 뒤에 반드시 콤마(,)를 표기하고 난 후 날짜를 표현한 후 내용을 이어 붙일 것\n"
-        f"   - '전일 대비'와 같은 비교 표현은 사용하지 않는다."
-        f"   - 주가 정보 포함 시: 단, '장중' 이라는 단어는 날짜 뒤에 붙어서 나오거나 [등락률] 앞에 나올 것.\n"
-        f"   - 시제는 기사 작성 시점을 반드시 기준일과 시점(예: 장마감, 장중 등)을 아래의 기준으로 구분한다.\n"
-        f"   - **주가 정보는 간결하게 포함하며, 장이 마감되었을 경우에만 제목의 가장 마지막에 \"[변동 방향/상태] 마감\" 형식으로 추가할 것.**\n"
+        f"   - **반드시 날짜는 \"{title_time_format}\"과 같은 형식으로 기입할 것.\n**"
+        f"   - 해외 주식일 경우, 제목을 작성할 때 날짜를 제외하고 생성 할 것.(단, 본문에는 본문 작성 시 규칙을 따를 것).\n"
+        f"   - 해외 주식일 경우, [해외주식 정보] 안에 us_time을 참고해서 장중/장마감 구분하기.\n"
+        f"   - 가격과 등락률(%)을 반드시 함께 표기하고, 다양한 서술 방식을 사용하여 제목을 풍부하고 다채롭게 표현할 것.\n"
+        f"   - 제목을 작성 할 때 '전일 대비, 지난, 대비'와 같은 비교 표현은 사용하지 않는다.\n"
+        f"   - **주가 정보는 간결하게 포함하며, 장이 마감되었을 경우에만 제목의 가장 마지막에 \"<변동 방향/상태> 마감\" 형식으로 마무리 할 것.**\n\n"
         f"2. 본문 작성 시 규칙\n"
-        f"   - 첫줄에 날짜와 \"{now_time} 기준, 네이버페이 증권에 따르면\" 분까지 표기해서 표시할 것, 그 이후는 [News Generation Process] 내용에 충실할 것\n "
+        f"   - 첫줄에 날짜와 \"{now_time} 기준, 네이버페이 증권에 따르면\" 분까지 표기해서 표시할것, 그 이후는 [News Generation Process] 내용에 충실할 것\n "
         f"   - 날짜는 반드시 **\"{today_day_str}일\", \"{yesterday.day}일\"처럼 일(day)만** 표기 (월은 생략)\n"
-        f"   - '전일'이나 '전 거래일'이라는 표현하지 말 것, 대신 반드시 **\"{yesterday_str}일\", \"{before_yesterday_str}일\"**처럼 날짜를 명시할 것\n"
+        f"   - '전일' 이나 '전 거래일' 와 같은 표현하지 말 것, 대신 반드시 **\"{yesterday_str}일\", \"{before_yesterday_str}일\"**처럼 날짜를 명시할 것\n"
         f"   - 날짜가 포함된 시간 표현은 \"{today_kst} 오전 10시 56분\" → **\"{today_day_str}일 오전 10시 56분\"** 형식으로 변환\n"
-        f"   - **절대로 '이날', '금일', '당일'과 같은 표현을 사용하지 말 것.** 대신 오늘 날짜인 \"{today_day_str}일\"로 반드시 바꿔서 명시할 것.\n\n"
-        f"3. 시제는 기사 작성 시점을 반드시 기준일과 시점(예: 장마감, 장중 등)을 아래의 기준으로 구분한다.\n"
-        f"   - 장 시작 전: \"장 시작 전\"\n"
-        f"   - 장중 (오전 9:00 ~ 오후 3:30): \"장중\"\n"
-        f"   - 장 마감 후 (오후 3:30 이후): \"장 마감 후\"\n\n"
-        f"4. 국내 주식의 경우, (KST, Asia/Seoul) 기준으로 종가 및 날짜 비교 시 매주 월요일에는 지난주 금요일 종가와 비교할 것\n"
-        f"   - 예시:\n"
-        f"   - (2025년 7월 14일이 월요일인 경우) 지난 11일 종가는 31,300원이었으며, 14일은 이에 비해 소폭 하락한 상태다.\n"
-        f"   - (2025년 7월 15일이 화요일인 경우) 지난 14일 종가는 31,300원이었으며, 15일은 이에 비해 소폭 하락한 상태다.\n\n"
+        f"   - **절대로 '이날', '금일', '당일'과 같은 표현을 사용하지 말 것.** 대신 오늘 날짜인 \"{today_day_str}일\"로 반드시 바꿔서 명시**할 것.\n\n"
+        f"3. 국내 주식의 경우, (KST, Asia/Seoul) 기준으로 종가 및 날짜 비교 시 매주 월요일에는 지난주 금요일 종가와 비교할 것\n"
+        f"   - 예시 (명확한 날짜 사용법):\n"
+        f"     - (X) 잘못된 표현: 전일 대비 하락했으며, 이날 장을 마감했다.\n"
+        f"     - (O) 올바른 표현: {yesterday_str}일 대비 하락했으며, {today_day_str}일 장을 마감했다.\n"
+        f"     - (O) 올바른 표현: {today_day_str}일 주가는 {yesterday_str}일 종가보다 낮은 수준을 보였다.\n\n"
+        f"4. 해외 주식의 경우, 날짜와 추가 본문 작성 규칙\n"
+        f"     - 첫줄에 날짜는 \"{output_current_day}, 네이버페이 증권에 따르면\"를 표시할것.\n "
+        f"     - '전일' 이나 '전 거래일'과 같은 표현은 **절대로** 사용하지 말 것. 대신, 이전 날짜를 언급할 때는 **반드시 \"{output_previous_day}\"를 온전한 형태로 명시할 것.**\n"
+        f"     - 날짜 표현은 \"{output_current_day}\" 와 \"{output_previous_day}\" 같은 형식으로 사용해야한다."
+        f"     - **절대로 '이날', '금일', '당일'과 같은 표현을 사용하지 말 것.**\n"
+        f"     - 해외 주식의 경우 '시간 외 거래'가 있는 경우 본문에 정규장 내용 이후 시간 외 거래 내용을 포함할것.\n"
+        f"     - **장중/장마감 구분은 [키워드 정보(user message)] 내의 [해외주식 정보] 안에 us_time을 참고하여 구분할 것.**\n"
+        f"     - 예시: 실시간 -> 장 중, 장마감 -> 장 마감"
         f"5. 거래대금은 반드시 **억 단위, 천만 단위로 환산**하여 정확히 표기할 것\n"
         f"   - 예시: \"135,325백만\" → \"1,353억 2,500만 원\" / \"15,320백만\" → \"153억 2,000만 원\" / \"3,210백만\" → \"32억 1,000만 원\" / \"850백만\" → \"8억 5,000만 원\"\n\n"
         f"6. 출력 형식 적용 (최종 제공)\n"
@@ -332,10 +409,12 @@ def build_stock_prompt(today_kst):
         f"   - 최종 출력은 [제목], [해시태그], [본문]의 세 섹션으로 명확히 구분하여 작성할 것.\n\n"
         f"[Style]\n"
         f"- 반드시 장 시작/장중/장 마감 시점에 따라 서술 시제 변경\n"
-        f"- 전일 대비 등락과 연속 흐름을 조건별로 구분해 자연스럽게 서술하도록 지시할 것.\n"
+        f"- 등락과 연속 흐름을 조건별로 구분해 자연스럽게 서술하도록 지시할 것.\n"
         f"- 기업과 주식 관련 정보는 구체적인 수치와 함께 명시할 것.\n"
         f"- 단순 데이터 나열을 금지하며, 원인과 결과를 엮어 [News Generation Process] 기반으로 구성할 것.\n"
-        f"- **'관심, 주목, 기대, 풀이' 등 시장의 감정이나 기자의 주관이 담긴 표현을 절대 사용하지 않는다.\n**"
-        f"- ** 마지막은 기업 개요 참고해서 ‘~을 주력으로 하는 기업이다’ 형식으로 엄격히 1줄 이하로 요약 설명으로 작성할 것.(단, 설립이야기는 제외할 것)\n**"
+        f"- **검토를 할 때 규칙을 잘 이행했는지 확인하고, 만약 규칙이 이행 되지 않을시 반드시 다시 규칙을 확인하여 적용할 것.\n**"
+        f"- **'투자자들, 관심, 주목, 기대, 풀이, 분석' 이라는 단어와 분석내용,감정,주관이 담긴 표현을 엄격히 사용하지 않는다.\n**"
+        f"- **'이날, 전일, 전 거래일, 전날' 이라는 단어와 표현은 엄격히 절대 사용하지 말 것.\n\n**"
     )
     return stock_prompt
+    

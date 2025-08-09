@@ -1,6 +1,6 @@
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QGroupBox, QLineEdit, QPushButton,
-    QMessageBox, QCheckBox, QTableWidget, QTableWidgetItem
+    QMessageBox, QCheckBox, QTableWidget, QTableWidgetItem, QProgressBar
 )
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
 from PyQt5.QtGui import QFont
@@ -54,10 +54,72 @@ class TossWorker(QThread):
 # 작성일 : 2025-07-31
 # 기능 : PyQt5에서 토스증권 API를 이용한 종목 데이터 추출하는 탭
 # ------------------------------------------------------------------
+# ------------------------------------------------------------------
+# 작성자 : 최준혁
+# 작성일 : 2025-08-09
+# 기능 : 기사 생성을 백그라운드에서 처리하는 워커
+# ------------------------------------------------------------------
+class ArticleGeneratorWorker(QThread):
+    finished = pyqtSignal(int, str)  # 성공 개수, 에러 메시지
+    progress_all = pyqtSignal(int, int, str)  # 현재 진행, 전체 개수, 현재 종목명
+    step_progress = pyqtSignal(int, int) # 현재 단계, 전체 단계
+
+    def __init__(self, names, parent=None):
+        super().__init__(parent)
+        self.names = names
+        self._is_running = True
+
+    def run(self):
+        try:
+            total_count = len(self.names)
+            success_cnt = 0
+            from news.src.utils.common_utils import capture_and_generate_news
+            from datetime import datetime
+            import os
+
+            today = datetime.now().strftime('%Y%m%d')
+            toss_folder = os.path.join(os.getcwd(), '토스기사', f'토스{today}')
+            os.makedirs(toss_folder, exist_ok=True)
+
+            for i, name in enumerate(self.names):
+                if not self._is_running:
+                    break
+                
+                self.progress_all.emit(i + 1, total_count, name)
+                self.step_progress.emit(0, 3) # 단계 프로그레스 초기화 (총 3단계)
+
+                def step_callback(current, total):
+                    if not self._is_running:
+                        return
+                    self.step_progress.emit(current, total)
+
+                news = capture_and_generate_news(
+                    name,
+                    domain="toss",
+                    open_after_save=False,
+                    custom_save_dir=toss_folder,  # 일일 폴더에 저장하도록 경로 수정
+                    step_callback=step_callback,
+                    is_running_callback=lambda: self._is_running
+                )
+                if news:
+                    success_cnt += 1
+            
+            if not self._is_running:
+                self.finished.emit(success_cnt, "기사 생성이 사용자에 의해 취소되었습니다.")
+            else:
+                self.finished.emit(success_cnt, "")
+        except Exception as e:
+            self.finished.emit(0, str(e))
+
+    def stop(self):
+        self._is_running = False
+
+
 class TossTab(QWidget):
     def __init__(self):
         super().__init__()
         self.worker = None
+        self.article_worker = None
         self.init_ui()
 
     def init_ui(self):
@@ -148,18 +210,18 @@ class TossTab(QWidget):
         self.extract_btn.clicked.connect(self.start_extraction)
         button_layout.addWidget(self.extract_btn)
 
-        self.generate_articles_btn = QPushButton("📰 기사 생성")
-        self.generate_articles_btn.clicked.connect(self.generate_articles)
-        button_layout.addWidget(self.generate_articles_btn)
+        self.generate_button = QPushButton("📰 기사 생성")
+        self.generate_button.clicked.connect(self.generate_articles)
+        button_layout.addWidget(self.generate_button)
+
+        self.cancel_generate_button = QPushButton("❌ 취소")
+        self.cancel_generate_button.clicked.connect(self.cancel_generation)
+        self.cancel_generate_button.setEnabled(False)
+        button_layout.addWidget(self.cancel_generate_button)
 
         self.reset_btn = QPushButton("🔄 리셋")
         self.reset_btn.clicked.connect(self.reset_inputs)
         button_layout.addWidget(self.reset_btn)
-
-        self.cancel_btn = QPushButton("❌ 취소")
-        self.cancel_btn.clicked.connect(self.cancel_extraction)
-        self.cancel_btn.setEnabled(False)
-        button_layout.addWidget(self.cancel_btn)
 
         self.open_toss_folder_btn = QPushButton("📁 토스 기사 폴더 열기")
         self.open_toss_folder_btn.clicked.connect(self.open_toss_article_folder)
@@ -167,9 +229,30 @@ class TossTab(QWidget):
 
         layout.addLayout(button_layout)
 
-        # ✅ 표 형태로 결과를 표시 
+        # 결과 표시 테이블
         self.result_table = QTableWidget()
         layout.addWidget(self.result_table)
+
+        # 기사 생성 진행률 표시
+        self.overall_progress_label = QLabel("전체 진행률")
+        self.overall_progress_bar = QProgressBar()
+        self.overall_progress_bar.setFormat("%v / %m")
+        progress_layout = QHBoxLayout()
+        progress_layout.addWidget(self.overall_progress_label)
+        progress_layout.addWidget(self.overall_progress_bar)
+
+        # 현재 항목 진행률
+        self.step_progress_label = QLabel("현재 항목 진행률")
+        self.step_progress_bar = QProgressBar()
+        self.step_progress_bar.setFormat("%p%")
+        progress_layout.addWidget(self.step_progress_label)
+        progress_layout.addWidget(self.step_progress_bar)
+
+        self.overall_progress_label.setVisible(False)
+        self.overall_progress_bar.setVisible(False)
+        self.step_progress_label.setVisible(False)
+        self.step_progress_bar.setVisible(False)
+        layout.addLayout(progress_layout)
 
         self.setLayout(layout)
 
@@ -221,45 +304,69 @@ class TossTab(QWidget):
 
     # 기사 생성 함수 (토스 인기 종목)
     def generate_articles(self):
-        # 최근 조회된 DataFrame이 있으면 종목명만 추출
-        if hasattr(self, 'last_df') and self.last_df is not None and not self.last_df.empty:
-            names = self.last_df['종목명'].tolist()
-            names_str = '\n'.join(names)
-            # 재확인 모달
-            reply = QMessageBox.question(
-                self,
-                "기사 생성 확인",
-                f"총 {len(names)}개 종목에 대해 토스 인기기사 생성/저장 하시겠습니까?\n\n{names_str}",
-                QMessageBox.Yes | QMessageBox.No,
-                QMessageBox.No
-            )
-            if reply == QMessageBox.Yes:
-                from news.src.utils.common_utils import capture_and_generate_news
-                from datetime import datetime
-                import os
-                today = datetime.now().strftime('%Y%m%d')
-                toss_folder = os.path.join(os.getcwd(), '토스기사', f'토스{today}')
-                os.makedirs(toss_folder, exist_ok=True)
-                success_cnt = 0
-                for name in names:
-                    news = capture_and_generate_news(
-                        name,
-                        domain="toss",
-                        open_after_save=False,
-                        custom_save_dir=os.path.join(os.getcwd(), "토스기사")
-                    )
-                    if news:
-                        # 기사 저장 (토스 폴더에 저장)
-                        filename = f"{name}_toss_news.txt"
-                        file_path = os.path.join(toss_folder, filename)
-                        with open(file_path, 'w', encoding='utf-8') as f:
-                            f.write(news)
-                        success_cnt += 1
-                QMessageBox.information(self, "기사 생성 완료", f"{success_cnt}개 토스 기사 생성 및 저장 완료!")
-            else:
-                QMessageBox.information(self, "취소됨", "기사 생성이 취소되었습니다.")
-        else:
+        if self.last_df is None or self.last_df.empty:
             QMessageBox.warning(self, "오류", "조회된 데이터가 없습니다.")
+            return
+
+        names = self.last_df['종목명'].tolist()
+        reply = QMessageBox.question(
+            self,
+            '기사 생성 확인',
+            f"{len(names)}개 종목에 대한 기사를 생성하시겠습니까?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+
+        if reply == QMessageBox.Yes:
+            self.generate_button.setEnabled(False)
+            self.cancel_generate_button.setEnabled(True)
+
+            self.overall_progress_label.setVisible(True)
+            self.overall_progress_bar.setVisible(True)
+            self.overall_progress_bar.setMaximum(len(names))
+            self.overall_progress_bar.setValue(0)
+
+            self.step_progress_label.setVisible(True)
+            self.step_progress_bar.setVisible(True)
+            self.step_progress_bar.setValue(0)
+
+            self.article_worker = ArticleGeneratorWorker(names)
+            self.article_worker.progress_all.connect(self.on_overall_progress)
+            self.article_worker.step_progress.connect(self.on_step_progress)
+            self.article_worker.finished.connect(self.on_article_generation_finished)
+            self.article_worker.start()
+
+    def cancel_generation(self):
+        if self.article_worker and self.article_worker.isRunning():
+            self.article_worker.stop()
+            self.cancel_generate_button.setEnabled(False)
+
+    def on_overall_progress(self, current, total, name):
+        self.overall_progress_bar.setMaximum(total)
+        self.overall_progress_bar.setValue(current)
+        self.overall_progress_label.setText(f"전체 진행률: {current}/{total} - '{name}' 처리 중...")
+        self.step_progress_bar.setValue(0) # 새 항목 시작 시 초기화
+
+    def on_step_progress(self, current, total):
+        self.step_progress_bar.setMaximum(total)
+        self.step_progress_bar.setValue(current)
+
+    def on_article_generation_finished(self, success_count, error_msg):
+        self.generate_button.setEnabled(True)
+        self.cancel_generate_button.setEnabled(False)
+        self.overall_progress_label.setVisible(False)
+        self.overall_progress_bar.setVisible(False)
+        self.step_progress_label.setVisible(False)
+        self.step_progress_bar.setVisible(False)
+
+        if error_msg and "취소" not in error_msg:
+            QMessageBox.critical(self, "오류 발생", f"기사 생성 중 오류가 발생했습니다: {error_msg}")
+        elif error_msg:
+             QMessageBox.information(self, "취소됨", f"{success_count}개 기사 생성 후 중단되었습니다.")
+        else:
+            QMessageBox.information(self, "기사 생성 완료", f"{success_count}개 토스 기사 생성 및 저장이 완료되었습니다.")
+        
+        self.article_worker = None
 
     # 토스 기사 폴더 열기 함수
     def open_toss_article_folder(self):

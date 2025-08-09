@@ -146,32 +146,78 @@ def parse_invest_info_text(invest_info_text, debug=False):
 # 작성일 : 2025-07-09
 # 기능 : 네이버 금융 종목 상세 페이지에서 wrap_company 영역을 캡처하고 저장하는 함수(주식 차트)
 # ------------------------------------------------------------------
-def capture_wrap_company_area(stock_code: str, progress_callback=None, debug=False):
+def capture_wrap_company_area(stock_code: str, progress_callback=None, debug=False, is_running_callback=None, custom_save_dir: str = None):
     def log(msg):
         with open("capture_log.txt", "a", encoding="utf-8") as f:
             f.write(f"[capture_wrap_company_area] {msg}\n")
+    
+    # 취소 체크를 위한 최적화된 함수
+    def check_cancellation():
+        if is_running_callback and not is_running_callback():
+            if progress_callback:
+                progress_callback("\n사용자에 의해 취소되었습니다.")
+            return True
+        return False
 
-    if progress_callback:
-        progress_callback("네이버 금융 상세 페이지 접속 중...")
-
-    driver = initialize_driver()
+    summary_info_text = ""
+    driver = None
     chart_text = ""
     invest_info_text = ""
     chart_info = {}
     invest_info = {}
-    summary_info_text = ""
-
+    
     try:
+        # 초기 취소 체크
+        if check_cancellation():
+            return "", False, "", "", {}, {}, ""
+            
+        driver = initialize_driver()
+        
+        # 드라이버 초기화 후 취소 체크
+        if check_cancellation():
+            driver.quit()
+            return "", False, "", "", {}, {}, ""
         url = f"https://finance.naver.com/item/main.naver?code={stock_code}"
         driver.get(url)
+        
+        if is_running_callback and not is_running_callback():
+            if progress_callback:
+                progress_callback("사용자에 의해 취소되었습니다.")
+            driver.quit()
+            return "", False, "", "", {}, {}, ""
+            
         if progress_callback:
             progress_callback("페이지 로딩 대기 중...")
-        WebDriverWait(driver, 5).until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, "div.wrap_company"))
-        )
-        time.sleep(0.3)
+            
+        # Reduce timeout and add more frequent cancellation checks
+        try:
+            WebDriverWait(driver, 3).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, "div.wrap_company"))
+            )
+            
+            # Add a small delay but check for cancellation during wait
+            for _ in range(3):
+                if is_running_callback and not is_running_callback():
+                    if progress_callback:
+                        progress_callback("사용자에 의해 취소되었습니다.")
+                    driver.quit()
+                    return "", False, "", "", {}, {}, ""
+                time.sleep(0.1)
+        except Exception as e:
+            if progress_callback:
+                progress_callback(f"페이지 로딩 중 오류: {str(e)}")
+            driver.quit()
+            return "", False, "", "", {}, {}, ""
+        
+        if is_running_callback and not is_running_callback():
+            if progress_callback:
+                progress_callback("사용자에 의해 취소되었습니다.")
+            driver.quit()
+            return "", False, "", "", {}, {}, ""
+            
         if progress_callback:
             progress_callback("차트 영역 찾는 중...")
+            
         try:
             company_name_element = driver.find_element(By.CSS_SELECTOR, "div.wrap_company h2 a")
             company_name = company_name_element.text.strip()
@@ -179,9 +225,12 @@ def capture_wrap_company_area(stock_code: str, progress_callback=None, debug=Fal
                 company_name = "Unknown"
         except Exception:
             company_name = "Unknown"
+            
         clean_company_name = company_name.replace(" ", "").replace("/", "_").replace("\\", "_")
+        
         def has_tab_elements(driver):
             return bool(driver.find_elements(By.CSS_SELECTOR, "a.top_tab_link"))
+            
         def click_krx_tab(driver):
             elements = driver.find_elements(By.CSS_SELECTOR, "a.top_tab_link")
             for el in elements:
@@ -288,6 +337,12 @@ def capture_wrap_company_area(stock_code: str, progress_callback=None, debug=Fal
             if debug:
                 print(f"[DEBUG] 현재가(모든 span 합침) 추출 실패: {e}")
 
+        if is_running_callback and not is_running_callback():
+            if progress_callback:
+                progress_callback("사용자에 의해 취소되었습니다.")
+            driver.quit()
+            return "", False, "", "", {}, {}, ""
+            
         if progress_callback:
             progress_callback("화면 전체 스크린샷 캡처 중...")
         try:
@@ -295,9 +350,14 @@ def capture_wrap_company_area(stock_code: str, progress_callback=None, debug=Fal
             image = Image.open(io.BytesIO(screenshot))
             cropped = image.crop((left, top_coord, left + width, top_coord + height))
             log(f"Cropped image size: {cropped.size}")
-            today = datetime.now().strftime('%Y%m%d')
-            current_dir = os.getcwd()
-            folder = os.path.join(current_dir, "주식차트", f"주식{today}")
+            # 저장 경로 설정 (기사와 동일한 폴더에 저장)
+            if custom_save_dir:
+                folder = custom_save_dir
+            else:
+                today = datetime.now().strftime('%Y%m%d')
+                current_dir = os.getcwd()
+                # 기사가 저장되는 기본 폴더 구조를 따름
+                folder = os.path.join(current_dir, "생성된 기사", f"기사{today}")
             os.makedirs(folder, exist_ok=True)
             filename = f"{stock_code}_{clean_company_name}.png"
             output_path = os.path.join(folder, filename)
@@ -315,16 +375,10 @@ def capture_wrap_company_area(stock_code: str, progress_callback=None, debug=Fal
             log(f"이미지 저장 실패: {output_path}")
             return "", False, chart_text, invest_info_text, chart_info, invest_info, summary_info_text
 
+        # 클립보드 복사 기능 비활성화
         if progress_callback:
-            progress_callback("이미지를 클립보드에 복사 중...")
-        if HAS_PYPERCLIP:
-            try:
-                pyperclip.copy(output_path)
-                log("클립보드에 경로 복사 완료")
-            except Exception as e:
-                log(f"클립보드 복사 실패: {e}")
-        else:
-            log("pyperclip 모듈이 설치되어 있지 않아 클립보드 복사를 건너뜁니다.")
+            progress_callback("✅ 차트 캡처 완료")
+        log("클립보드 복사 기능이 비활성화되었습니다.")
 
         return output_path, True, chart_text, invest_info_text, chart_info, invest_info, summary_info_text
 
