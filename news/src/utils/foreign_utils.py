@@ -67,7 +67,7 @@ def _capture_chart_section(driver: WebDriver, keyword: str, progress_callback: O
         folder = custom_save_dir
     else:
         today_str = datetime.now().strftime('%Y%m%d')
-        folder = os.path.join(os.getcwd(), "주식차트", f"주식{today_str}")
+        folder = os.path.join(os.getcwd(), "생성된 기사", f"기사{today_str}")
     os.makedirs(folder, exist_ok=True)
     screenshot_path = os.path.join(folder, f"{safe_filename(keyword)}_chart.png")
     

@@ -359,7 +359,7 @@ def capture_wrap_company_area(stock_code: str, progress_callback=None, debug=Fal
                 # 기사가 저장되는 기본 폴더 구조를 따름
                 folder = os.path.join(current_dir, "생성된 기사", f"기사{today}")
             os.makedirs(folder, exist_ok=True)
-            filename = f"{stock_code}_{clean_company_name}.png"
+            filename = f"{clean_company_name}_chart.png"
             output_path = os.path.join(folder, filename)
             from news.src.utils.common_utils import safe_filename 
             cropped.save(output_path)
