@@ -120,6 +120,7 @@ class TossTab(QWidget):
         super().__init__()
         self.worker = None
         self.article_worker = None
+        self.last_df = None
         self.init_ui()
 
     def init_ui(self):
@@ -255,26 +256,30 @@ class TossTab(QWidget):
         layout.addLayout(progress_layout)
 
         self.setLayout(layout)
-
+ 
     def reset_inputs(self):
         self.min_pct_input.clear()
         self.max_pct_input.clear()
         self.min_price_input.clear()
         self.limit_input.clear()
+        self.start_rank_input.clear()
+        self.end_rank_input.clear()
         self.up_check.setChecked(False)
         self.down_check.setChecked(False)
+        self.domestic_check.setChecked(False)
+        self.foreign_check.setChecked(False)
         self.result_table.setRowCount(0)
-        self.cancel_btn.setEnabled(False)
+        self.cancel_generate_button.setEnabled(False)
         self.extract_btn.setEnabled(True)
-        self.generate_articles_btn.setEnabled(True)
+        self.generate_button.setEnabled(True)
 
     def cancel_extraction(self):
         # 토스 워커 취소 (Thread 강제 종료)
         if self.worker and self.worker.isRunning():
             self.worker.terminate()
-        self.cancel_btn.setEnabled(False)
+        self.cancel_generate_button.setEnabled(False)
         self.extract_btn.setEnabled(True)
-        self.generate_articles_btn.setEnabled(True)
+        self.generate_button.setEnabled(True)
         QMessageBox.information(self, "취소됨", "데이터 조회/기사 생성을 취소했습니다.")
 
     def start_extraction(self):
@@ -288,6 +293,12 @@ class TossTab(QWidget):
         except ValueError:
             QMessageBox.warning(self, "입력 오류", "숫자 입력값을 확인하세요.")
             return
+
+        # 진행률/상태 초기화
+        self.overall_progress_label.setVisible(False)
+        self.overall_progress_bar.setVisible(False)
+        self.step_progress_label.setVisible(False)
+        self.step_progress_bar.setVisible(False)
 
         self.worker = TossWorker(
             min_pct, max_pct, min_price,
@@ -386,6 +397,9 @@ class TossTab(QWidget):
 
     def on_finished(self, df, error):
         from PyQt5.QtGui import QColor
+        # 최근 조회된 DataFrame 저장 변수 보장
+        if not hasattr(self, 'last_df'):
+            self.last_df = None
         # 최근 조회된 DataFrame 저장
         self.last_df = df.copy() if df is not None else None
         if error:
