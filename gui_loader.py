@@ -7,6 +7,7 @@ from PyQt5.QtGui import QFont
 from PyQt5.QtCore import Qt
 
 from news.src.components.news_tab import NewsTab
+from news.src.components.news_tab_test import NewsTabTest
 from news.src.components.stock_tab import StockTab
 from news.src.components.hwan_tab import HwanTab
 from news.src.components.toss_tab import TossTab
@@ -24,7 +25,7 @@ class MainWindow(QMainWindow):
         self.init_ui()
 
     def init_ui(self):
-        self.setWindowTitle("통합 뉴스 도구 - 제작자: 최준혁, 곽은규")
+        self.setWindowTitle("통합 뉴스 도구v1.1.3 - 제작자: 최준혁, 곽은규")
         self.setGeometry(100, 100, 800, 600)
 
         # 메인 레이아웃
@@ -35,6 +36,7 @@ class MainWindow(QMainWindow):
         # 탭 위젯
         tab_widget = QTabWidget()
         tab_widget.addTab(NewsTab(), "📰 뉴스 재구성")
+        tab_widget.addTab(NewsTabTest(), "🧪 뉴스 재구성(테스트)")
         tab_widget.addTab(HwanTab(), "💱 환율 차트")
         tab_widget.addTab(StockTab(), "📈 주식 차트")
         tab_widget.addTab(TossTab(), "📈 토스 인기 종목")

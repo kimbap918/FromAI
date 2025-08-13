@@ -1,8 +1,33 @@
 import os
+import sys
 import google.generativeai as genai
 from dotenv import load_dotenv
 
-load_dotenv()
+def _ensure_env_loaded():
+    if os.getenv("GOOGLE_API_KEY"):
+        return
+    # 1) 기본 현재 경로 시도
+    load_dotenv()
+    if os.getenv("GOOGLE_API_KEY"):
+        return
+    # 2) 모듈 파일 경로 시도
+    module_dir = os.path.dirname(__file__)
+    load_dotenv(os.path.join(module_dir, ".env"))
+    if os.getenv("GOOGLE_API_KEY"):
+        return
+    # 3) PyInstaller 실행파일 경로 시도
+    if getattr(sys, "frozen", False):
+        exe_dir = os.path.dirname(sys.executable)
+        load_dotenv(os.path.join(exe_dir, ".env"))
+        if os.getenv("GOOGLE_API_KEY"):
+            return
+    # 4) PyInstaller 임시 해제 경로(_MEIPASS) 시도
+    meipass = getattr(sys, "_MEIPASS", None)
+    if meipass:
+        load_dotenv(os.path.join(meipass, ".env"))
+
+_ensure_env_loaded()
+
 api_key = os.getenv("GOOGLE_API_KEY")
 if not api_key:
     raise ValueError(".env에서 GOOGLE_API_KEY를 불러오지 못했습니다.")
@@ -33,6 +58,9 @@ def generate_check_prompt() -> str:
             응답은 간결하고 명확하게 작성하되, 문제 되는 표현은 구체적으로 인용하여 설명하라."""
     )
     return prompt
+
+# 원문 + 생성된 본문 + 틀린 부분을
+
 
 
 def check_article_facts(generated_article: str, original_article: str) -> dict:
