@@ -25,7 +25,7 @@ class MainWindow(QMainWindow):
         self.init_ui()
 
     def init_ui(self):
-        self.setWindowTitle("통합 뉴스 도구v1.1.3 - 제작자: 최준혁, 곽은규")
+        self.setWindowTitle("통합 뉴스 도구v1.1.4 - 제작자: 최준혁, 곽은규")
         self.setGeometry(100, 100, 800, 600)
 
         # 메인 레이아웃

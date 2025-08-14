@@ -5,11 +5,34 @@ from PyQt5.QtCore import Qt, QThread, pyqtSignal
 from PyQt5.QtGui import QFont
 import pyperclip
 import webbrowser
+import urllib.parse
 
 from news.src.utils.article_utils import extract_article_content
 
 CHATBOT_URL = "https://chatgpt.com/g/g-67abdb7e8f1c8191978db654d8a57b86-gisa-jaeguseong-caesbos?model=gpt-4o"
 MIN_BODY_LENGTH = 300
+
+# 지원 불가 뉴스 사이트 패턴 (호스트 일부 포함)
+BLOCKED_SITES = {
+    "ichannela": "채널A",
+    "moneys": "머니S",
+    "chosun": "조선일보",
+    "jtbc": "JTBC",
+    "seoul.co.kr": "서울신문",
+    "dt.co.kr": "디지털타임스",
+    "biz.sbs": "SBS Biz",
+    "news1": "뉴스1",
+}
+
+def is_blocked_url(url: str):
+    try:
+        host = (urllib.parse.urlparse(url).netloc or "").lower()
+    except Exception:
+        host = ""
+    for pattern, name in BLOCKED_SITES.items():
+        if pattern in host:
+            return True, name
+    return False, ""
 
 # ------------------------------------------------------------------
 # 작성자 : 최준혁
@@ -164,6 +187,16 @@ class NewsTab(QWidget):
 
         if not url or not keyword:
             QMessageBox.warning(self, "입력 오류", "URL과 키워드를 모두 입력해주세요.")
+            return
+
+        # 지원 불가 도메인 사전 차단
+        blocked, site_name = is_blocked_url(url)
+        if blocked:
+            QMessageBox.warning(
+                self,
+                "지원 불가 URL",
+                f"현재 크롤링을 지원하지 않는 사이트입니다: {site_name}\n다른 기사 URL을 입력해주세요.",
+            )
             return
 
         self.extract_btn.setEnabled(False)
