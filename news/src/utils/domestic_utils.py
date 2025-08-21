@@ -304,7 +304,12 @@ def capture_wrap_company_area(stock_code: str, progress_callback=None, debug=Fal
             for el in date_els:
                 date_text = el.text.strip()
                 if date_text:
-                    chart_info["기준일"] = date_text
+                    match = re.search(r'\(.*\)', date_text)
+                    ## 기준일에서 날짜를 제거 (KRX 장중) 만 추출
+                    if match:
+                        chart_info["기준일"] = match.group(0)
+                    else:
+                        chart_info["기준일"] = date_text
                     break
         except Exception as e:
             pass

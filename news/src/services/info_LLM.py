@@ -7,17 +7,54 @@ from dotenv import load_dotenv
 from news.src.utils.common_utils import get_today_kst_str, build_stock_prompt
 
 # .env 파일 경로를 빌드/개발 환경 모두에서 안전하게 지정
-if hasattr(sys, '_MEIPASS'):
-    base_path = sys._MEIPASS
-else:
-    base_path = os.path.dirname(os.path.abspath(__file__))
+def _load_env_file():
+    if os.getenv("GOOGLE_API_KEY"):
+        return
+    
+    # PyInstaller로 빌드된 경우와 개발 중인 경우를 구분
+    if getattr(sys, "frozen", False):
+        # exe로 빌드된 경우: 여러 경로에서 .env 파일 검색
+        search_paths = [
+            os.path.dirname(sys.executable),  # exe 실행 디렉토리
+            os.path.join(os.path.expanduser("~"), "Desktop"),  # 바탕화면
+            os.path.join(os.getenv("APPDATA", ""), "NewsGenerator"),  # APPDATA
+            os.getcwd(),  # 현재 작업 디렉토리
+        ]
+        
+        # _MEIPASS가 있으면 추가
+        if hasattr(sys, '_MEIPASS'):
+            search_paths.insert(0, sys._MEIPASS)
+        
+        for path in search_paths:
+            if path and os.path.exists(path):
+                env_path = os.path.join(path, ".env")
+                if os.path.exists(env_path):
+                    load_dotenv(env_path)
+                    if os.getenv("GOOGLE_API_KEY"):
+                        print(f"✅ .env 파일을 찾았습니다: {env_path}")
+                        return
+    else:
+        # 개발 중인 경우: 기존 로직 유지
+        if hasattr(sys, '_MEIPASS'):
+            base_path = sys._MEIPASS
+        else:
+            base_path = os.path.dirname(os.path.abspath(__file__))
 
-dotenv_path = os.path.join(base_path, '.env')
-if not os.path.exists(dotenv_path):
-    dotenv_path = os.path.join(os.getcwd(), '.env')
+        dotenv_path = os.path.join(base_path, '.env')
+        if not os.path.exists(dotenv_path):
+            dotenv_path = os.path.join(os.getcwd(), '.env')
+        
+        load_dotenv(dotenv_path)
 
-load_dotenv(dotenv_path)
-genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
+# 환경 변수 로드
+_load_env_file()
+
+# API 키 확인
+api_key = os.getenv("GOOGLE_API_KEY")
+if not api_key:
+    raise ValueError(".env에서 GOOGLE_API_KEY를 불러오지 못했습니다.")
+
+genai.configure(api_key=api_key)
 
 # ------------------------------------------------------------------
 # 작성자 : 곽은규

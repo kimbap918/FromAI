@@ -82,6 +82,25 @@ class SettingsDialog(QDialog):
         load_dotenv(dotenv_path=DOTENV_PATH)
         api_key = os.getenv("GOOGLE_API_KEY", "")
         self.api_key_input.setText(api_key)
+        
+        # API 키가 설정되지 않은 경우 안내 메시지 표시
+        if not api_key or api_key == "your_api_key_here":
+            self.show_api_key_guide()
+
+    def show_api_key_guide(self):
+        """API 키 설정 가이드를 표시합니다."""
+        from PyQt5.QtWidgets import QMessageBox
+        
+        guide_text = (
+            "🔑 Google API 키 설정이 필요합니다!\n\n"
+            "1. Google AI Studio (https://makersuite.google.com/app/apikey)에서 API 키를 발급받으세요\n"
+            "2. 위 입력란에 발급받은 API 키를 입력하세요\n"
+            "3. '저장' 버튼을 클릭하세요\n\n"
+            f"📁 설정 파일 위치: {DOTENV_PATH}\n\n"
+            "💡 API 키는 안전하게 로컬에 저장되며, 외부로 전송되지 않습니다."
+        )
+        
+        QMessageBox.information(self, "API 키 설정 가이드", guide_text)
 
     def save_settings(self):
         new_api_key = self.api_key_input.text().strip()

@@ -112,6 +112,8 @@ def get_stock_info_from_search(keyword: str):
     if found_code:
         print(f"DEBUG: FinanceDataReader로 찾은 종목 코드: {found_code}")
         return found_code
+    if keyword == '아이온큐':
+        search_kyeword = keyword
     if '주가' not in keyword:
         search_keyword = f"{keyword} 주가"
     else:
@@ -165,31 +167,37 @@ def create_pamphlet(keyword: str, is_foreign: bool) -> str:
     is_foreign: 해외 주식이면 True, 국내 주식이면 False
     """
     now_kst_dt = datetime.now(TZ)
+    weekday = now_kst_dt.weekday()
 
     # ▼▼▼ 1. 해외 주식일 경우의 로직 ▼▼▼
     if is_foreign:
-        # 날짜 계산 로직
-        if now_kst_dt.weekday() == 0:  # 월요일은 0
-            yesterday = now_kst_dt - timedelta(days=3)
-        else:
+        # 날짜 계산 로직 (주말 처리 포함)
+        if weekday == 5:  # 토요일
+            yesterday = now_kst_dt - timedelta(days=1) # 금요일
+        elif weekday == 6:  # 일요일
+            yesterday = now_kst_dt - timedelta(days=2) # 금요일
+        elif weekday == 0:  # 월요일
+            yesterday = now_kst_dt - timedelta(days=3) # 금요일
+        else: # 화요일 ~ 금요일
             yesterday = now_kst_dt - timedelta(days=1)
         
-        today_day_str = str(now_kst_dt.day)
-
-        # '9일(미국 동부 기준 8일)' 형태의 문자열 생성
-        if now_kst_dt.weekday() == 0:
-            friday_plus_one = yesterday + timedelta(days=1)
-            date_str = f"{friday_plus_one.day}일(미국 동부 기준 {yesterday.day}일) 기준"
-            print(f"해외주식: {date_str}")
-        else:
-            date_str = f"{today_day_str}일(미국 동부 기준 {yesterday.day}일) 기준"
-            print(f"else 해외주식: {date_str}")
+        # '23일(미국 동부 기준 22일)' 형태의 문자열 생성
+        date_str = f"{now_kst_dt.day}일(미국 동부 기준 {yesterday.day}일) 기준"
+        print(f"해외주식: {date_str}")
         
         return f"{date_str}, 네이버페이 증권에 따르면"
 
     # ▼▼▼ 2. 국내 주식일 경우의 로직 ▼▼▼
     else:
-        time_status_str = convert_get_today_kst_str() # "9일 오후 4시 42분" 또는 "9일 KRX 장마감"
+        # 주말(토, 일)일 경우, 금요일 기준으로 장마감 처리
+        if weekday == 5: # 토요일
+            friday_dt = now_kst_dt - timedelta(days=1)
+            time_status_str = f"{friday_dt.day}일 KRX 장마감"
+        elif weekday == 6: # 일요일
+            friday_dt = now_kst_dt - timedelta(days=2)
+            time_status_str = f"{friday_dt.day}일 KRX 장마감"
+        else: # 평일
+            time_status_str = convert_get_today_kst_str()
 
         if "장마감" in time_status_str:
             # 장마감일 경우
@@ -408,19 +416,31 @@ def build_stock_prompt(today_kst):
     if not date_obj:
         date_obj = datetime.now()
 
-    now_time = convert_get_today_kst_str()
+    weekday = date_obj.weekday()
+    is_weekend = weekday in [5, 6]
+
+    # 주말일 경우 날짜를 금요일로 조정
+    if is_weekend:
+        # weekday가 5(토)이면 1일 빼고, 6(일)이면 2일 뺀다. (weekday - 4)
+        effective_date_obj = date_obj - timedelta(days=weekday - 4)
+        now_time = f"{effective_date_obj.day}일 KRX 장마감"
+    else:
+        effective_date_obj = date_obj
+        now_time = convert_get_today_kst_str()
+
     print("now_time 호출 결과:", now_time)
 
-    if date_obj.weekday() == 0:  # 월요일은 0
-        yesterday = date_obj - timedelta(days=3)
+    # 모든 날짜 계산을 effective_date_obj 기준으로 수행
+    if effective_date_obj.weekday() == 0:  # 월요일은 0
+        yesterday = effective_date_obj - timedelta(days=3)
     else:
-        yesterday = date_obj - timedelta(days=1)
+        yesterday = effective_date_obj - timedelta(days=1)
     before_yesterday = yesterday - timedelta(days=1)
     
-    today_day_str = str(date_obj.day)
+    today_day_str = str(effective_date_obj.day)
     print(f"today_day_str: {today_day_str}")
 
-    if date_obj.month != yesterday.month:
+    if effective_date_obj.month != yesterday.month:
         yesterday_str = f"지난달 {yesterday.day}"
     else:
         yesterday_str = f"지난 {yesterday.day}"
@@ -431,29 +451,33 @@ def build_stock_prompt(today_kst):
         before_yesterday_str = f"지난 {before_yesterday.day}"
     print(f"before_yesterday_str: {before_yesterday_str}") 
 
-    #############
     # 'O월 O일' 형식으로 날짜를 변환하는 내부 함수
-    def format_month_day(date_obj):
-        # ... (기존 코드) ...
+    def format_month_day(dt):
         if platform.system() == "Windows":
-            return date_obj.strftime("%#m월 %#d일")
+            return dt.strftime("%#m월 %#d일")
         else:
-            return date_obj.strftime("%-m월 %-d일")
+            return dt.strftime("%-m월 %-d일")
     
-    today_month_day_format = format_month_day(date_obj)    
+    today_month_day_format = format_month_day(effective_date_obj)
 
     if "장마감" in now_time:
         title_time_format = f"\"{today_month_day_format}\" (제목 끝에 '[변동 방향/상태] 마감' 형식으로 추가할 것)"
     else:
         title_time_format = f"\"{today_month_day_format} 장중\""
         
-    today_month_day = format_month_day(date_obj)
+    today_month_day = format_month_day(effective_date_obj)
     print(f"월과 일: {today_month_day_format}")
     print(title_time_format)
         
 
     # 원하는 형식의 최종 문자열을 생성
-    output_current_day = f"{today_day_str}일(미국 동부 기준 {yesterday.day}일)"
+    # 주말 해외주식 날짜 표기를 위한 로직
+    if is_weekend:
+        us_yesterday = date_obj - timedelta(days=weekday-4) # 금요일
+        output_current_day = f"{date_obj.day}일(미국 동부 기준 {us_yesterday.day}일)"
+    else: # 평일
+        output_current_day = f"{effective_date_obj.day}일(미국 동부 기준 {yesterday.day}일)"
+        
     output_previous_day = f"{yesterday_str}일(미국 동부 기준 {before_yesterday.day}일)"
     
     print(output_current_day)
@@ -462,22 +486,23 @@ def build_stock_prompt(today_kst):
     stock_prompt = (
         "[Special Rules for Stock-Related News]\n"
         f"1. 제목 작성 시 규칙\n"
-        f"   - **순서는 키워드,\"{title_time_format}\",내용 순으로 생성하고, 키워드 뒤에는 반드시 콤마(,)를 표기할 것.**\n"
+        f"   - **순서는 ①키워드 ②\"{title_time_format}\" ③내용 순으로 생성하고, 키워드 뒤에는 반드시 콤마(,)를 표기할 것.**\n"
         f"   - 금액에는 천단위는 반드시 콤마(,)를 표기할 것 (예: 64,600원)\n"
-        f"   - **반드시 날짜는 \"{title_time_format}\"과 같은 형식으로 기입할 것.\n**"
-        f"   - 해외 주식일 경우, 제목을 작성할 때 날짜를 제외하고 생성 할 것.(단, 본문에는 본문 작성 시 규칙을 따를 것).\n"
+        f"   - **국내 주식일 경우, 반드시 날짜는 \"{title_time_format}\"과 같은 형식으로 기입할 것.\n**"
+        f"   - 해외 주식일 경우, 제목을 작성할 때 날짜를 제외하고 생성 할 것.(단, 본문에는 본문 작성 시 절대 규칙을 따를 것).\n"
         f"   - 해외 주식일 경우, [해외주식 정보] 안에 us_time을 참고해서 장중/장마감 구분하기.\n"
         f"   - 가격과 등락률(%)을 반드시 함께 표기하고, 다양한 서술 방식을 사용하여 제목을 풍부하고 다채롭게 표현할 것.\n"
         f"   - 제목을 작성 할 때 '전일 대비, 지난, 대비'와 같은 비교 표현은 사용하지 않는다.\n"
         f"   - **주가 정보는 간결하게 포함하며, 장이 마감되었을 경우에만 제목의 가장 마지막에 \"<변동 방향/상태> 마감\" 형식으로 마무리 할 것.**\n\n"
-        f"2. 본문 작성 시 규칙\n"
-        f"   - 본문을 작성할 때, 날짜와 출처, 시장, 기준 정보는 시스템이 사전에 자동으로 추가합니다. **이와 중복되는 정보를 절대 생성하지 말고, 기사의 핵심 내용 서술에만 집중 할 것.**\n"
-        f"   - 국내 주식의 경우 [키워드 정보(user message)]의 기준일을 참고하지 않고, 본문에는 날짜 표현을 **절대 포함하지 않는다.**\n"
-        f"   - 예시: '2025년 8월 13일', '8월 13일', '13일'\n"
+        f"2. 본문 작성 시 절대 규칙\n"
+        f"   - 본문을 작성할 때 날짜와 시간 출처, 시장, 시간적 기준점 정보는 시스템이 사전에 자동으로 추가. **이와 중복되는 정보를 절대 생성하지 말고, [주식 정보]의 객관적 사실과 데이터를 바탕으로 기사의 핵심 내용 서술에만 집중 할 것.**\n"
+        f"   - **본문의 첫 문장은 키워드(종목명)로 시작하되, [주식 정보]의 객관적 사실과 데이터를 바탕으로 충분한 분량의 기사를 작성할 것.**\n"
+        f"   - **장중/장마감 구분은 [키워드 정보(user message)] 내의 [주식 정보] 안에 기준일을 참고하여 구분할 것.**\n"
+        f"   - **본문에는 어떠한 형태의 날짜나 시간 표현도 절대 사용하지 말 것.**\n"
         f"   - '전일', '전날', '전 거래일', '지난 거래일' 같은 표현은 '지난 종가'로 표현할것.\n\n"
         f"3. 해외 주식의 경우, 날짜와 추가 본문 작성 규칙\n"
         f"     - **엄격히 '이날', '금일', '당일'과 같은 표현을 사용하지 말 것.**\n"
-        f"     - 해외 주식의 경우 '시간 외 거래'가 있는 경우 본문에 정규장 내용 이후 시간 외 거래 내용을 포함할것.\n"
+        f"     - 해외 주식의 경우 '시간 외 거래'가 있는 경우 본문에 정규장 내용 이후 시간 외 거래 내용을 포함할 것.\n"
         f"     - **장중/장마감 구분은 [키워드 정보(user message)] 내의 [해외주식 정보] 안에 us_time을 참고하여 구분할 것.**\n"
         f"     - 예시: 실시간 -> 장 중 장마감 -> 장 마감\n\n"
         f"4. 거래대금은 반드시 **억 단위, 천만 단위로 환산**하여 정확히 표기할 것\n"
@@ -488,7 +513,6 @@ def build_stock_prompt(today_kst):
         f"- 등락과 연속 흐름을 조건별로 구분해 자연스럽게 서술하도록 지시할 것.\n"
         f"- 기업과 주식 관련 정보는 구체적인 수치와 함께 명시할 것.\n"
         f"- 단순 데이터 나열을 금지하며, 원인과 결과를 엮어 [News Generation Process] 기반으로 구성할 것.\n"
-        f"- **검토를 할 때 규칙을 잘 이행했는지 확인하고, 만약 규칙이 이행 되지 않을시 반드시 다시 규칙을 확인하여 적용할 것.\n**"
         f"- **'투자자들, 관심, 주목, 기대, 풀이, 분석' 이라는 단어와 분석내용,감정,주관이 담긴 표현을 엄격히 사용하지 않는다.\n**"
         f"- **'이날, 전일, 전 거래일, 전날' 이라는 단어와 표현은 엄격히 절대 사용하지 말 것.\n\n**"
     )

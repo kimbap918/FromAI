@@ -13,6 +13,40 @@ from news.src.components.hwan_tab import HwanTab
 from news.src.components.toss_tab import TossTab
 from news.src.components.settings_dialog import SettingsDialog
 
+def initialize_environment():
+    """PyInstaller로 빌드된 exe가 처음 실행될 때 환경을 초기화합니다."""
+    if getattr(sys, 'frozen', False):
+        # exe로 빌드된 경우
+        if sys.platform == 'win32':
+            app_data = os.getenv('APPDATA')
+            app_name = 'NewsGenerator'
+            app_dir = os.path.join(app_data, app_name)
+            
+            # 디렉토리 생성
+            os.makedirs(app_dir, exist_ok=True)
+            
+            # .env 파일 경로
+            env_path = os.path.join(app_dir, '.env')
+            
+            # .env 파일이 없으면 기본 템플릿으로 생성
+            if not os.path.exists(env_path):
+                try:
+                    with open(env_path, 'w', encoding='utf-8') as f:
+                        f.write("# FromAI News Generator 환경 설정 파일\n")
+                        f.write("# Google API Key를 설정하세요\n")
+                        f.write("GOOGLE_API_KEY=your_api_key_here\n")
+                    print(f"✅ 새로운 .env 파일을 생성했습니다: {env_path}")
+                except Exception as e:
+                    print(f"⚠️ .env 파일 생성 중 오류: {e}")
+            
+            # 현재 실행 중인 세션의 환경 변수에 .env 파일 로드
+            try:
+                from dotenv import load_dotenv
+                load_dotenv(env_path)
+                print(f"✅ 환경 변수를 로드했습니다: {env_path}")
+            except Exception as e:
+                print(f"⚠️ 환경 변수 로드 중 오류: {e}")
+
 # ------------------------------------------------------------------
 # 작성자 : 최준혁
 # 작성일 : 2025-07-09
@@ -93,6 +127,9 @@ class MainWindow(QMainWindow):
         dialog.exec_()
 
 def main():
+    # PyInstaller로 빌드된 exe의 경우 환경 초기화
+    initialize_environment()
+    
     app = QApplication(sys.argv)
     app.setStyle('Fusion')
     app.setFont(QFont("Arial", 9))
