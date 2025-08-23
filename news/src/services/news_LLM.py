@@ -1,3 +1,5 @@
+# news_LLM.py — JSON 검증 연동 + verdict 안정 처리 버전
+
 import os
 import sys
 import google.generativeai as genai
@@ -9,6 +11,14 @@ from datetime import datetime
 import logging
 from pathlib import Path
 from news.src.utils.common_utils import get_today_kst_str
+
+# article_utils의 견고한 추출기를 우선 사용 (없으면 내부 추출기로 폴백)
+try:
+    from news.src.utils.article_utils import extract_article_content, MIN_BODY_LENGTH as AU_MIN
+except Exception:
+    extract_article_content = None
+    AU_MIN = 300
+
 try:
     from . import check_LLM
 except ImportError:
@@ -37,7 +47,6 @@ def ensure_output_sections(article_text: str, keyword: str, fallback_title: str)
     has_tags  = "[해시태그]" in text
     has_body  = "[본문]" in text
 
-    # 이미 완비된 경우도, 여분의 공백 정리만 하고 반환
     if has_title and has_tags and has_body:
         return text
 
@@ -46,7 +55,6 @@ def ensure_output_sections(article_text: str, keyword: str, fallback_title: str)
     if body_match:
         body = body_match.group(1).strip()
     else:
-        # [본문]이 없으면 통짜 텍스트를 본문으로 간주
         body = text
 
     # 해시태그 후보 추출
@@ -65,7 +73,6 @@ def ensure_output_sections(article_text: str, keyword: str, fallback_title: str)
     for t in found_tags:
         if t not in tags:
             tags.append(t)
-    # 부족하면 일반 키워드 보충
     for extra in ["#뉴스", "#이슈", "#정보"]:
         if len(tags) >= 5:
             break
@@ -140,7 +147,7 @@ def _get_base_dir() -> Path:
 def setup_logging(keyword: str) -> tuple[logging.Logger, str]:
     """
     뉴스 재구성 로깅을 실행 위치에 생성.
-    예) ./기사 재생성/재생성20250821/키워드.txt
+    예) ./기사 재생성/재생성YYYYMMDD/키워드.txt
     """
     current_date = datetime.now().strftime("%Y%m%d")
     base_dir = _get_base_dir()
@@ -180,52 +187,61 @@ def log_and_print(logger, message: str, level: str = "info"):
         logger.debug(message)
 
 
-def extract_title_and_body(url, logger):
-    log_and_print(logger, f"\n  📄 기사 추출 세부 과정:")
-    log_and_print(logger, f"    - newspaper 라이브러리로 기사 다운로드 시도...")
+def extract_title_and_body(url, logger=None):
+    if logger:
+        log_and_print(logger, f"\n  📄 기사 추출 세부 과정:")
+        log_and_print(logger, f"    - newspaper 라이브러리로 기사 다운로드 시도...")
 
     article = Article(url, language='ko')
     article.download()
     article.parse()
-    title = article.title.strip()
-    body = article.text.strip()
+    title = (article.title or "").strip()
+    body = (article.text or "").strip()
 
-    log_and_print(logger, f"    - 다운로드된 제목: {title}")
-    log_and_print(logger, f"    - 다운로드된 본문 길이: {len(body)}자")
+    if logger:
+        log_and_print(logger, f"    - 다운로드된 제목: {title}")
+        log_and_print(logger, f"    - 다운로드된 본문 길이: {len(body)}자")
 
     if len(body) < 50:
-        log_and_print(logger, f"    ⚠️ 본문이 짧아 fallback으로 전환합니다.", "warning")
-        log_and_print(logger, f"    - fallback: extract_naver_cp_article() 호출...")
+        if logger:
+            log_and_print(logger, f"    ⚠️ 본문이 짧아 fallback으로 전환합니다.", "warning")
+            log_and_print(logger, f"    - fallback: extract_naver_cp_article() 호출...")
         title, body = extract_naver_cp_article(url, logger)
-        log_and_print(logger, f"    - fallback 결과 제목: {title}")
-        log_and_print(logger, f"    - fallback 결과 본문 길이: {len(body)}자")
+        if logger:
+            log_and_print(logger, f"    - fallback 결과 제목: {title}")
+            log_and_print(logger, f"    - fallback 결과 본문 길이: {len(body)}자")
     else:
-        log_and_print(logger, f"    ✅ 본문 길이 충분 - newspaper 결과 사용")
+        if logger:
+            log_and_print(logger, f"    ✅ 본문 길이 충분 - newspaper 결과 사용")
 
     return title, body
 
 
-def extract_naver_cp_article(url, logger):
-    log_and_print(logger, f"      🔄 네이버 CP 기사 fallback 처리:")
-    log_and_print(logger, f"        - requests로 HTML 직접 다운로드...")
+def extract_naver_cp_article(url, logger=None):
+    if logger:
+        log_and_print(logger, f"      🔄 네이버 CP 기사 fallback 처리:")
+        log_and_print(logger, f"        - requests로 HTML 직접 다운로드...")
 
     headers = {'User-Agent': 'Mozilla/5.0'}
     res = requests.get(url, headers=headers)
     soup = BeautifulSoup(res.text, 'html.parser')
 
-    log_and_print(logger, f"        - HTML 다운로드 완료: {len(res.text)}자")
+    if logger:
+        log_and_print(logger, f"        - HTML 다운로드 완료: {len(res.text)}자")
 
     title_tag = soup.select_one('h2.media_end_head_headline')
     title = title_tag.text.strip() if title_tag else "제목 없음"
 
-    log_and_print(logger, f"        - 제목 태그 검색 결과: {'찾음' if title_tag else '찾지 못함'}")
-    log_and_print(logger, f"        - 추출된 제목: {title}")
+    if logger:
+        log_and_print(logger, f"        - 제목 태그 검색 결과: {'찾음' if title_tag else '찾지 못함'}")
+        log_and_print(logger, f"        - 추출된 제목: {title}")
 
     body_area = soup.select_one('article#dic_area')
     body = body_area.get_text(separator="\n").strip() if body_area else "본문 없음"
 
-    log_and_print(logger, f"        - 본문 영역 검색 결과: {'찾음' if body_area else '찾지 못함'}")
-    log_and_print(logger, f"        - 추출된 본문 길이: {len(body)}자")
+    if logger:
+        log_and_print(logger, f"        - 본문 영역 검색 결과: {'찾음' if body_area else '찾지 못함'}")
+        log_and_print(logger, f"        - 추출된 본문 길이: {len(body)}자")
 
     return title, body
 
@@ -247,13 +263,14 @@ def generate_system_prompt(keyword: str, today_kst: str) -> str:
         - 오늘 날짜(Asia/Seoul): {today_kst}
 
         [시제 변환 규칙]
-        - 원문에 포함된 날짜/시간 표현과 오늘(KST) 기준일을 비교하여 시제를 일관되게 조정한다.
-        - 이미 발생한 사실은 과거 시제(…했다/…이었다), 진행 중인 사실은 현재 시제(…한다), 예정된 사실은 미래 지향 서술(…할 예정이다/…로 예정돼 있다)로 기술한다.
+        - 원문에 포함된 날짜/시간 표현과 [오늘(KST) 기준일]을 비교하여 시제를 일관되게 조정한다.
+        - 날짜가 이미 지난 시점 혹은 이미 발생한 사실은 과거 시제(…했다/…이었다), 진행 중인 사실은 현재 시제(…한다), 예정된 사실은 미래 지향 서술(…할 예정이다/…로 예정돼 있다)로 기술한다.
         - 추측성 표현(…할 것으로 보인다, …전망이다)은 사용하지 않는다.
         - 날짜를 노출할 필요가 없으면 직접적인 날짜 표기는 피하고, '당시', '이후', '이전', '같은 날'과 같은 상대적 시간 표현을 사용한다.
+        - 본문에 날짜가 포함된 경우, [오늘(KST) 기준일]을 기준으로 과거인 경우 날짜 앞에 "지난", 미래인 경우 "오는"을 추가한다. (예: 지난 O일, 지난 OOOO년, 지난 OO월, 지난달 OO월, 오는 O일, 오는 OOOO년, 오는 OO월)
 
         [News Generation Process (Step-by-Step Execution)]
-        1. 제목 생성
+        1. 제목 생성 
         - 제공된 기사 제목을 인용하고, 본문의 핵심 내용을 반영하여 **3개의 창의적이고 다양한 제목**을 생성한다.
         - 키워드는 가능한 한 앞쪽에 자연스럽게 포함하되, 강제로 앞에 배치하지 않는다.
         - 제목 유형은 다음과 같이 다양성을 확보한다:
@@ -273,7 +290,7 @@ def generate_system_prompt(keyword: str, today_kst: str) -> str:
         - 원문의 주요 사실은 모두 포함하되, 표현 방식은 완전히 변경
         - 문장은 짧고 명확하게 (한 문장당 15~20자 내외 권장)
         - 인용문은 원문 그대로 유지 (단어 하나도 변경 금지)
-        - 비격식체 사용 (예: "~이다", "~했다", "~한다")
+        - 비격식체 사용 (예: "~이다", "~했다", "~한다")를 일관되게 사용, 서술식("~습니다", "~입니다")는 절대 사용하지 않는다.
         - 맞춤법 정확히 준수, 부적절한 표현 사용 금지
         - '...', '~~', '!!' 등 불필요한 기호 사용 금지
 
@@ -287,6 +304,7 @@ def generate_system_prompt(keyword: str, today_kst: str) -> str:
         5. 출력형식에 맞게 출력한다.  
 
         [출력 형식]  
+
         - 제목 (3개 제공, 각 제목 당 최대 35자 내외)
         - 해시태그 (5개 내외)
         - 본문 내용
@@ -305,57 +323,64 @@ def generate_system_prompt(keyword: str, today_kst: str) -> str:
     )
     return prompt
 
-
-def _is_fact_ok(check_result: dict) -> bool:
-    if not check_result or "json" not in check_result or not check_result["json"]:
-        return False
-    return check_result["json"].get("verdict") == "OK"
+def _is_fact_ok_text(verdict: str) -> bool:
+    """check_LLM 결과 JSON의 verdict로 OK/ERROR 판정"""
+    return (verdict or "").strip().upper() == "OK"
 
 
 def generate_article(state: dict) -> dict:
     url = state.get("url")
     keyword = state.get("keyword")
 
-    logger, log_filepath = setup_logging(keyword)
+    # 로거 준비
+    logger, log_filepath = setup_logging(keyword or "로그")
 
-    log_and_print(logger, "\n" + "="*80)
-    log_and_print(logger, "📰 NEWS_LLM - 기사 재구성 시작")
-    log_and_print(logger, "="*80)
-    log_and_print(logger, f"\n📥 입력 데이터:")
-    log_and_print(logger, f"  - URL: {url}")
-    log_and_print(logger, f"  - 키워드: {keyword}")
-    log_and_print(logger, f"  - 로그 파일: {log_filepath}")
+    # 외부에서 전달된 제목/본문(예: news_tab_test에서 추출) 우선 사용
+    title = (state.get("title") or "").strip()
+    body = (state.get("body") or "").strip()
 
     try:
-        log_and_print(logger, f"\n🔗 기사 추출 단계:")
-        log_and_print(logger, f"  - URL에서 기사 다운로드 및 파싱 중...")
-        title, body = extract_title_and_body(url, logger)
-        log_and_print(logger, f"  ✅ 기사 추출 완료")
-        log_and_print(logger, f"  - 제목: {title}")
-        log_and_print(logger, f"  - 본문 길이: {len(body)}자")
+        log_and_print(logger, "\n" + "="*80)
+        log_and_print(logger, "📰 NEWS_LLM - 기사 재구성 시작")
+        log_and_print(logger, "="*80)
+        log_and_print(logger, f"\n📥 입력 데이터:")
+        log_and_print(logger, f"  - URL: {url}")
+        log_and_print(logger, f"  - 키워드: {keyword}")
+        log_and_print(logger, f"  - 로그 파일: {log_filepath}")
 
+        # 1) state에 충분한 본문이 없으면, article_utils로 견고 추출 시도
+        if (not title or not body) or (len(body) < AU_MIN):
+            log_and_print(logger, "\n🔗 기사 추출 단계: 외부 추출 미흡 → article_utils 시도")
+            if extract_article_content is not None:
+                try:
+                    t2, b2 = extract_article_content(url, progress_callback=None)
+                    if len(b2 or "") >= AU_MIN:
+                        title, body = t2, b2
+                        log_and_print(logger, f"  ✅ article_utils 성공: 본문 {len(body)}자")
+                except Exception as e:
+                    log_and_print(logger, f"  ⚠️ article_utils 실패: {e}", "warning")
+
+        # 2) 그래도 부족하면, 내부 간이 추출기 사용
+        if not title or not body:
+            log_and_print(logger, "  🔁 내부 추출기로 폴백")
+            t3, b3 = extract_title_and_body(url, logger)
+            if len((b3 or "")) > len(body or ""):
+                title, body = t3, b3
+
+        if not body:
+            raise ValueError("본문 추출 실패: 본문이 비어 있습니다.")
+
+        # 프롬프트 준비
+        today_kst = get_today_kst_str()
+        system_prompt = generate_system_prompt(keyword or "", today_kst)
+        user_request = f"키워드: {keyword}\n제목: {title}\n본문: {body}"
+
+        # 로그: 원문 요약
         log_and_print(logger, f"\n📋 전체 원본 기사:")
         log_and_print(logger, f"{'='*80}")
         log_and_print(logger, f"제목: {title}")
         log_and_print(logger, f"{'='*40}")
-        log_and_print(logger, body)
-        log_and_print(logger, f"{'='*80}")
-
-        log_and_print(logger, f"\n🤖 AI 프롬프트 생성:")
-        today_kst = get_today_kst_str()
-        system_prompt = generate_system_prompt(keyword, today_kst)
-        user_request = f"키워드: {keyword}\n제목: {title}\n본문: {body}"
-        log_and_print(logger, f"  - 시스템 프롬프트 길이: {len(system_prompt)}자")
-        log_and_print(logger, f"  - 사용자 요청 길이: {len(user_request)}자")
-
-        log_and_print(logger, f"\n📋 전체 시스템 프롬프트:")
-        log_and_print(logger, f"{'='*80}")
-        log_and_print(logger, system_prompt)
-        log_and_print(logger, f"{'='*80}")
-
-        log_and_print(logger, f"\n📋 전체 사용자 요청:")
-        log_and_print(logger, f"{'='*80}")
-        log_and_print(logger, user_request)
+        log_and_print(logger, body if len(body) <= 2000 else (body[:2000] + "\n...[생략]"))
         log_and_print(logger, f"{'='*80}")
 
         contents = [
@@ -364,80 +389,53 @@ def generate_article(state: dict) -> dict:
             {'role': 'user', 'parts': [{'text': user_request}]}
         ]
 
-        log_and_print(logger, f"\n⏳ Gemini AI 호출 중...")
-        log_and_print(logger, f"  - 모델: gemini-2.5-flash")
-        log_and_print(logger, f"  - 요청 내용 길이: {len(str(contents))}자")
+        log_and_print(logger, f"\n⏳ Gemini AI 호출 중... 모델: gemini-2.5-flash")
 
         response = model.generate_content(contents)
-        article_text = response.text.strip()
+        article_text = (getattr(response, "text", "") or "").strip()
 
-        log_and_print(logger, f"\n📤 AI 응답 결과:")
-        log_and_print(logger, f"  - 응답 길이: {len(article_text)}자")
+        log_and_print(logger, f"\n📤 AI 응답 길이: {len(article_text)}자")
 
-        log_and_print(logger, f"\n📋 전체 AI 응답:")
-        log_and_print(logger, f"{'='*80}")
-        log_and_print(logger, article_text)
-        log_and_print(logger, f"{'='*80}")
+        # 🔒 LLM 응답 형식 보정
+        article_text = ensure_output_sections(article_text, keyword or "", title)
 
-        # ---------------------------
-        # 🔒 형식 고정 처리 (LLM 응답 직후)
-        # ---------------------------
-        article_text = ensure_output_sections(article_text, keyword, title)
+        log_and_print(logger, f"\n📊 기사 길이 비교: 원본 {len(body)}자 → 재구성 {len(article_text)}자")
 
-        log_and_print(logger, f"\n📊 기사 길이 비교:")
-        log_and_print(logger, f"  - 원본 기사: {len(body)}자")
-        log_and_print(logger, f"  - 재구성된 기사: {len(article_text)}자")
-        log_and_print(logger, f"  - 길이 변화: {len(article_text) - len(body)}자")
+        # 사실관계 검증 (check_LLM는 (generated, original, [keyword]) 3인자 시그니처 허용)
+        log_and_print(logger, f"\n🔍 사실관계 검증 단계: check_LLM.check_article_facts 호출")
+        check_res = check_LLM.check_article_facts(article_text, body, (keyword or "check_LLM"))
 
-        log_and_print(logger, f"\n🔍 사실관계 검증 단계:")
-        log_and_print(logger, f"  - check_LLM.check_article_facts() 호출...")
-        fact_check_result = check_LLM.check_article_facts(article_text, body, keyword)
-        log_and_print(logger, f"  ✅ 사실관계 검증 완료")
+        verdict = ""
+        corrected_article = ""
+        explanation = ""
 
-        # --- 핵심 분기 ---
-        log_and_print(logger, f"\n🎯 결과 분기 결정:")
-        if _is_fact_ok(fact_check_result):
-            log_and_print(logger, f"  ✅ 사실관계 문제 없음 - 재구성된 기사 사용")
+        if isinstance(check_res, dict):
+            json_obj = check_res.get("json")
+            explanation = check_res.get("explanation", "")
+            if json_obj:
+                # 🚑 방어코딩: 어떤 타입이 와도 문자열화 후 처리
+                verdict_val = json_obj.get("verdict", "")
+                verdict = str(verdict_val).strip().upper()
+                corrected_article_val = json_obj.get("corrected_article", "")
+                corrected_article = str(corrected_article_val or "").strip()
+
+        # 결과 분기
+        if _is_fact_ok_text(verdict):
             display_text = article_text
             display_kind = "article"
+            log_and_print(logger, "  ✅ 사실관계 이상 없음 → 기사 채택")
         else:
-            log_and_print(logger, f"  ⚠️ 사실관계 문제 발견 - 수정된 기사 확인 중...")
-            corrected_article = ""
-            if fact_check_result and fact_check_result.get("json"):
-                corrected_article = fact_check_result["json"].get("corrected_article", "") or ""
-            if corrected_article:
-                # ---------------------------
-                # 🔒 형식 고정 처리 (교정 기사에도 적용)
-                # ---------------------------
-                corrected_article = ensure_output_sections(corrected_article, keyword, title)
-                log_and_print(logger, f"  ✅ 수정된 기사 사용")
+            if verdict == "ERROR" and corrected_article:
+                # 교정 기사가 도착한 경우, 교정본을 바로 채택
                 display_text = corrected_article
-                display_kind = "corrected_article"
-            else:
-                log_and_print(logger, f"  ⚠️ 수정된 기사 없음 - 재구성된 기사 사용")
-                display_text = article_text
                 display_kind = "article"
-
-        log_and_print(logger, f"\n📋 최종 결과:")
-        log_and_print(logger, f"  - display_kind: {display_kind}")
-        log_and_print(logger, f"  - display_text 길이: {len(display_text)}자")
-
-        log_and_print(logger, f"\n📋 전체 최종 결과:")
-        log_and_print(logger, f"{'='*80}")
-        log_and_print(logger, display_text)
-        log_and_print(logger, f"{'='*80}")
-
-        if fact_check_result and "explanation" in fact_check_result:
-            log_and_print(logger, f"\n📋 전체 사실관계 검증 결과:")
-            log_and_print(logger, f"{'='*80}")
-            log_and_print(logger, fact_check_result["explanation"])
-            log_and_print(logger, f"{'='*80}")
-            if fact_check_result.get("json"):
-                log_and_print(logger, f"\n📋 JSON 검증 결과:")
-                log_and_print(logger, f"{'='*80}")
-                import json
-                log_and_print(logger, json.dumps(fact_check_result["json"], ensure_ascii=False, indent=2))
-                log_and_print(logger, f"{'='*80}")
+                log_and_print(logger, "  ✏️ 오류 발견 + 교정본 제공 → 교정 기사 채택")
+            else:
+                # 교정본이 없으면 경고 및 설명 출력
+                warn = "[사실검증]\n검증 경고 또는 파싱 실패\n\n" + (explanation or "검증에 실패했습니다.")
+                display_text = warn
+                display_kind = "fact_check"
+                log_and_print(logger, "  ⚠️ 사실관계 이슈 또는 검증 실패 → fact_check 표출")
 
         result = {
             "url": url,
@@ -445,16 +443,14 @@ def generate_article(state: dict) -> dict:
             "title": title,
             "original_body": body,
             "generated_article": article_text,
-            "fact_check_result": fact_check_result,
-            "corrected_article": corrected_article if 'corrected_article' in locals() else "",
+            "fact_check_result": verdict or "UNKNOWN",
+            "corrected_article": corrected_article,
             "display_text": display_text,
             "display_kind": display_kind,
             "error": None
         }
 
-        log_and_print(logger, f"\n💾 최종 결과를 로그 파일에 저장 완료")
-        log_and_print(logger, f"  - 로그 파일 경로: {log_filepath}")
-
+        log_and_print(logger, f"\n📋 display_kind: {display_kind}")
         log_and_print(logger, "\n" + "="*80)
         log_and_print(logger, "📰 NEWS_LLM - 기사 재구성 완료")
         log_and_print(logger, "="*80)
@@ -462,16 +458,20 @@ def generate_article(state: dict) -> dict:
         return result
 
     except Exception as e:
-        log_and_print(logger, f"\n❌ 예외 발생: {str(e)}", "error")
-        log_and_print(logger, "\n" + "="*80, "error")
-        log_and_print(logger, "📰 NEWS_LLM - 기사 재구성 실패", "error")
-        log_and_print(logger, "="*80, "error")
+        # 안전 처리: logger가 없을 가능성도 대비
+        try:
+            log_and_print(logger, f"\n❌ 예외 발생: {str(e)}", "error")
+            log_and_print(logger, "\n" + "="*80, "error")
+            log_and_print(logger, "📰 NEWS_LLM - 기사 재구성 실패", "error")
+            log_and_print(logger, "="*80, "error")
+        except Exception:
+            pass
 
         return {
-            "url": url,
-            "keyword": keyword,
-            "title": "",
-            "original_body": "",
+            "url": state.get("url"),
+            "keyword": state.get("keyword"),
+            "title": state.get("title") or "",
+            "original_body": state.get("body") or "",
             "generated_article": "",
             "fact_check_result": "",
             "display_text": f"오류: {str(e)}",
@@ -499,6 +499,4 @@ if __name__ == "__main__":
         print("\n✅ 결과:\n")
         print(result["display_text"])
         print(f"\n📁 로그 파일이 저장되었습니다.")
-        print(f"   폴더 구조: FromAI1.1.3 2/기사 재생성/재생성{datetime.now().strftime('%Y%m%d')}/")
         print(f"   파일명: {keyword}.txt")
-        print(f"   FromAI1.1.3 2 폴더 바로 아래에 '기사 재생성' 폴더가 생성되었습니다.")

@@ -39,9 +39,8 @@ def is_blocked_url(url: str):
 
 # ------------------------------------------------------------------
 # 작성자 : 최준혁
-# 작성일 : 2025-08-20
+# 작성일 : 2025-08-22
 # 기능 : LLM을 이용한 기사 재구성 테스트 탭(프론트)
-# 변경 : 사실검증 결과에 따라 표출 내용 분기 (기사만/검증만)
 # ------------------------------------------------------------------
 class NewsLLMWorker(QThread):
     finished = pyqtSignal(dict, str)  # result, error
@@ -55,31 +54,34 @@ class NewsLLMWorker(QThread):
     def run(self):
         try:
             self.progress.emit("기사 다운로드 중...")
-            # article_utils를 사용하여 기사 추출
-            title, body = extract_article_content(self.url)
-            
+            # article_utils를 사용하여 기사 추출 (iframe/스마트 파싱 포함)
+            title, body = extract_article_content(self.url, progress_callback=self.progress.emit)
+
+            self.progress.emit("본문 길이 확인 중...")
             if not body or len(body) < 300:  # 최소 300자 이상
                 self.finished.emit({}, "기사 본문을 추출하지 못했거나 너무 짧습니다.")
                 return
-                
+
             self.progress.emit("LLM을 통한 기사 생성 중...")
-            result = news_LLM.generate_article({"url": self.url, "keyword": self.keyword, "title": title, "body": body})
-            
+            # 🔑 news_LLM 쪽에서 title/body를 우선 사용하도록 반드시 수정 필요
+            result = news_LLM.generate_article({
+                "url": self.url,
+                "keyword": self.keyword,
+                "title": title,
+                "body": body
+            })
+
             if result.get("error"):
                 self.finished.emit({}, result.get("error"))
                 return
-                
+
             self.finished.emit(result, "")
-            
+
         except Exception as e:
-            self.finished.emit({}, f"오류 발생: {str(e)}")
+            error_msg = f"오류 발생: {str(e)}"
+            self.progress.emit(error_msg)
+            self.finished.emit({}, error_msg)
 
-
-# ------------------------------------------------------------------
-# 작성자 : 최준혁
-# 작성일 : 2025-08-22
-# 기능 : LLM을 이용한 기사 재구성 테스트 탭(프론트)
-# ------------------------------------------------------------------
 class NewsTabTest(QWidget):
     def __init__(self):
         super().__init__()
@@ -143,7 +145,8 @@ class NewsTabTest(QWidget):
 
         self.result_text = QTextEdit()
         self.result_text.setReadOnly(True)
-        self.result_text.setMaximumHeight(200)
+        # 보기 좋게 높이 제한 완화(원하면 제거해도 됨)
+        self.result_text.setMaximumHeight(500)
         result_layout.addWidget(self.result_text)
 
         copy_button_layout = QHBoxLayout()
@@ -218,15 +221,10 @@ class NewsTabTest(QWidget):
 
         display_text = result.get("display_text", "")
         kind = result.get("display_kind", "")
-        
-        # 기사가 성공적으로 생성된 경우 파일로 저장
+
+        # 기사 저장(선택)
         if kind == "article" and display_text:
-            # 키워드 가져오기 (입력 필드에서)
-            keyword = self.keyword_input.text().strip()
-            if not keyword:
-                keyword = "생성기사"  # 기본값
-                
-            # 파일로 저장
+            keyword = self.keyword_input.text().strip() or "생성기사"
             saved_path = self.save_article_to_file(keyword, display_text)
             if saved_path:
                 self.progress_label.setText(f"기사가 저장되었습니다: {os.path.basename(saved_path)}")
@@ -258,37 +256,20 @@ class NewsTabTest(QWidget):
         pyperclip.copy(text)
 
     def save_article_to_file(self, keyword: str, content: str) -> str:
-        """
-        기사를 파일로 저장합니다.
-        :param keyword: 사용자가 입력한 키워드 (파일명으로 사용)
-        :param content: 기사 내용
-        :return: 저장된 파일 경로
-        """
         try:
-            # 현재 날짜로 폴더명 생성
             current_date = datetime.now().strftime("%Y%m%d")
-            
-            # 기본 디렉토리 가져오기
             base_dir = self._get_base_dir()
-            
-            # 저장할 폴더 경로
             save_dir = os.path.join(base_dir, "기사 재생성", f"재생성{current_date}")
             os.makedirs(save_dir, exist_ok=True)
-            
-            # 파일명 생성 (키워드에서 특수문자 제거)
+
             import re
             safe_keyword = re.sub(r'[\\/*?:"<>|]', '', keyword).strip()
-            
-            # 파일명 중복 방지
             filename = f"{safe_keyword}.txt"
             filepath = os.path.join(save_dir, filename)
-            
-            # 파일에 내용 쓰기 (UTF-8 인코딩)
+
             with open(filepath, 'w', encoding='utf-8') as f:
                 f.write(content)
-                
             return filepath
-            
         except Exception as e:
             print(f"기사 저장 중 오류 발생: {str(e)}")
             return ""
@@ -302,52 +283,26 @@ class NewsTabTest(QWidget):
         self.cancel_btn.setEnabled(False)
 
     def _get_base_dir(self) -> str:
-        """
-        exe 빌드 시: exe가 있는 위치
-        개발/실행 시: 현재 실행 디렉토리(Working Directory)
-        """
         if getattr(sys, 'frozen', False):
             return os.path.dirname(sys.executable)
         return os.getcwd()
 
     def open_today_folder(self):
-        """
-        오늘 날짜의 재생성 폴더를 엽니다.
-        """
         try:
-            # 현재 날짜로 폴더명 생성
             current_date = datetime.now().strftime("%Y%m%d")
-            
-            # 기본 디렉토리 가져오기
             base_dir = self._get_base_dir()
-            
-            # 폴더 경로 생성 및 생성
             folder_path = os.path.join(base_dir, "기사 재생성", f"재생성{current_date}")
             os.makedirs(folder_path, exist_ok=True)
-            
-            # 운영체제별로 폴더 열기
-            if os.name == 'nt':  # Windows
+
+            if os.name == 'nt':
                 try:
-                    # 먼저 os.startfile 시도
                     os.startfile(folder_path)
                 except Exception:
-                    try:
-                        # 실패하면 explorer로 시도
-                        subprocess.run(['explorer', folder_path], check=True, shell=True)
-                    except subprocess.CalledProcessError:
-                        # 그래도 실패하면 직접 경로를 explorer에 전달
-                        os.system(f'explorer "{folder_path}"')
-            
-            elif os.name == 'posix':  # macOS, Linux
-                try:
-                    if sys.platform == 'darwin' or os.system('which open') == 0:  # macOS
-                        subprocess.run(['open', folder_path], check=True)
-                    else:  # Linux
-                        subprocess.run(['xdg-open', folder_path], check=True)
-                except Exception as e:
-                    QMessageBox.warning(self, "폴더 열기 오류", f"폴더를 열 수 없습니다: {str(e)}")
-        except Exception as e:
-            QMessageBox.warning(self, "오류", f"폴더를 여는 중 오류가 발생했습니다: {str(e)}")
-        except Exception as e:
-            # 에러가 발생해도 조용히 처리 (모달 없음)
+                    subprocess.run(['explorer', folder_path], check=True, shell=True)
+            elif os.name == 'posix':
+                if sys.platform == 'darwin' or os.system('which open') == 0:
+                    subprocess.run(['open', folder_path], check=True)
+                else:
+                    subprocess.run(['xdg-open', folder_path], check=True)
+        except Exception:
             pass

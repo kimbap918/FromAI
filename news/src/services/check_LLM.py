@@ -74,7 +74,7 @@ def _get_base_dir() -> Path:
 def setup_check_logging(keyword: str) -> tuple[logging.Logger, str]:
     """
     check_LLM 로깅을 실행 위치에 생성.
-    예) ./기사 재생성/재생성20250821/키워드.txt
+    예) ./기사 재생성/재생성YYYYMMDD/키워드.txt
     """
     current_date = datetime.now().strftime("%Y%m%d")
     base_dir = _get_base_dir()
@@ -88,7 +88,6 @@ def setup_check_logging(keyword: str) -> tuple[logging.Logger, str]:
     logger = logging.getLogger(logger_name)
     logger.setLevel(logging.INFO)
 
-    # 중복 핸들러 방지
     if not logger.handlers:
         fh = logging.FileHandler(log_filepath, encoding="utf-8", mode="a")
         fh.setLevel(logging.INFO)
@@ -117,7 +116,7 @@ def log_and_print(logger, message: str, level: str = "info"):
 def generate_check_prompt() -> str:
     today_kst = get_today_kst_str()
 
-    # 교정문(corrected_article)도 반드시 [제목]/[해시태그]/[본문] 형식을 유지하도록 명시 강화
+    # f-string 내 JSON 예시의 중괄호는 모두 {{ }} 로 이스케이프 처리
     prompt = (
         f"""사용자가 입력한 두 개의 기사(사용자가 작성한 기사와 원문 기사)를 비교하여 사실관계를 판단하라.
             사용자는 콤마(,)를 사용하여 두 개의 기사를 구분하며, 첫 번째가 사용자가 작성한 기사, 두 번째가 원문 기사이다.
@@ -154,11 +153,11 @@ def generate_check_prompt() -> str:
             - corrected_article는 '사실이 아닌 부분만 최소 수정' 원칙으로 작성하라(불필요한 재서술 금지).
 
             [최종 출력: JSON 전용]
-            {
+            {{
               "verdict": "OK" 또는 "ERROR",
               "nonfactual_phrases": ["문제 구절1", "문제 구절2"],
               "corrected_article": "수정된 전체 기사 (문제가 있을 때만, [제목]/[해시태그]/[본문] 포함)"
-            }"""
+            }}"""
     )
     return prompt
 
