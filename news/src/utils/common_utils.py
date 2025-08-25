@@ -27,6 +27,7 @@ except ImportError:
 
 from PIL import Image
 from news.src.utils.domestic_utils import finance
+from news.src.utils.data_manager import data_manager
 
 # ------------------------------------------------------------------
 # 작성자 : 곽은규
@@ -112,7 +113,7 @@ def get_stock_info_from_search(keyword: str):
     if found_code:
         print(f"DEBUG: FinanceDataReader로 찾은 종목 코드: {found_code}")
         return found_code
-    if keyword == '아이온큐':
+    if keyword == "아이온큐":
         search_kyeword = keyword
     if '주가' not in keyword:
         search_keyword = f"{keyword} 주가"
@@ -171,19 +172,24 @@ def create_pamphlet(keyword: str, is_foreign: bool) -> str:
 
     # ▼▼▼ 1. 해외 주식일 경우의 로직 ▼▼▼
     if is_foreign:
+        # 'date_str'에 사용할 한국 날짜 변수
+        korea_display_date = now_kst_dt
+        
         # 날짜 계산 로직 (주말 처리 포함)
         if weekday == 5:  # 토요일
             yesterday = now_kst_dt - timedelta(days=1) # 금요일
         elif weekday == 6:  # 일요일
             yesterday = now_kst_dt - timedelta(days=2) # 금요일
+            korea_display_date = now_kst_dt - timedelta(days=1) 
         elif weekday == 0:  # 월요일
             yesterday = now_kst_dt - timedelta(days=3) # 금요일
+            korea_display_date = now_kst_dt - timedelta(days=2) 
         else: # 화요일 ~ 금요일
             yesterday = now_kst_dt - timedelta(days=1)
         
         # '23일(미국 동부 기준 22일)' 형태의 문자열 생성
-        date_str = f"{now_kst_dt.day}일(미국 동부 기준 {yesterday.day}일) 기준"
-        print(f"해외주식: {date_str}")
+        # now_kst_dt.day 대신 korea_display_date.day 사용
+        date_str = f"{korea_display_date.day}일(미국 동부 기준 {yesterday.day}일) 기준"
         
         return f"{date_str}, 네이버페이 증권에 따르면"
 
@@ -340,6 +346,11 @@ def capture_and_generate_news(keyword: str, domain: str = "stock", progress_call
                 progress_callback("국내주식 이미지 캡처 실패")
             return None
         info_dict = {**chart_info, **invest_info}
+        
+        # 신규상장 관련 정보 추가하기
+        is_newly_listed_stock = data_manager.is_newly_listed(keyword)
+        info_dict["신규상장여부"] = is_newly_listed_stock
+
         # if summary_info_text:
         #     info_dict["기업개요"] = summary_info_text
         if debug:
@@ -461,7 +472,7 @@ def build_stock_prompt(today_kst):
     today_month_day_format = format_month_day(effective_date_obj)
 
     if "장마감" in now_time:
-        title_time_format = f"\"{today_month_day_format}\" (제목 끝에 '[변동 방향/상태] 마감' 형식으로 추가할 것)"
+        title_time_format = f"\"{today_month_day_format}\" "
     else:
         title_time_format = f"\"{today_month_day_format} 장중\""
         
@@ -472,36 +483,50 @@ def build_stock_prompt(today_kst):
 
     # 원하는 형식의 최종 문자열을 생성
     # 주말 해외주식 날짜 표기를 위한 로직
-    if is_weekend:
-        us_yesterday = date_obj - timedelta(days=weekday-4) # 금요일
-        output_current_day = f"{date_obj.day}일(미국 동부 기준 {us_yesterday.day}일)"
-    else: # 평일
-        output_current_day = f"{effective_date_obj.day}일(미국 동부 기준 {yesterday.day}일)"
+    if weekday in [5, 6, 0]: # 토요일, 일요일, 월요일
+    # 금요일 날짜 계산
+        friday = date_obj - timedelta(days= (weekday - 4) % 7)
         
-    output_previous_day = f"{yesterday_str}일(미국 동부 기준 {before_yesterday.day}일)"
+        # 한국 날짜(금요일), 미국 날짜(금요일)
+        output_current_day = f"{friday.day}일(미국 동부 기준 {friday.day}일)"
+        
+        # 이전 날짜(목요일) 계산
+        yesterday = friday - timedelta(days=1)
+        output_previous_day = f"{yesterday.day}일(미국 동부 기준 {yesterday.day}일)"
     
-    print(output_current_day)
-    print(output_previous_day)
+    else: # 화요일부터 금요일
+        # 한국 날짜는 오늘(화요일)의 날짜, 미국 날짜는 어제의 날짜
+        yesterday = date_obj - timedelta(days=1)
+        output_current_day = f"{date_obj.day}일(미국 동부 기준 {yesterday.day}일)"
+        
+        # 이전 날짜는 그저께 날짜
+        before_yesterday = yesterday - timedelta(days=1)
+        output_previous_day = f"{yesterday.day}일(미국 동부 기준 {before_yesterday.day}일)"
+
+    print(f"output_current_day: {output_current_day}")
+    print(f"output_previous_day: {output_previous_day}")
 
     stock_prompt = (
         "[Special Rules for Stock-Related News]\n"
         f"1. 제목 작성 시 규칙\n"
-        f"   - **순서는 ①키워드 ②\"{title_time_format}\" ③내용 순으로 생성하고, 키워드 뒤에는 반드시 콤마(,)를 표기할 것.**\n"
+        f"   - **순서는 1)키워드 2)\"{title_time_format}\" 3)내용 순으로 생성하고, 키워드 뒤에는 반드시 콤마(,)를 표기할 것.**\n"
         f"   - 금액에는 천단위는 반드시 콤마(,)를 표기할 것 (예: 64,600원)\n"
-        f"   - **국내 주식일 경우, 반드시 날짜는 \"{title_time_format}\"과 같은 형식으로 기입할 것.\n**"
-        f"   - 해외 주식일 경우, 제목을 작성할 때 날짜를 제외하고 생성 할 것.(단, 본문에는 본문 작성 시 절대 규칙을 따를 것).\n"
-        f"   - 해외 주식일 경우, [해외주식 정보] 안에 us_time을 참고해서 장중/장마감 구분하기.\n"
+        f"   - **국내 주식일 경우에만, 반드시 날짜는 \"{title_time_format}\"과 같은 형식으로만 기입할 것.\n**"
+        f"   - 해외 주식일 경우에만, 제목을 작성할 때 날짜를 포함하지 말고 생성 할 것.\n"
+        f"   - 해외 주식을 판별하는 방법은 [주식 정보]안에 us_time을 제공이 되면 해외주식 규칙을 적용할 것\n"
+        f"   - 해외 주식일 경우, [주식 정보] 안에 us_time을 참고해서 장중/장마감 구분하기.\n"
         f"   - 가격과 등락률(%)을 반드시 함께 표기하고, 다양한 서술 방식을 사용하여 제목을 풍부하고 다채롭게 표현할 것.\n"
         f"   - 제목을 작성 할 때 '전일 대비, 지난, 대비'와 같은 비교 표현은 사용하지 않는다.\n"
         f"   - **주가 정보는 간결하게 포함하며, 장이 마감되었을 경우에만 제목의 가장 마지막에 \"<변동 방향/상태> 마감\" 형식으로 마무리 할 것.**\n\n"
         f"2. 본문 작성 시 절대 규칙\n"
-        f"   - 본문을 작성할 때 날짜와 시간 출처, 시장, 시간적 기준점 정보는 시스템이 사전에 자동으로 추가. **이와 중복되는 정보를 절대 생성하지 말고, [주식 정보]의 객관적 사실과 데이터를 바탕으로 기사의 핵심 내용 서술에만 집중 할 것.**\n"
-        f"   - **본문의 첫 문장은 키워드(종목명)로 시작하되, [주식 정보]의 객관적 사실과 데이터를 바탕으로 충분한 분량의 기사를 작성할 것.**\n"
+        f"   - **본문 작성 원칙: 시스템이 자동 추가하는 날짜/시간/출처/기준점 정보와 반드시 중복되지 않게할 것.**\n"
+        f"   - **작성 범위: 종목명으로 시작하여 [주식 정보] 데이터 기반으로 가격 변동 분석을 충분한 분량으로 서술할 것.**\n"
         f"   - **장중/장마감 구분은 [키워드 정보(user message)] 내의 [주식 정보] 안에 기준일을 참고하여 구분할 것.**\n"
-        f"   - **본문에는 어떠한 형태의 날짜나 시간 표현도 절대 사용하지 말 것.**\n"
+        f"   - 주식의 최종 가격과 변동률을 한 문장으로 명확히 서술할 것.\n"
+        f"   - **[본문] 내용을 작성할 때 시간 관련 표현과 데이터 기준점 설명을 모두 배제하고 순수한 주가 수치와 변동률만 서술할 것.**\n"
+        f"   - [키워드 정보(user message)] 내의 [주식 정보]안에 신규상장 값이 Ture이면, 신규상장이란 지난 종가를 공모가로 바꾸고 내용도 신규상장에 맞게 작성할 것."
         f"   - '전일', '전날', '전 거래일', '지난 거래일' 같은 표현은 '지난 종가'로 표현할것.\n\n"
         f"3. 해외 주식의 경우, 날짜와 추가 본문 작성 규칙\n"
-        f"     - **엄격히 '이날', '금일', '당일'과 같은 표현을 사용하지 말 것.**\n"
         f"     - 해외 주식의 경우 '시간 외 거래'가 있는 경우 본문에 정규장 내용 이후 시간 외 거래 내용을 포함할 것.\n"
         f"     - **장중/장마감 구분은 [키워드 정보(user message)] 내의 [해외주식 정보] 안에 us_time을 참고하여 구분할 것.**\n"
         f"     - 예시: 실시간 -> 장 중 장마감 -> 장 마감\n\n"

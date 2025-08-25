@@ -34,7 +34,34 @@ def finance(stock_name):
         return matching_stocks.iloc[0]['Code']
     return None
 
-
+def check_investment_restricted(stock_code, progress_callback=None, keyword=None):
+    print(f"[DEBUG] 거래금지 체크 시작 - stock_code: {stock_code}, keyword: {keyword}")
+    
+    try:
+        # 상장되어 있다면 실제 거래 데이터 확인 (최근 10일)
+        end_date = datetime.now().date()
+        start_date = end_date - pd.Timedelta(days=10)
+        df = fdr.DataReader(stock_code, start=start_date, end=end_date)
+        
+        if df is not None and not df.empty:
+            latest_data = df.iloc[-1]
+            open_price = latest_data.get('Open', 0)
+            high_price = latest_data.get('High', 0)
+            low_price = latest_data.get('Low', 0)
+            
+            if open_price <= 0 and high_price <= 0 and low_price <= 0:
+                if progress_callback and keyword:
+                    progress_callback(f"[{keyword}]는 거래금지종목입니다.")
+                return True
+        else:
+            if progress_callback and keyword:
+                progress_callback(f"[{keyword}]는 거래금지종목입니다.")
+            return True
+        
+        return False
+        
+    except Exception as e:
+        pass
 # ------------------------------------------------------------------
 # 작성자 : 최준혁
 # 작성일 : 2025-07-22
@@ -396,3 +423,4 @@ def capture_wrap_company_area(stock_code: str, progress_callback=None, debug=Fal
             driver.quit()
         except Exception as e:
             log(f"드라이버 종료 실패: {e}")
+

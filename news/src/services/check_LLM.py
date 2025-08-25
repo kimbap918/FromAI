@@ -149,8 +149,9 @@ def generate_check_prompt() -> str:
 
             [응답 형식]
             - 아래 JSON만 정확히 출력하라(그 외 텍스트 금지)
-            - "corrected_article"가 필요할 때는 반드시 [제목] / [해시태그] / [본문] 섹션을 모두 포함해 형식을 유지하라.
             - corrected_article는 '사실이 아닌 부분만 최소 수정' 원칙으로 작성하라(불필요한 재서술 금지).
+            - corrected_article는 반드시 하나의 문자열로 출력하라(객체/배열 금지), [제목]/[해시태그]/[본문] 섹션을 포함할 것.
+
 
             [최종 출력: JSON 전용]
             {{
@@ -237,6 +238,24 @@ def check_article_facts(generated_article: str, original_article: str, keyword: 
             }
         else:
             log_and_print(logger, f"  ✅ JSON 파싱 성공")
+            corrected = (json_obj.get("corrected_article", "") or "")
+
+            if isinstance(corrected, dict):
+                corrected = "\n".join([
+                    "[제목]",
+                    str(corrected.get("title", "")).strip(),
+                    "",
+                    "[해시태그]",
+                    str(corrected.get("hashtags", "")).strip(),
+                    "",
+                    "[본문]",
+                    str(corrected.get("본문", "")).strip(),
+                ])
+            elif not isinstance(corrected, str):
+                corrected = str(corrected)
+
+            json_obj["corrected_article"] = corrected
+
             result = {
                 "explanation": full_text,
                 "json": json_obj,

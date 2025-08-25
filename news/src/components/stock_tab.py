@@ -11,6 +11,7 @@ import os
 from datetime import datetime
 
 from news.src.utils.common_utils import capture_and_generate_news
+from news.src.utils.domestic_utils import check_investment_restricted, finance
 
 STOCK_CHATBOT_URL = "https://chatgpt.com/g/g-67a44d9d833c8191bf2974019d233d4e-jeongboseong-gisa-caesbos-culceo-sanggwaneobseum"
 
@@ -65,7 +66,25 @@ class StockWorker(QThread):
                     
                 self.progress.emit(f"[{idx}/{total}] {keyword} 처리 중...", keyword)
                 self.progress_all.emit(idx, total)
-                
+
+                try:
+                    stock_code = finance(keyword)
+
+                    if stock_code:
+                        if check_investment_restricted(stock_code, None, keyword):
+                            message = f"[{keyword}]는 거래금지종목입니다."
+                            self.results.append((keyword, "", message))
+                            self.progress.emit(f"❌ {message}", keyword)
+                            continue
+                    else:
+                        pass
+
+                except Exception as e:
+                    message = f"{keyword} 거래금지 확인 중 오류 발생: {str(e)}"
+                    self.results.append((keyword, "", message))
+                    self.progress.emit(f"❌ {message}", keyword)
+                    continue
+
                 try:
                     # 진행 상황 콜백 래퍼
                     def progress_callback(msg, k=keyword):
