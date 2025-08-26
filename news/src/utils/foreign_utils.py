@@ -145,8 +145,11 @@ def _extract_stock_data(driver: WebDriver, keyword: str) -> Dict:
         )
         
         if len(time_elements) >= 2:
+            # 현재 년도 가져오기
+            current_year = datetime.now().year
             korea_time = time_elements[0].text.replace("\n", " ")
-            us_time = time_elements[1].text.replace("\n", " ")
+            us_time_text = time_elements[1].text.replace('\n', ' ')
+            us_time = f"{us_time_text} {current_year}"
             
             # 마감 상태가 감지된 경우
             if market_status and "마감" in market_status:
@@ -158,8 +161,9 @@ def _extract_stock_data(driver: WebDriver, keyword: str) -> Dict:
         else:
             # 시간 요소가 없을 경우 (장 마감 후 등)
             now = datetime.now()
+            current_year = now.year
             korea_time = now.strftime('한국 %m.%d. %H:%M')
-            us_time = now.strftime('해외 %m.%d. %H:%M')
+            us_time = now.strftime(f'해외 %m.%d. %H:%M {current_year}')
             
             # 마감 상태가 감지된 경우
             if market_status and "마감" in market_status:
@@ -171,8 +175,9 @@ def _extract_stock_data(driver: WebDriver, keyword: str) -> Dict:
     except Exception as e:
         # 예외 발생 시 기본값 설정
         now = datetime.now()
+        current_year = now.year
         stock_data["korea_time"] = now.strftime('한국 %m.%d. %H:%M')
-        stock_data["us_time"] = now.strftime('해외 %m.%d. %H:%M')
+        stock_data["us_time"] = now.strftime(f'해외 %m.%d. %H:%M {current_year}')
         print(f"시간 정보 추출 중 오류 발생: {e}")
     
     # 추가 정보 펼치기 시도
