@@ -16,6 +16,8 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import NoSuchElementException, TimeoutException
 from news.src.utils.driver_utils import initialize_driver
 from news.src.utils.common_utils import safe_filename 
+from news.src.utils.driver_utils import remove_powerlink
+
 
 W = WebDriverWait
 
@@ -28,7 +30,7 @@ def _setup_driver(progress_callback: Optional[Callable[[str], None]] = None) -> 
     """웹드라이버를 초기화하고 설정합니다."""
     if progress_callback:
         progress_callback("드라이버 초기화 중...")
-    driver = initialize_driver(headless=True)
+    driver = initialize_driver(headless= True)
     driver.set_window_size(1920, 1080)
     return driver
 
@@ -41,10 +43,18 @@ def _capture_chart_section(driver: WebDriver, keyword: str, progress_callback: O
     """차트 섹션을 캡처하고 이미지 파일로 저장합니다."""
     if progress_callback:
         progress_callback(f"네이버 검색 페이지 이동: {keyword}")
+
+    if keyword == '비트마인 이머션 테크놀로지스':
+        keyword = '비트마인'
+        search_url = f"https://search.naver.com/search.naver?query={keyword}+주가"
+        driver.get(search_url)
+        remove_powerlink(driver)
     
-    search_url = f"https://search.naver.com/search.naver?query={keyword}+주가"
-    driver.get(search_url)
-    
+    else:
+        search_url = f"https://search.naver.com/search.naver?query={keyword}+주가"
+        driver.get(search_url)
+        remove_powerlink(driver)
+
     # 차트 섹션 찾기
     chart_section = WebDriverWait(driver, 5).until(
         EC.presence_of_element_located((By.CSS_SELECTOR, "section.sc_new.cs_stock"))
@@ -141,8 +151,9 @@ def _extract_stock_data(driver: WebDriver, keyword: str) -> Dict:
             
         time_elements = driver.find_elements(
             By.CSS_SELECTOR, 
-            ".GraphMain_date__GglkR .GraphMain_time__38Tp2"
+            "div.GraphMain_date__GglkR span.GraphMain_date__GglkR"
         )
+<<<<<<< HEAD
         
         if len(time_elements) >= 2:
             # 현재 년도 가져오기
@@ -150,20 +161,37 @@ def _extract_stock_data(driver: WebDriver, keyword: str) -> Dict:
             korea_time = time_elements[0].text.replace("\n", " ")
             us_time_text = time_elements[1].text.replace('\n', ' ')
             us_time = f"{us_time_text} {current_year}"
+=======
+        print(f"time_elements: {time_elements}")
+
+        if len(time_elements) >= 0:
+            # 현재 년도 가져오기
+            current_year = datetime.now().year
+>>>>>>> 36d599f (통합 뉴스 도구v1.1.6)
             
+            us_time_text = time_elements[0].text.strip()
+            us_time = f"현재시각: {current_year}.{us_time_text}"
+            
+            print(f"미국 주식 시간 : {us_time}")
+
             # 마감 상태가 감지된 경우
             if market_status and "마감" in market_status:
                 us_time = f"{us_time} (장 마감)"
-                
-            stock_data["korea_time"] = korea_time
+            
             stock_data["us_time"] = us_time
             
         else:
-            # 시간 요소가 없을 경우 (장 마감 후 등)
+            # 시간 요소가 없을 경우 (장 마감 후 등) - 변동점 : 미국동부시간 가져오기 or 처리 못하면 PASS
             now = datetime.now()
             current_year = now.year
+<<<<<<< HEAD
             korea_time = now.strftime('한국 %m.%d. %H:%M')
             us_time = now.strftime(f'해외 %m.%d. %H:%M {current_year}')
+=======
+            korea_time = now.strftime(f'현재시각: 한국 {current_year}.%m.%d. %H:%M')
+            us_time = now.strftime(f'현재시각: 해외 {current_year}.%m.%d. %H:%M ')
+            # Us 타임만 변경 
+>>>>>>> 36d599f (통합 뉴스 도구v1.1.6)
             
             # 마감 상태가 감지된 경우
             if market_status and "마감" in market_status:
@@ -176,8 +204,14 @@ def _extract_stock_data(driver: WebDriver, keyword: str) -> Dict:
         # 예외 발생 시 기본값 설정
         now = datetime.now()
         current_year = now.year
+<<<<<<< HEAD
         stock_data["korea_time"] = now.strftime('한국 %m.%d. %H:%M')
         stock_data["us_time"] = now.strftime(f'해외 %m.%d. %H:%M {current_year}')
+=======
+        stock_data["korea_time"] = now.strftime(f'현재시각: 한국 {current_year}.%m.%d. %H:%M')
+        stock_data["us_time"] = now.strftime(f'현재시각: 해외 {current_year}.%m.%d. %H:%M ')
+        # US 타임으로 변경
+>>>>>>> 36d599f (통합 뉴스 도구v1.1.6)
         print(f"시간 정보 추출 중 오류 발생: {e}")
     
     # 추가 정보 펼치기 시도
@@ -230,7 +264,7 @@ def _extract_stock_data(driver: WebDriver, keyword: str) -> Dict:
         change_amt_elems = box.find_elements(By.CSS_SELECTOR, "span[class*='StockInfoPreAfter_numGap'] div:nth-of-type(1)")
         change_pct_elems = box.find_elements(By.CSS_SELECTOR, "span[class*='StockInfoPreAfter_numGap'] div:nth-of-type(2)")
         status_elems = box.find_elements(By.CSS_SELECTOR, "span[class*='marketStatus']")
-        # time_elems = box.find_elements(By.CSS_SELECTOR, "div[class*='StockInfoPreAfter_time']")
+
 
         # 요소가 존재하는 경우에만 텍스트 추출
         price = price_elems[0].text.strip() if price_elems else "N/A"

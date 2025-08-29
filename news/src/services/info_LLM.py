@@ -121,7 +121,7 @@ BASE_SYSTEM_PROMPT = (
         - **완전한 문장형이 아닌 핵심 키워드 중심으로 구성**
         - **궁금증을 유발할 수 있도록 작성하되, 특수문자 없이 표현하며 본문의 핵심 내용이나 주요 결과를 간결하게 요약하여 포함**
         - **수식어가 수식받는 대상 앞에 위치하도록 작성하고, 숫자 정보가 여러 개일 경우 의미상 중요한 정보를 먼저 배치할 것**
-        - **말줄임표("...", "⋯"), 더하기(+), 빼기(-), 마침표(.), 물음표(?), 느낌표(!), 괄호((), []) 등과 같은 특수문자를 사용하지 말 것.**
+        - **특수문자 금지: 말줄임표("...", "⋯"), 더하기(+), 빼기(-), 마침표(.), 물음표(?), 느낌표(!), 괄호((), []) **
 
     6. 출력 형식 적용 (최종 제공)
         기사 생성 후, 아래 출력 형식에 맞춰 제공
@@ -179,7 +179,7 @@ def generate_info_news(keyword: str, image_path: str, is_stock: bool):
             user_message,
             img
         ])
-        return response.text
+        return response.text  # .
     except Exception as e:
         print(f"Gemini Vision API 호출 중 오류 발생: {e}")
         return None
@@ -207,7 +207,7 @@ def generate_info_news_from_text(keyword: str, info_dict: dict, domain: str = "g
 
     # 도메인별 프롬프트/정보 포맷 분기
     if domain in ["stock", "toss"]:
-        is_foreign_stock = any(k in info_dict for k in ["name", "price", "change", "기업 개요"]) and (info_dict.get("키워드", "") == keyword)
+        is_foreign_stock = any(k in info_dict for k in ["name", "price", "change"])
         if is_foreign_stock:
             user_message = (
                 f"아래는 '{keyword}'의 해외주식 시세 및 재무정보입니다. "
@@ -252,4 +252,4 @@ def generate_info_news_from_text(keyword: str, info_dict: dict, domain: str = "g
 
     response = model.generate_content(user_message)
     print("[LLM 응답 결과]\n" + response.text + "\n")
-    return response.text
+    return response.text  # .

@@ -6,6 +6,8 @@ import os
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.common.by import By
 
 
 # ------------------------------------------------------------------
@@ -47,3 +49,40 @@ def initialize_driver(headless: bool = True) -> 'webdriver.Chrome':
         return driver
     except Exception as e:
         raise RuntimeError(f"크롬 드라이버 실행 실패: {e}")
+
+def remove_powerlink(driver, timeout: int = 2) -> None:
+    """
+    네이버 검색 결과 페이지의 파워링크(광고) 섹션을 DOM에서 제거합니다.
+    :param driver: Selenium WebDriver
+    :param timeout: 문서 로딩 대기 최대 초
+    """
+    try:
+        WebDriverWait(driver, timeout).until(
+            lambda d: d.execute_script("return document.readyState") == "complete"
+        )
+    except Exception:
+        pass
+
+    driver.execute_script(
+        """
+        (function() {
+        var selectors = [
+            '.pcPowerLink_81ed',
+            '[id^="pcPowerLink_"]',
+            'div.ad_section',
+            'section[data-ad*="powerlink"]'
+        ];
+        selectors.forEach(function(sel){
+            document.querySelectorAll(sel).forEach(function(el){
+            el.remove();
+            });
+        });
+        document.querySelectorAll('h2.title, h3.title').forEach(function(h){
+            if (h.textContent && h.textContent.trim() === '파워링크') {
+            var container = h.closest('div, section');
+            if (container) container.remove();
+            }
+        });
+        })();
+        """
+    )

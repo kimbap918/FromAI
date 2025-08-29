@@ -112,16 +112,23 @@ def log_and_print(logger, message: str, level: str = "info"):
     elif level == "debug":
         logger.debug(message)
 
-
-def generate_check_prompt() -> str:
+# =========================
+# 프롬프트는 그대로 유지
+# =========================
+def generate_check_prompt(keyword: str = "") -> str:
     today_kst = get_today_kst_str()
+    keyword_info = f"- 키워드: {keyword}\n" if keyword else ""
 
     prompt = """
+    
         사용자가 입력한 두 개의 기사('생성된 기사'와 '원문 기사')를 비교하여 사실관계를 판단하라.
         사용자는 콤마(,)를 사용하여 두 개의 기사를 구분하며, 첫 번째가 '생성된 기사', 두 번째가 '원문 기사'이다.
 
         [오늘(KST) 기준일]
         - 오늘 날짜(Asia/Seoul): {today_kst}
+        
+        [키워드]
+        {keyword_info}
 
         [비교 기준]
         - 완전히 동일한 경우 → "✅ 사실관계에 문제가 없습니다."
@@ -136,14 +143,18 @@ def generate_check_prompt() -> str:
         4. '원문 기사'에서 '예정', '추진 중', '가능성 있음' 등의 불확정 표현이 사용된 경우, '생성된 기사'가 이를 단정적으로 표현했는지 확인하라.
         5. 기업이나 인물 등의 명예 훼손, 오해 유발, 정정보도 요청 가능성 있는 민감한 표현이 포함되어 있다면 반드시 지적하라.
         6. 문장이 간결해졌더라도, 핵심 의미가 왜곡되거나 빠진 부분이 없는지 확인하라.
-        7. 완성된 기사의 본문 길이가 300자 이하로 작성되지 않도록 유의하라.
+        7. 완성된 기사의 본문 길이가 300자 이하, 800자 이상으로 작성되지 않도록 유의하라.
+        8. 제목이나 해시태그가 원문과 불일치하거나 오류가 있는 경우에 단순 삭제하지 말고, 원문 기사 내용에 맞는 올바른 제목과 해시태그로 교체하여 반드시 기존에 생성된 개수를 유지한다.
+        - [제목] 섹션은 항상 3개 제목을 포함해야 한다.
+        - [해시태그] 섹션은 항상 3~5개의 해시태그를 포함해야 한다.
 
-        [시제 관련 예외 사항 - 다음 경우는 사실 오류로 간주하지 말 것]
+        [예외 사항 - 다음 경우는 사실 오류로 간주하지 말 것]
         1. '지난 O월' '지난 OOOO년' '지난 OO일', '오는 O월' '오는 OOOO년' '오는 OO일' 등의 상대적 시간 표현 사용
         2. '이날', '오늘' 등의 불필요한 시점 표현 생략
         3. 방송일이 1주일 이상 지난 경우 '최근 방송된', '이전 방송에서' 등으로 표현한 경우
         4. 여러 방송일이 있는 경우 가장 최근 방송일을 기준으로 한 시점 조정
         5. 원문과 재생성 기사 내용을 비교했을때 재생성 기사가 [오늘(KST) 기준일]과 비교해 과거/미래 시점으로 정확히 표현한 경우
+        6. [제목], [해시태그]에 사용자가 입력한 [키워드]가 포함된 경우
 
         ✅ 원문에 있지만 사용자가 기사에서 생략해도 문제 삼지 않는다.
         ✅ 위의 시제 관련 예외 사항에 해당하는 경우는 사실 오류로 간주하지 않는다.
@@ -165,7 +176,7 @@ def generate_check_prompt() -> str:
         ],
         "corrected_article": "수정된 전체 기사 (문제가 있을 때만, [제목]/[해시태그]/[본문] 포함)"
         }}
-        """.format(today_kst=today_kst)
+        """.format(today_kst=today_kst, keyword_info=keyword_info)
 
     return prompt
 
@@ -185,6 +196,83 @@ def _extract_json_block(text: str):
             continue
     return None
 
+# =========================
+# ▼ 자동 보정 유틸 
+# =========================
+def _normalize_verdict(raw: str, json_obj: dict) -> str:
+    v = (raw or "").strip()
+    vu = v.upper()
+    if vu in ("OK", "ERROR"):
+        return vu
+    # 의미기반 휴리스틱
+    if "✅" in v or ("일치" in v and "사실" in v):
+        return "OK"
+    if "❌" in v or "오류" in v or "틀렸" in v or "다릅" in v:
+        return "ERROR"
+    if "⚠️" in v or "주의" in v or "경고" in v:
+        return "ERROR"
+    nf = json_obj.get("nonfactual_phrases") or []
+    return "ERROR" if nf else "OK"
+
+def _normalize_nonfactual(nf) -> list[dict]:
+    items = []
+    if isinstance(nf, list):
+        for it in nf:
+            if isinstance(it, dict):
+                phrase = str(it.get("phrase") or it.get("문제 구절") or "").strip()
+                reason = str(it.get("reason") or it.get("이유") or "").strip()
+            else:
+                phrase = str(it).strip()
+                reason = ""
+            if phrase:
+                items.append({"phrase": phrase, "reason": reason})
+    return items
+
+def _ensure_sections(text: str) -> str:
+    """[제목]/[해시태그]/[본문] 강제 보장 (최소 보정)"""
+    if not text:
+        text = ""
+    has_title = "[제목]" in text
+    has_tags  = "[해시태그]" in text
+    has_body  = "[본문]" in text
+    if has_title and has_tags and has_body:
+        return text.strip()
+    # 본문 추정
+    body = text
+    m = re.search(r"\[본문\]\s*(.*)\Z", text, flags=re.S)
+    if m:
+        body = m.group(1).strip()
+    # 기본 틀 생성
+    rebuilt = []
+    rebuilt.append("[제목]")
+    rebuilt.append("수정 기사 1")
+    rebuilt.append("수정 기사 2")
+    rebuilt.append("수정 기사 3")
+    rebuilt.append("")
+    rebuilt.append("[해시태그]")
+    # 해시태그 후보 추출
+    candidates = list(dict.fromkeys(re.findall(r"#\S+", text)))[:5]
+    if not candidates:
+        candidates = ["#뉴스", "#정보", "#사실검증"]
+    rebuilt.append(" ".join(candidates[:5]))
+    rebuilt.append("")
+    rebuilt.append("[본문]")
+    rebuilt.append(body.strip())
+    return "\n".join(rebuilt).strip()
+
+def _auto_minimal_patch(generated_article: str, nonfactual_list: list[dict]) -> str:
+    """교정문이 비어 있을 때, 문제 구절만 제거하는 최소 보정."""
+    if not generated_article:
+        return ""
+    patched = generated_article
+    for item in nonfactual_list:
+        phrase = item.get("phrase", "")
+        if phrase:
+            # 과격한 치환 방지: 정확히 일치하는 구절만 제거
+            patched = patched.replace(phrase, "")
+    return _ensure_sections(patched)
+
+# =========================
 
 def check_article_facts(generated_article: str, original_article: str, keyword: str = "check_LLM") -> dict:
     logger, log_filepath = setup_check_logging(keyword)
@@ -199,7 +287,7 @@ def check_article_facts(generated_article: str, original_article: str, keyword: 
 
     try:
         log_and_print(logger, f"\n🤖 AI 모델 호출:")
-        system_prompt = generate_check_prompt()
+        system_prompt = generate_check_prompt(keyword=keyword)
         user_request = f"생성된 기사: {generated_article}, \n\n원문 기사: {original_article}"
         log_and_print(logger, f"  - 모델: gemini-2.5-flash")
         log_and_print(logger, f"  - 시스템 프롬프트 길이: {len(system_prompt)}자")
@@ -223,7 +311,7 @@ def check_article_facts(generated_article: str, original_article: str, keyword: 
 
         log_and_print(logger, f"\n⏳ AI 응답 대기 중...")
         response = model.generate_content(contents)
-        full_text = response.text.strip()
+        full_text = (response.text or "").strip()
 
         log_and_print(logger, f"\n📤 AI 응답 결과:")
         log_and_print(logger, f"  - 응답 길이: {len(full_text)}자")
@@ -245,8 +333,16 @@ def check_article_facts(generated_article: str, original_article: str, keyword: 
             }
         else:
             log_and_print(logger, f"  ✅ JSON 파싱 성공")
-            corrected = (json_obj.get("corrected_article", "") or "")
 
+            # --------- 보정 1: nonfactual 목록 정상화
+            nf = _normalize_nonfactual(json_obj.get("nonfactual_phrases"))
+            json_obj["nonfactual_phrases"] = nf
+
+            # --------- 보정 2: verdict 정규화(OK/ERROR) 
+            json_obj["verdict"] = _normalize_verdict(json_obj.get("verdict", ""), json_obj)
+
+            # --------- 보정 3: corrected_article 타입/섹션 보장 
+            corrected = (json_obj.get("corrected_article", "") or "")
             if isinstance(corrected, dict):
                 corrected = "\n".join([
                     "[제목]",
@@ -258,9 +354,18 @@ def check_article_facts(generated_article: str, original_article: str, keyword: 
                     "[본문]",
                     str(corrected.get("본문", "")).strip(),
                 ])
-            elif not isinstance(corrected, str):
+            elif isinstance(corrected, list):
+                # 잘못된 리스트 형태로 올 때는 문자열로 병합
+                corrected = "\n".join(str(x) for x in corrected)
+            else:
                 corrected = str(corrected)
 
+            # 오류인데 교정문이 비어 있으면 자동 최소 보정 생성  ### NEW
+            if json_obj["verdict"] == "ERROR" and not corrected.strip():
+                corrected = _auto_minimal_patch(generated_article, nf)
+
+            # 섹션 강제 보장
+            corrected = _ensure_sections(corrected) if corrected else corrected
             json_obj["corrected_article"] = corrected
 
             result = {

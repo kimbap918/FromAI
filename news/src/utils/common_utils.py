@@ -113,8 +113,11 @@ def get_stock_info_from_search(keyword: str):
     if found_code:
         print(f"DEBUG: FinanceDataReader로 찾은 종목 코드: {found_code}")
         return found_code
+<<<<<<< HEAD
     if keyword == "아이온큐":
         search_kyeword = keyword
+=======
+>>>>>>> 36d599f (통합 뉴스 도구v1.1.6)
     if '주가' not in keyword:
         search_keyword = f"{keyword} 주가"
     else:
@@ -439,8 +442,6 @@ def build_stock_prompt(today_kst):
         effective_date_obj = date_obj
         now_time = convert_get_today_kst_str()
 
-    print("now_time 호출 결과:", now_time)
-
     # 모든 날짜 계산을 effective_date_obj 기준으로 수행
     if effective_date_obj.weekday() == 0:  # 월요일은 0
         yesterday = effective_date_obj - timedelta(days=3)
@@ -449,18 +450,15 @@ def build_stock_prompt(today_kst):
     before_yesterday = yesterday - timedelta(days=1)
     
     today_day_str = str(effective_date_obj.day)
-    print(f"today_day_str: {today_day_str}")
 
     if effective_date_obj.month != yesterday.month:
         yesterday_str = f"지난달 {yesterday.day}"
     else:
         yesterday_str = f"지난 {yesterday.day}"
-    print(f"yesterday_str: {yesterday_str}")
     if yesterday.month != before_yesterday.month:
         before_yesterday_str = f"지난달 {before_yesterday.day}"
     else:
         before_yesterday_str = f"지난 {before_yesterday.day}"
-    print(f"before_yesterday_str: {before_yesterday_str}") 
 
     # 'O월 O일' 형식으로 날짜를 변환하는 내부 함수
     def format_month_day(dt):
@@ -477,10 +475,9 @@ def build_stock_prompt(today_kst):
         title_time_format = f"\"{today_month_day_format} 장중\""
         
     today_month_day = format_month_day(effective_date_obj)
-    print(f"월과 일: {today_month_day_format}")
-    print(title_time_format)
         
 
+<<<<<<< HEAD
     # 원하는 형식의 최종 문자열을 생성
     # 주말 해외주식 날짜 표기를 위한 로직
     if weekday in [5, 6, 0]: # 토요일, 일요일, 월요일
@@ -513,6 +510,39 @@ def build_stock_prompt(today_kst):
         f"   - 금액에는 천단위는 반드시 콤마(,)를 표기할 것 (예: 64,600원)\n"
         f"   - **국내 주식 제목에는 \"{title_time_format}\" 형식의 날짜를 반드시 포함할 것.\n"
         f"   - 해외 주식일 경우, [주식 정보]의 us_time을 참고해서 장중/장마감 구분할 것.\n"
+=======
+    # # 원하는 형식의 최종 문자열을 생성
+    # # 주말 해외주식 날짜 표기를 위한 로직
+    # if weekday in [5, 6, 0]: # 토요일, 일요일, 월요일
+    # # 금요일 날짜 계산
+    #     friday = date_obj - timedelta(days= (weekday - 4) % 7)
+        
+    #     # 한국 날짜(금요일), 미국 날짜(금요일)
+    #     output_current_day = f"{friday.day}일(미국 동부 기준 {friday.day}일)"
+        
+    #     # 이전 날짜(목요일) 계산
+    #     yesterday = friday - timedelta(days=1)
+    #     output_previous_day = f"{yesterday.day}일(미국 동부 기준 {yesterday.day}일)"
+    
+    # else: # 화요일부터 금요일
+    #     # 한국 날짜는 오늘(화요일)의 날짜, 미국 날짜는 어제의 날짜
+    #     yesterday = date_obj - timedelta(days=1)
+    #     output_current_day = f"{date_obj.day}일(미국 동부 기준 {yesterday.day}일)"
+        
+    #     # 이전 날짜는 그저께 날짜
+    #     before_yesterday = yesterday - timedelta(days=1)
+    #     output_previous_day = f"{yesterday.day}일(미국 동부 기준 {before_yesterday.day}일)"
+
+    # # print(f"output_current_day: {output_current_day}")
+    # # print(f"output_previous_day: {output_previous_day}")
+
+    stock_prompt = (
+    "[Special Rules for Stock-Related News]\n"
+        f"1. 제목 작성 시 규칙\n"
+        f"   - **순서는 1)키워드 2)\"{title_time_format}\" 3)내용 순으로 생성하고 키워드 뒤에는 반드시 콤마(,)를 표기할 것.**\n"
+        f"   - 금액에는 천단위는 반드시 콤마(,)를 표기할 것 (예: 64,600원)\n"
+        f"   - **국내 주식 제목에는 \"{title_time_format}\" 정보를 반드시 포함할 것.\n"
+>>>>>>> 36d599f (통합 뉴스 도구v1.1.6)
         f"   - 가격과 등락률(%)을 반드시 함께 표기하고, 다양한 서술 방식을 사용하여 제목을 풍부하고 다채롭게 표현할 것.\n"
         f"   - 제목을 작성 할 때 '전일 대비, 지난, 대비'와 같은 비교 표현은 사용하지 않는다.\n"
         f"   - [주식 정보]의 신규상장 값이 True이면, '신규상장' 관련 표현을 주가 정보와 함께 제목의 핵심 내용으로 서술할 것.\n"
@@ -520,6 +550,7 @@ def build_stock_prompt(today_kst):
         
         f"2. 본문 작성 시 절대 규칙\n"
         f"   - **본문 작성 원칙: 시스템이 자동 추가하는 날짜/시간/출처/기준점 정보와 중복되지 않게 서술할 것.**\n"
+<<<<<<< HEAD
         f"   - **작성 범위: 종목명으로 시작하여 [주식 정보] 데이터 기반으로 가격 변동 분석을 서술할 것.**\n"
         f"   - **장중/장마감 구분은 [키워드 정보(user message)] 내의 [주식 정보] 안에 기준일을 참고해서 구분하되, 본문에 날짜는 언급하지 말 것.**\n"
         f"   - **본문의 첫 문장은 반드시 종목명을 주어로 시작하며, 지난 종가와의 비교(등락액, 등락률)와 최종 가격을 하나의 유기적인 문장으로 통합하여 서술할 것.**\n"
@@ -531,6 +562,20 @@ def build_stock_prompt(today_kst):
         f"   - 해외 주식의 경우 '시간 외 거래'가 있는 경우 본문에 정규장 내용 이후 시간 외 거래 내용을 포함할 것.\n"
         f"   - **해외 주식 제목에는 날짜를 포함하지 말 것.**\n"
         f"   - **장중/장마감 구분은 [키워드 정보(user message)] 내의 [해외주식 정보] 안에 us_time을 참고하여 구분할 것.**\n"
+=======
+        f"   - **작성 범위: 종목명으로 시작하여 [주식 정보] 데이터를 기반으로 가격 변동 분석을 서술할 것.**\n"
+        f"   - **[주식 정보]는 시계열 데이터가 아니므로 ‘출발·상승·하락·마감’ 등 시간 순서의 흐름을 서술하지 말고, 단일 시점의 가격 범위와 특징만 기술하여 현재가로 마무리 할 것.**\n"
+        f"   - **모든 [주식 정보]를 활용하되, 단순 나열하지 말고 기사의 흐름 속에서 논리적 연결고리를 만들어 제시할 것.**\n"
+        f"   - **장중/장마감 구분은 [주식 정보] 안에 기준일을 참고해서 구분하되, 본문에 날짜는 언급하지 말 것.**\n"
+        f"   - **누락된 데이터(N/A 등)는 자연스럽게 생략하는 대신 [주식정보] 데이터 간의 관계성을 추론없이 도출해낼 것.**\n"
+        f"   - **[주식 정보]내 신규상장 값이 Ture이면, 신규상장이란 지난 종가를 공모가로 바꾸고 내용도 신규상장에 맞게 작성할 것.**\n"
+        f"   - **'전일', '전날', '전 거래일', '지난 거래일' 같은 표현은 '지난 종가'로 표현할것.**\n\n"
+
+        f"3. [해외주식 정보]가 있을 경우, 날짜와 추가 제목,본문 작성 규칙\n"
+        f"   - [해외주식 정보]가 있을 경우 '시간 외 거래'가 있는 경우 본문에 정규장 내용 이후 시간 외 거래 내용을 포함할 것.\n"
+        f"   - **[해외주식 정보]가 있을 경우, 제목에는 날짜를 포함하지 말 것.**\n"
+        f"   - **장중/장마감 구분은 [해외주식 정보] 안에 us_time을 참고하여 구분할 것.**\n"
+>>>>>>> 36d599f (통합 뉴스 도구v1.1.6)
         f"   - 예시: 실시간 -> 장 중, 장마감 -> 장 마감\n\n"
         
         f"4. 거래대금은 반드시 **억 단위, 천만 단위로 환산**하여 정확히 표기할 것\n"
@@ -538,11 +583,17 @@ def build_stock_prompt(today_kst):
         
         f"[Style]\n"
         f"   - 반드시 장 시작/장중/장 마감 시점에 따라 서술 시제 변경\n"
+<<<<<<< HEAD
         f"   - 등락과 연속 흐름을 조건별로 구분해 자연스럽게 서술하도록 지시할 것.\n"
         f"   - 기업과 주식 관련 정보는 구체적인 수치와 함께 명시할 것.\n"
         f"   - 단순 데이터 나열을 금지하며, 원인과 결과를 엮어 [News Generation Process] 기반으로 구성할 것.\n"
         f"   - **'투자자들, 관심, 주목, 기대, 풀이, 분석' 이라는 단어와 분석내용,감정,주관이 담긴 표현을 엄격히 사용하지 않는다.\n**"
         f"   - **'이날, 전일, 전 거래일, 전날' 이라는 단어와 표현은 엄격히 절대 사용하지 말 것.\n\n**"
+=======
+        f"   - 단순 데이터 나열을 금지하며, 원인과 결과를 엮어 [News Generation Process] 기반으로 구성할 것.\n"
+        f"   - **'투자자들, 관심, 주목, 기대, 풀이, 분석' 이라는 단어와 분석내용,감정,주관이 담긴 표현을 엄격히 사용하지 않는다.\n**"
+        f"   - **'이날, 전일, 전 거래일, 전날, 오늘' 이라는 단어와 표현은 엄격히 절대 사용하지 말 것.\n\n**"
+>>>>>>> 36d599f (통합 뉴스 도구v1.1.6)
     )
     return stock_prompt
     
