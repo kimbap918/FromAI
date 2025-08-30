@@ -26,7 +26,9 @@ news/src/
     ├── article_utils.py       # 기사 파싱/처리
     ├── clipboard_utils.py     # 클립보드 유틸리티
     ├── common_utils.py        # 공통 유틸리티
+    ├── data_manager.py        # 캐쉬 관리 유틸리티
     ├── date_utils.py          # 날짜 처리 유틸리티
+    ├── domestic_list.py       # 국내 신규상장 관리 유틸리티
     ├── domestic_utils.py      # 국내 뉴스/데이터
     ├── driver_utils.py        # Selenium WebDriver
     ├── exchange_utils.py      # 환율 관련 유틸리티
@@ -67,7 +69,9 @@ PyQt5를 기반으로 한 GUI 컴포넌트들이 위치합니다. 각 탭별로 
 | article_utils.py | 기사 파싱, 전처리, 포맷팅 유틸리티 |
 | clipboard_utils.py | 클립보드 복사/붙여넣기 관련 유틸리티 |
 | common_utils.py | 공통으로 사용되는 유틸리티 함수 및 프롬프트 |
+| data_manager.py | 신규상장 목록 캐쉬 및 비교 유틸리티 |
 | date_utils.py | 날짜 포맷 변환 및 처리 유틸리티 |
+| domestic_list.py | 국내 신규상장 주식 수집 및 처리 |
 | domestic_utils.py | 국내 뉴스/데이터 수집 및 처리 |
 | driver_utils.py | Selenium WebDriver 설정 및 관리 |
 | exchange_utils.py | 환율 정보 조회 및 처리 |
@@ -82,6 +86,7 @@ PyQt5를 기반으로 한 GUI 컴포넌트들이 위치합니다. 각 탭별로 
 | icon.ico | 프로그램 아이콘 |
 
 ---
+
 
 
 
