@@ -153,21 +153,11 @@ def _extract_stock_data(driver: WebDriver, keyword: str) -> Dict:
             By.CSS_SELECTOR, 
             "div.GraphMain_date__GglkR span.GraphMain_date__GglkR"
         )
-<<<<<<< HEAD
-        
-        if len(time_elements) >= 2:
-            # 현재 년도 가져오기
-            current_year = datetime.now().year
-            korea_time = time_elements[0].text.replace("\n", " ")
-            us_time_text = time_elements[1].text.replace('\n', ' ')
-            us_time = f"{us_time_text} {current_year}"
-=======
         print(f"time_elements: {time_elements}")
 
         if len(time_elements) >= 0:
             # 현재 년도 가져오기
             current_year = datetime.now().year
->>>>>>> 36d599f (통합 뉴스 도구v1.1.6)
             
             us_time_text = time_elements[0].text.strip()
             us_time = f"현재시각: {current_year}.{us_time_text}"
@@ -184,14 +174,9 @@ def _extract_stock_data(driver: WebDriver, keyword: str) -> Dict:
             # 시간 요소가 없을 경우 (장 마감 후 등) - 변동점 : 미국동부시간 가져오기 or 처리 못하면 PASS
             now = datetime.now()
             current_year = now.year
-<<<<<<< HEAD
-            korea_time = now.strftime('한국 %m.%d. %H:%M')
-            us_time = now.strftime(f'해외 %m.%d. %H:%M {current_year}')
-=======
             korea_time = now.strftime(f'현재시각: 한국 {current_year}.%m.%d. %H:%M')
             us_time = now.strftime(f'현재시각: 해외 {current_year}.%m.%d. %H:%M ')
             # Us 타임만 변경 
->>>>>>> 36d599f (통합 뉴스 도구v1.1.6)
             
             # 마감 상태가 감지된 경우
             if market_status and "마감" in market_status:
@@ -204,14 +189,9 @@ def _extract_stock_data(driver: WebDriver, keyword: str) -> Dict:
         # 예외 발생 시 기본값 설정
         now = datetime.now()
         current_year = now.year
-<<<<<<< HEAD
-        stock_data["korea_time"] = now.strftime('한국 %m.%d. %H:%M')
-        stock_data["us_time"] = now.strftime(f'해외 %m.%d. %H:%M {current_year}')
-=======
         stock_data["korea_time"] = now.strftime(f'현재시각: 한국 {current_year}.%m.%d. %H:%M')
         stock_data["us_time"] = now.strftime(f'현재시각: 해외 {current_year}.%m.%d. %H:%M ')
         # US 타임으로 변경
->>>>>>> 36d599f (통합 뉴스 도구v1.1.6)
         print(f"시간 정보 추출 중 오류 발생: {e}")
     
     # 추가 정보 펼치기 시도
