@@ -6,8 +6,14 @@ from dotenv import load_dotenv
 # 절대경로 import로 수정
 from news.src.utils.common_utils import get_today_kst_str, build_stock_prompt
 
-# .env 파일 경로를 빌드/개발 환경 모두에서 안전하게 지정
+# ------------------------------------------------------------------
+# 작성자 : 곽은규
+# 기능 : 다양한 실행 환경(.py, PyInstaller)에서 .env 파일 로드
+# ------------------------------------------------------------------
 def _load_env_file():
+    """
+    GOOGLE_API_KEY 환경 변수가 로드되었는지 확인하고, 로드되지 않았다면 여러 예상 경로에서 .env 파일을 찾아 로드
+    """
     if os.getenv("GOOGLE_API_KEY"):
         return
     
@@ -59,16 +65,14 @@ genai.configure(api_key=api_key)
 # ------------------------------------------------------------------
 # 작성자 : 곽은규
 # 작성일 : 2025-07-17
-# 기능 : 정보성 기사 챗봇, 공동 PROMPT 작성
+# 기능 : 정보성 기사 생성을 위한 기본 시스템 프롬프트
 # ------------------------------------------------------------------
 BASE_SYSTEM_PROMPT = (
     """
     [System Message]
     사용자가 키워드, 텍스트 정보, 그리고 이미지를 제공합니다.
     제공된 모든 정보를 종합적으로 분석하여 기사 문체로 작성합니다.
-    **최종 출력은 [제목], [해시태그], [본문]의 세 섹션으로 명확히 구분하여 반드시 작성할 것.** 
-
-    [Role]
+    **최종 출력은 [제목], [해시태그], [본문]의 세 섹션으로 명확히 구분하여 반드시 작성할 것.** [Role]
     - 당신은 데이터(키워드, 텍스트, 이미지)를 분석하여 독자가 이해하기 쉬운 기사를 작성하는 전문 기자입니다.
     - 당신의 최우선 역할은 '전문 기자'로서, 데이터 속에서 이야기를 발굴하여 독자에게 전달하는 것입니다. 이것이 모든 작업의 핵심 목표입니다.
     - 특정 주제(예: 주식)에 대한 **[Special Rules for ...], [Style], [키워드 정보(user message)]** 태그가 별도로 제공됩니다.
@@ -145,7 +149,18 @@ BASE_SYSTEM_PROMPT = (
 """
 )
 
+# ------------------------------------------------------------------
+# 작성자 : 곽은규
+# 기능 : 기본 시스템 프롬프트에 특정 도메인(주식)의 규칙을 추가
+# ------------------------------------------------------------------
 def build_system_prompt(keyword, today_kst, is_stock=False):
+    """
+    기본 시스템 프롬프트를 생성하고, is_stock이 True일 경우 주식 관련 특별 규칙을 추가
+    :param keyword: 기사 키워드
+    :param today_kst: 오늘 날짜(KST) 문자열
+    :param is_stock: 주식 관련 기사인지 여부
+    :return: 최종 시스템 프롬프트 문자열
+    """
     prompt = BASE_SYSTEM_PROMPT.format(keyword=keyword, today_kst=today_kst)
     if is_stock:
         stock_prompt = build_stock_prompt(today_kst)
@@ -154,13 +169,17 @@ def build_system_prompt(keyword, today_kst, is_stock=False):
     return prompt
 
 
-
+# ------------------------------------------------------------------
+# 작성자 : 곽은규
+# 기능 : 이미지와 키워드를 입력받아 정보성 기사 생성 (Vision 모델 사용)
+# ------------------------------------------------------------------
 def generate_info_news(keyword: str, image_path: str, is_stock: bool):
     """
-    주식 관련 이미지를 LLM(Gemini Vision)에 입력하여 기사 생성.
-    :param stock_name: 주식명 또는 키워드
-    :param image_path: 캡처 이미지 경로
-    :return: LLM이 생성한 기사(제목, 본문, 해시태그)
+    주어진 이미지(차트 등)를 Gemini Vision 모델로 분석하여 정보성 기사를 생성
+    :param keyword: 기사 생성에 사용할 키워드 (예: 주식명)
+    :param image_path: 분석할 이미지 파일 경로
+    :param is_stock: 주식 관련 이미지인지 여부 (프롬프트 분기용)
+    :return: LLM이 생성한 기사 텍스트, 오류 발생 시 None
     """
     today_kst = get_today_kst_str()
     system_prompt = build_system_prompt(keyword, today_kst, is_stock=is_stock)
@@ -184,10 +203,17 @@ def generate_info_news(keyword: str, image_path: str, is_stock: bool):
         print(f"Gemini Vision API 호출 중 오류 발생: {e}")
         return None
 
-
+# ------------------------------------------------------------------
+# 작성자 : 곽은규
+# 기능 : 텍스트 데이터(딕셔너리)와 키워드를 입력받아 정보성 기사 생성
+# ------------------------------------------------------------------
 def generate_info_news_from_text(keyword: str, info_dict: dict, domain: str = "generic"):
     """
-    도메인(주식, 환율, 코인 등)에 상관없이 정보성 뉴스 생성 (info_dict는 도메인별로 정제된 데이터)
+    정제된 텍스트 데이터(딕셔너리)를 기반으로 Gemini 모델을 사용하여 정보성 기사를 생성
+    :param keyword: 기사 생성에 사용할 키워드
+    :param info_dict: 기사 내용으로 사용할 정제된 데이터 딕셔너리
+    :param domain: 데이터의 종류 (예: 'stock', 'fx', 'coin')
+    :return: LLM이 생성한 기사 텍스트
     """
     today_kst = get_today_kst_str()
     system_prompt = build_system_prompt(keyword, today_kst, is_stock = domain in ["stock", "toss"])
@@ -252,4 +278,4 @@ def generate_info_news_from_text(keyword: str, info_dict: dict, domain: str = "g
 
     response = model.generate_content(user_message)
     print("[LLM 응답 결과]\n" + response.text + "\n")
-    return response.text  # .
+    return response.text  

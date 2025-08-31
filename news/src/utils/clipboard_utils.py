@@ -19,7 +19,7 @@ except ImportError:
 # ------------------------------------------------------------------
 def copy_image_to_clipboard(image_path: str) -> bool:
     """
-    주어진 이미지 파일을 윈도우 클립보드에 복사합니다 (Windows 전용)
+    주어진 이미지 파일을 윈도우 클립보드에 복사(Windows 전용)
     :param image_path: 이미지 경로
     :return: 성공 여부
     """

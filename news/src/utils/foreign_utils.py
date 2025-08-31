@@ -1,6 +1,6 @@
 # ------------------------------------------------------------------
 # 작성자 : 최준혁
-# 기능 : 해외 주식 관련 유틸 모듈
+# 기능 : 네이버 해외 주식 정보 크롤링 및 차트 캡처 유틸리티 모듈
 # ------------------------------------------------------------------
 import os
 import time
@@ -24,10 +24,14 @@ W = WebDriverWait
 # ------------------------------------------------------------------
 # 작성자 : 최준혁
 # 작성일 : 2025-08-01
-# 기능 : 드라이버를 초기화하고 설정하는 함수
+# 기능 : 드라이버 초기화 및 설정
 # ------------------------------------------------------------------
 def _setup_driver(progress_callback: Optional[Callable[[str], None]] = None) -> WebDriver:
-    """웹드라이버를 초기화하고 설정합니다."""
+    """
+    웹드라이버 초기화 및 설정
+    :param progress_callback: 진행 상태를 전달할 콜백 함수
+    :return: 초기화된 Selenium WebDriver 객체
+    """
     if progress_callback:
         progress_callback("드라이버 초기화 중...")
     driver = initialize_driver(headless= True)
@@ -37,10 +41,17 @@ def _setup_driver(progress_callback: Optional[Callable[[str], None]] = None) -> 
 # ------------------------------------------------------------------
 # 작성자 : 최준혁
 # 작성일 : 2025-08-01
-# 기능 : 차트 섹션을 캡처하고 이미지 파일로 저장하는 함수
+# 기능 : 차트 섹션 캡처 및 이미지 파일 저장
 # ------------------------------------------------------------------
-def _capture_chart_section(driver: WebDriver, keyword: str, progress_callback: Optional[Callable[[str], None]] = None, custom_save_dir: Optional[str] = None) -> str:
-    """차트 섹션을 캡처하고 이미지 파일로 저장합니다."""
+def _capture_chart_section(driver: WebDriver, keyword: str, progress_callback: Optional[Callable[[str], None]] = None, custom_save_dir: Optional[str] = None) -> Tuple[str, object]:
+    """
+    차트 섹션 캡처 및 이미지 파일 저장
+    :param driver: 사용할 Selenium WebDriver 객체
+    :param keyword: 검색할 주식 키워드
+    :param progress_callback: 진행 상태를 전달할 콜백 함수
+    :param custom_save_dir: 이미지를 저장할 사용자 지정 디렉토리 경로
+    :return: (캡처 이미지 경로, 차트 섹션 WebElement) 튜플
+    """
     if progress_callback:
         progress_callback(f"네이버 검색 페이지 이동: {keyword}")
 
@@ -116,10 +127,15 @@ def _capture_chart_section(driver: WebDriver, keyword: str, progress_callback: O
 # ------------------------------------------------------------------
 # 작성자 : 최준혁
 # 작성일 : 2025-08-01
-# 기능 : 해외 주식 상세 정보를 추출하는 함수
+# 기능 : 해외 주식 상세 정보 추출
 # ------------------------------------------------------------------
 def _extract_stock_data(driver: WebDriver, keyword: str) -> Dict:
-    """해외 주식 상세 정보를 추출합니다."""
+    """
+    해외 주식 상세 정보 추출
+    :param driver: 사용할 Selenium WebDriver 객체
+    :param keyword: 정보를 추출할 주식 키워드
+    :return: 주식 이름, 가격, 변동 등 상세 정보가 담긴 딕셔너리
+    """
     stock_data = {"keyword": keyword}
     
     # 기본 정보 추출
@@ -281,7 +297,7 @@ def _extract_stock_data(driver: WebDriver, keyword: str) -> Dict:
 # ------------------------------------------------------------------
 # 작성자 : 최준혁
 # 작성일 : 2025-08-01
-# 기능 : 네이버에서 해외 주식 차트 캡처 및 상세 정보 크롤링 함수
+# 기능 : 네이버 해외 주식 차트 캡처 및 상세 정보 크롤링
 # ------------------------------------------------------------------
 def capture_naver_foreign_stock_chart(
     keyword: str, 
@@ -289,17 +305,11 @@ def capture_naver_foreign_stock_chart(
     custom_save_dir: Optional[str] = None
 ) -> Tuple[Optional[str], Dict, bool]:
     """
-    네이버에서 해외 주식 차트 캡처 및 상세 정보 크롤링 함수
-    
-    Args:
-        keyword: 검색할 주식 키워드
-        progress_callback: 진행 상황을 알리기 위한 콜백 함수
-        
-    Returns:
-        tuple: (screenshot_path, stock_data, success)
-            - screenshot_path: 저장된 차트 이미지 경로 (실패 시 None)
-            - stock_data: 추출된 주식 데이터 (실패 시 빈 dict)
-            - success: 작업 성공 여부
+    네이버에서 해외 주식 차트 캡처 및 상세 정보 크롤링 수행
+    :param keyword: 검색할 주식 키워드
+    :param progress_callback: 진행 상태를 전달할 콜백 함수
+    :param custom_save_dir: 이미지를 저장할 사용자 지정 디렉토리 경로
+    :return: (이미지 경로, 주식 데이터, 성공 여부) 튜플
     """
     driver = None
     stock_data = {}

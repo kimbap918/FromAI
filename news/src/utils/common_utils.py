@@ -35,13 +35,23 @@ from news.src.utils.data_manager import data_manager
 # 기능 : KST 시간을 한국 시간으로 변환하는 함수
 # ------------------------------------------------------------------
 def convert_get_today_kst_str() -> str:
-    now_kst = datetime.now(TZ)
+    """
+    현재 KST 시간을 증시 상황에 맞는 문자열로 변환.
+    장마감 시간(15:30) 이후에는 '장마감'으로, 그 외에는 '오전/오후' 형식으로 표시.
+    :return: 포맷팅된 시간 문자열 (예: "30일 KRX 장마감", "30일 오후 3시 10분")
+    """
+    now_kst = datetime.now(TZ) # 한국 시간대 기준 현재 시간
+    # 오후 3시 30분 이후인지 확인하여 장마감 여부 결정
     if now_kst.hour > 15 or (now_kst.hour == 15 and now_kst.minute >= 30):
         return f"{now_kst.day}일 KRX 장마감"
+    
+    # 오전/오후 구분
     am_pm = "오전" if now_kst.hour < 12 else "오후"
+    # 12시간 형식으로 시간 변환
     hour_12 = now_kst.hour % 12
-    if hour_12 == 0:
+    if hour_12 == 0: # 0시는 12시로 표시
         hour_12 = 12
+        
     return f"{now_kst.day}일 {am_pm} {hour_12}시 {now_kst.minute}분"
 
 # ------------------------------------------------------------------
@@ -50,7 +60,12 @@ def convert_get_today_kst_str() -> str:
 # 기능 : 파일명에 사용할 수 없는 문자를 _로 치환하는 함수
 # ------------------------------------------------------------------
 def safe_filename(s):
-    # 파일명에 사용할 수 없는 문자 모두 _로 치환
+    """
+    문자열에서 파일명으로 사용할 수 없는 문자들을 '_'로 치환.
+    :param s: 원본 문자열
+    :return: 안전하게 변환된 파일명 문자열
+    """
+    # 정규표현식을 사용하여 파일명 금지 문자(\, /, :, *, ?, ", <, >, |, 공백)를 '_'로 변경
     return re.sub(r'[\\/:*?"<>|,\s]', '_', s)
 
 # ------------------------------------------------------------------
@@ -59,43 +74,60 @@ def safe_filename(s):
 # 기능 : 뉴스를 파일로 저장하는 함수
 # ------------------------------------------------------------------
 def save_news_to_file(keyword: str, domain: str, news_content: str, save_dir: str = "생성된 기사", open_after_save: bool = True, custom_save_dir: Optional[str] = None):
+    """
+    생성된 뉴스 기사 내용을 텍스트 파일로 저장하고, 저장 후 파일을 자동으로 연다.
+    :param keyword: 뉴스 키워드 (파일 이름에 사용)
+    :param domain: 뉴스 도메인 ('toss' 또는 그 외, 폴더 이름에 사용)
+    :param news_content: 저장할 기사 본문
+    :param save_dir: 기본 저장 디렉토리 이름
+    :param open_after_save: 저장 후 파일을 열지 여부
+    :param custom_save_dir: 사용자가 지정한 저장 경로 (이 값이 있으면 다른 경로는 무시)
+    :return: 저장된 파일의 절대 경로, 실패 시 None
+    """
+    # 저장할 내용이 비어있는지 확인
     if not news_content or not news_content.strip():
         print("[WARNING] 저장할 뉴스 내용이 비어 있습니다. 파일 저장을 건너뜁니다.")
         return None
         
+    # 저장 경로 설정: 사용자 지정 경로가 있으면 사용, 없으면 기본 경로 생성
     if custom_save_dir:
         full_save_dir = custom_save_dir
     else:
         current_dir = os.getcwd()
         today_date_str = get_today_kst_date_str()
         base_save_dir = os.path.join(current_dir, save_dir)
-        # 도메인별로 다른 폴더명을 사용하도록 수정
+        # 'toss' 도메인이면 '토스' 폴더, 아니면 '기사' 폴더 사용
         folder_prefix = "토스" if domain == "toss" else "기사"
         full_save_dir = os.path.join(base_save_dir, f"{folder_prefix}{today_date_str}")
-    os.makedirs(full_save_dir, exist_ok=True)
-    safe_k = safe_filename(keyword)
+        
+    os.makedirs(full_save_dir, exist_ok=True) # 폴더가 없으면 생성
+    
+    safe_k = safe_filename(keyword) # 키워드를 파일명에 적합하게 변경
     filename = f"{safe_k}_{domain}_news.txt"
     file_path = os.path.join(full_save_dir, filename)
     
     try:
+        # 파일을 UTF-8 인코딩으로 저장
         with open(file_path, 'w', encoding='utf-8') as f:
             f.write(news_content)
+            
+        # 파일 자동 열기 기능
         try:
-            current_os = platform.system()
+            current_os = platform.system() # 현재 운영체제 확인
             print(f"현재 운영체제: {current_os}")
             if open_after_save:
                 if current_os == "Windows":
                     os.startfile(file_path)
                 elif current_os == "Darwin":  # macOS
                     subprocess.run(["open", file_path])
-                else:
+                else: # 그 외 OS는 지원하지 않음
                     print(f"지원하지 않는 운영체제입니다. 파일 자동 열기를 건너뜁니다: {file_path}")
         except Exception as open_err:
             print(f"저장된 파일 열기 중 오류 발생: {open_err}")
-        return os.path.abspath(file_path)
+        return os.path.abspath(file_path) # 성공 시 절대 경로 반환
     except Exception as e:
         print(f"뉴스 기사 저장 중 오류 발생: {e}")
-        return None
+        return None # 실패 시 None 반환
 
 # ------------------------------------------------------------------
 # 작성자 : 곽은규
@@ -103,42 +135,60 @@ def save_news_to_file(keyword: str, domain: str, news_content: str, save_dir: st
 # 기능 : 검색(KFinanceDataReader) 통해 종목 코드를 찾는 함수
 # ------------------------------------------------------------------
 def get_stock_info_from_search(keyword: str):
+    """
+    키워드를 이용해 종목 코드를 찾는다. FinanceDataReader를 먼저 시도하고,
+    실패하면 Naver 검색을 통해 찾는다.
+    :param keyword: 종목명 또는 검색어 (예: "삼성전자", "삼성전자 주가")
+    :return: 6자리 종목 코드, 찾지 못하면 None
+    """
     from selenium import webdriver
     from selenium.webdriver.chrome.options import Options
     import time
 
+    # 키워드에서 ' 주가' 또는 '주가' 문자열 제거
     clean_keyword = keyword.replace(' 주가','').strip()
     clean_keyword_2 = clean_keyword.replace('주가','').strip()
+    
+    # 1. FinanceDataReader 라이브러리로 종목 코드 검색 시도
     found_code = finance(clean_keyword_2)
     if found_code:
         print(f"DEBUG: FinanceDataReader로 찾은 종목 코드: {found_code}")
         return found_code
+        
+    # 키워드에 '주가'가 없으면 추가하여 검색 정확도 향상
     if '주가' not in keyword:
         search_keyword = f"{keyword} 주가"
     else:
         search_keyword = keyword
+        
+    # 키워드가 6자리 숫자면 종목 코드로 간주하고 바로 반환
     if search_keyword.isdigit() and len(search_keyword) == 6:
         return search_keyword
+        
+    # 2. Selenium을 이용한 Naver 검색 (FinanceDataReader 실패 시)
     options = Options()
-    options.add_argument("--headless")
-    options.add_argument("--no-sandbox")
+    options.add_argument("--headless") # 브라우저 창을 띄우지 않음
+    options.add_argument("--no-sandbox") #サンドボックスモードを無効にする
     driver = webdriver.Chrome(options=options)
     try:
         search_url = f"https://search.naver.com/search.naver?query={search_keyword}"
         driver.get(search_url)
-        time.sleep(0.3)
+        time.sleep(0.3) # 페이지 로딩 대기
+        
+        # 네이버 금융 페이지로 연결되는 링크 탐색
         finance_links = driver.find_elements("css selector", "a[href*='finance.naver.com/item/main']")
         for link in finance_links:
             href = link.get_attribute('href')
+            # 링크 URL에서 'code=' 뒤의 6자리 숫자(종목 코드) 추출
             m = re.search(r"code=(\d{6})", href)
             if m:
                 stock_code = m.group(1)
                 return stock_code
-        return None
+        return None # 찾지 못하면 None 반환
     except Exception:
         return None
     finally:
-        driver.quit()
+        driver.quit() # 드라이버 종료
 
 # ------------------------------------------------------------------
 # 작성자 : 최준혁
@@ -146,12 +196,20 @@ def get_stock_info_from_search(keyword: str):
 # 기능 : 종목 코드를 통해 차트를 캡처하는 함수
 # ------------------------------------------------------------------
 def capture_stock_chart(keyword: str, progress_callback=None) -> str:
+    """
+    키워드로 국내/해외 주식을 판별하여 적절한 차트 캡처 함수를 호출.
+    :param keyword: 주식 이름 (예: "삼성전자", "애플")
+    :param progress_callback: 진행 상태를 알리는 콜백 함수
+    :return: 캡처된 이미지 파일의 경로
+    """
+    # '구글' 검색 시 '알파벳'으로 키워드 변경
     if keyword.replace(' ', '') in ['구글', '구글주가']:
         keyword = '알파벳 주가'
+        
     stock_code = get_stock_info_from_search(keyword)
-    if stock_code:
+    if stock_code: # 종목 코드가 있으면 국내 주식으로 간주
         return capture_wrap_company_area(stock_code, progress_callback=progress_callback)
-    else:
+    else: # 없으면 해외 주식으로 간주하고 다른 함수 호출
         from news.src.utils.foreign_utils import capture_naver_foreign_stock_chart
         return capture_naver_foreign_stock_chart(keyword, progress_callback=progress_callback)
 
@@ -163,52 +221,51 @@ def capture_stock_chart(keyword: str, progress_callback=None) -> str:
 def create_pamphlet(keyword: str, is_foreign: bool) -> str:
     """
     국내/해외 및 장중/장마감 여부에 따라 다른 헤드라인 템플릿을 생성합니다.
-    is_foreign: 해외 주식이면 True, 국내 주식이면 False
+    :param keyword: 뉴스 키워드
+    :param is_foreign: 해외 주식이면 True, 국내 주식이면 False
+    :return: 생성된 템플릿 문자열
     """
     now_kst_dt = datetime.now(TZ)
-    weekday = now_kst_dt.weekday()
+    weekday = now_kst_dt.weekday() # 요일 확인 (월요일=0, 일요일=6)
 
     # ▼▼▼ 1. 해외 주식일 경우의 로직 ▼▼▼
     if is_foreign:
-        # 'date_str'에 사용할 한국 날짜 변수
-        korea_display_date = now_kst_dt
+        korea_display_date = now_kst_dt # 한국 표시 날짜 기본값
         
-        # 날짜 계산 로직 (주말 처리 포함)
-        if weekday == 5:  # 토요일
-            yesterday = now_kst_dt - timedelta(days=1) # 금요일
-        elif weekday == 6:  # 일요일
-            yesterday = now_kst_dt - timedelta(days=2) # 금요일
-            korea_display_date = now_kst_dt - timedelta(days=1) 
-        elif weekday == 0:  # 월요일
-            yesterday = now_kst_dt - timedelta(days=3) # 금요일
-            korea_display_date = now_kst_dt - timedelta(days=2) 
-        else: # 화요일 ~ 금요일
+        # 미국 증시는 한국 시간 기준 다음날 오전에 마감되므로, 날짜 계산이 필요.
+        if weekday == 5:  # 토요일 -> 금요일 기준
+            yesterday = now_kst_dt - timedelta(days=1)
+        elif weekday == 6:  # 일요일 -> 금요일 기준
+            yesterday = now_kst_dt - timedelta(days=2)
+            korea_display_date = now_kst_dt - timedelta(days=1)
+        elif weekday == 0:  # 월요일 -> 금요일 기준
+            yesterday = now_kst_dt - timedelta(days=3)
+            korea_display_date = now_kst_dt - timedelta(days=2)
+        else: # 화~금 -> 전날 기준
             yesterday = now_kst_dt - timedelta(days=1)
         
-        # '23일(미국 동부 기준 22일)' 형태의 문자열 생성
-        # now_kst_dt.day 대신 korea_display_date.day 사용
+        # '23일(미국 동부 기준 22일) 기준' 형태의 문자열 생성
         date_str = f"{korea_display_date.day}일(미국 동부 기준 {yesterday.day}일) 기준"
         
         return f"{date_str}, 네이버페이 증권에 따르면"
 
     # ▼▼▼ 2. 국내 주식일 경우의 로직 ▼▼▼
     else:
-        # 주말(토, 일)일 경우, 금요일 기준으로 장마감 처리
+        # 주말(토, 일)에는 가장 최근 장 마감일인 금요일 기준으로 처리
         if weekday == 5: # 토요일
             friday_dt = now_kst_dt - timedelta(days=1)
             time_status_str = f"{friday_dt.day}일 KRX 장마감"
         elif weekday == 6: # 일요일
             friday_dt = now_kst_dt - timedelta(days=2)
             time_status_str = f"{friday_dt.day}일 KRX 장마감"
-        else: # 평일
+        else: # 평일에는 현재 시간 기준으로 장중/장마감 표시
             time_status_str = convert_get_today_kst_str()
 
+        # 장마감/장중 여부에 따라 다른 포맷의 문자열 반환
         if "장마감" in time_status_str:
-            # 장마감일 경우
             day_part = time_status_str.split(' ')[0]
             return f"{day_part} KRX 마감 기준, 네이버페이 증권에 따르면"
         else:
-            # 장중일 경우
             return f"{time_status_str} 기준, 네이버페이 증권에 따르면"
 
 # ------------------------------------------------------------------
@@ -217,25 +274,40 @@ def create_pamphlet(keyword: str, is_foreign: bool) -> str:
 # 기능 : 차트를 캡처하고 LLM을 통해 뉴스를 생성하는 함수
 # ------------------------------------------------------------------
 def capture_and_generate_news(keyword: str, domain: str = "stock", progress_callback=None, is_running_callback=None, step_callback=None, debug=False, open_after_save=True, custom_save_dir: Optional[str] = None):
+    """
+    주식 정보 조회, 차트 이미지 캡처, LLM을 통한 기사 생성을 총괄하는 메인 함수.
+    :param keyword: 검색할 종목명
+    :param domain: 분야 ('stock', 'toss', 'coin' 등)
+    :param progress_callback: UI에 진행 상태를 전달하는 콜백
+    :param is_running_callback: 현재 실행 상태를 전달하는 콜백
+    :param step_callback: 단계별 진행 상태를 전달하는 콜백
+    :param debug: 디버그 정보 출력 여부
+    :param open_after_save: 저장 후 파일 자동 열기 여부
+    :param custom_save_dir: 사용자 지정 저장 경로
+    :return: 생성된 뉴스 기사 텍스트, 실패 시 None
+    """
     from news.src.services.info_LLM import generate_info_news_from_text
     from news.src.utils.foreign_utils import capture_naver_foreign_stock_chart
     from news.src.utils.domestic_utils import capture_wrap_company_area
 
-    total_steps = 3 # 1: 정보 조회, 2: 이미지 캡처, 3: 기사 생성
+    total_steps = 3 # 전체 프로세스 단계 수: 1.정보조회, 2.이미지캡처, 3.기사생성
     current_step = 0
 
+    # 단계 진행을 보고하는 내부 함수
     def report_step():
         nonlocal current_step
         current_step += 1
         if step_callback:
             step_callback(current_step, total_steps)
-    info_dict = {}
+            
+    info_dict = {} # LLM에 전달할 정보를 담을 딕셔너리
     is_stock = (domain == "stock")
 
+    # 기사와 이미지를 저장하는 내부 함수
     def save_news_and_image(news, image_path=None):
         today_str = get_today_kst_date_str()
 
-        # ✅ 저장 경로 설정
+        # 저장 경로 설정
         if custom_save_dir:
             full_dir = custom_save_dir
         else:
@@ -244,11 +316,13 @@ def capture_and_generate_news(keyword: str, domain: str = "stock", progress_call
             full_dir = os.path.join(base_dir, sub_dir)
         os.makedirs(full_dir, exist_ok=True)
 
-        # 기사 저장
+        # 기사 텍스트 파일 저장
         safe_k = safe_filename(keyword)
         news_path = os.path.join(full_dir, f"{safe_k}_{domain}_news.txt")
         with open(news_path, "w", encoding="utf-8") as f:
             f.write(news)
+            
+        # 저장 후 파일 열기
         if open_after_save:
             try:
                 if platform.system() == "Windows":
@@ -258,153 +332,117 @@ def capture_and_generate_news(keyword: str, domain: str = "stock", progress_call
             except Exception as e:
                 print(f"[WARNING] 메모장 열기 실패: {e}")
 
-
-        # Toss 탭에서는 이미지 저장 로직 제거 (이미지가 없는 경우가 있으므로 안전하게 처리)
+        # 'toss' 탭에서는 이미지 저장 안함
         if domain == "toss" and image_path and os.path.exists(image_path):
             print(f"[INFO] Toss 탭: 이미지 저장 생략 - {image_path}")
-            pass  # Toss 탭에서는 이미지 저장을 하지 않음
+            pass
 
-    if domain in ["stock", "toss"]:  # "toss"와 "stock" 도메인 처리
+    # 도메인이 'stock' 또는 'toss'인 경우
+    if domain in ["stock", "toss"]:
         stock_code = get_stock_info_from_search(keyword)
         report_step() # 1. 정보 조회 완료
 
         if not stock_code:
             # 🔹 해외 주식 처리
-            if progress_callback:
-                progress_callback(f"{keyword} 해외주식 정보 조회 중...")
+            if progress_callback: progress_callback(f"{keyword} 해외주식 정보 조회 중...")
             image_path, stock_data, success = capture_naver_foreign_stock_chart(keyword, progress_callback=progress_callback, custom_save_dir=custom_save_dir)
             report_step() # 2. 이미지 캡처 완료
+            
             if not image_path or not stock_data:
-                if progress_callback:
-                    progress_callback("해외주식 데이터 수집 실패")
+                if progress_callback: progress_callback("해외주식 데이터 수집 실패")
                 return None
             
             info_dict = stock_data
-            if progress_callback:
-                progress_callback("LLM 기사 생성 중...")
-            news = generate_info_news_from_text(keyword, info_dict, domain)
+            if progress_callback: progress_callback("LLM 기사 생성 중...")
+            news = generate_info_news_from_text(keyword, info_dict, domain) # LLM 기사 생성
             report_step() # 3. 기사 생성 완료
+            
             if news:
-                # 1. 팜플렛 문구를 별도로 생성합니다. (해외 주식으로 설정)
+                # 1. 팜플렛(기사 서두) 문구 생성 (해외 주식용)
                 pamphlet_text = create_pamphlet(keyword, is_foreign=True)
 
-                # 2. LLM 결과물에서 '[본문]' 또는 '본문' 마커를 찾아 후처리합니다.
+                # 2. LLM 결과물에서 '[본문]' 마커를 찾아 팜플렛 삽입
                 if re.search(r'(\[본문\]|본문)', news):
-                    # 교체될 텍스트: '[본문]' 다음 줄에 팜플렛이 오고, 그 뒤에 한 칸 띄고 본문이 시작됩니다.
                     replacement_text = f"[본문]\n{pamphlet_text} "
-                    # re.sub를 사용하여 '[본문]' 또는 '본문'과 그 뒤의 공백을 찾아 한 번만 교체합니다.
                     final_output = re.sub(r'(\[본문\]|본문)\s+', replacement_text, news, count=1)
-                else:
-                    # '본문' 마커가 없는 비상시에는, 맨 앞에 붙입니다.
+                else: # 마커가 없으면 맨 앞에 추가
                     final_output = pamphlet_text + '\n\n' + news
                 
-                # 3. 최종 완성본을 저장합니다.
+                # 3. 최종 결과물 저장
                 save_news_and_image(final_output, image_path)
             return news
 
-        # 🔹 국내 주식 처리 (Toss 탭 제외)
+        # 🔹 국내 주식 처리
         if domain == "toss":
-            # Toss 탭의 경우, 이미지 경로는 None으로 설정하고 차트 정보만 가져옴
-            if progress_callback:
-                progress_callback(f"{keyword} Toss 종목 정보 조회 중...")
-            
-            # Toss 탭에서는 Toss 기사 폴더에 차트와 기사를 각각 1개씩만 저장
-            if progress_callback:
-                progress_callback(f"{keyword} Toss 종목 정보 조회 중...")
-                
-            # Toss 기사 폴더 경로 설정
+            # 'toss' 탭의 경우 특정 폴더에 차트 정보 저장
+            if progress_callback: progress_callback(f"{keyword} Toss 종목 정보 조회 중...")
             if custom_save_dir:
                 toss_save_dir = custom_save_dir
             else:
                 today_str = get_today_kst_date_str()
                 toss_save_dir = os.path.join(os.getcwd(), "Toss기사", f"기사{today_str}")
-                
-            # 차트 정보 가져오기 (Toss 기사 폴더에 저장)
             image_path, is_stock, chart_text, invest_info_text, chart_info, invest_info, summary_info_text = capture_wrap_company_area(
-                stock_code, 
-                progress_callback=progress_callback, 
-                debug=debug,
-                custom_save_dir=toss_save_dir,
-                is_running_callback=is_running_callback
+                stock_code, progress_callback=progress_callback, debug=debug,
+                custom_save_dir=toss_save_dir, is_running_callback=is_running_callback
             )
-        else:
-            # 일반 주식의 경우 기존 로직 유지
-            if progress_callback:
-                progress_callback(f"{keyword} 국내주식 정보 조회 중...")
+        else: # 일반 'stock' 탭의 경우
+            if progress_callback: progress_callback(f"{keyword} 국내주식 정보 조회 중...")
             image_path, is_stock, chart_text, invest_info_text, chart_info, invest_info, summary_info_text = capture_wrap_company_area(
-                stock_code, 
-                progress_callback=progress_callback, 
-                debug=debug, 
-                custom_save_dir=custom_save_dir,
-                is_running_callback=is_running_callback
+                stock_code, progress_callback=progress_callback, debug=debug, 
+                custom_save_dir=custom_save_dir, is_running_callback=is_running_callback
             )
         report_step() # 2. 이미지 캡처 완료
-        if not image_path:
-            if progress_callback:
-                progress_callback("국내주식 이미지 캡처 실패")
-            return None
-        info_dict = {**chart_info, **invest_info}
         
-        # 신규상장 관련 정보 추가하기
+        if not image_path:
+            if progress_callback: progress_callback("국내주식 이미지 캡처 실패")
+            return None
+            
+        info_dict = {**chart_info, **invest_info} # 차트와 투자자 정보를 합쳐 LLM에 전달
+        
+        # 신규상장 종목 여부 정보 추가
         is_newly_listed_stock = data_manager.is_newly_listed(keyword)
         info_dict["신규상장여부"] = is_newly_listed_stock
 
-        # if summary_info_text:
-        #     info_dict["기업개요"] = summary_info_text
-        if debug:
-            print("[DEBUG] 국내 주식 정보:\n", info_dict)
-        if progress_callback:
-            progress_callback("LLM 기사 생성 중...")
-        news = generate_info_news_from_text(keyword, info_dict, domain)
+        if debug: print("[DEBUG] 국내 주식 정보:\n", info_dict)
+        if progress_callback: progress_callback("LLM 기사 생성 중...")
+        news = generate_info_news_from_text(keyword, info_dict, domain) # LLM 기사 생성
         report_step() # 3. 기사 생성 완료
+        
         if news:
-            # 1. 팜플렛 문구를 별도로 생성합니다. (해외 주식으로 설정)
+            # 1. 팜플렛 문구 생성 (국내 주식용)
             pamphlet_text = create_pamphlet(keyword, is_foreign= False)
-
-            # 2. LLM 결과물에서 '[본문]' 또는 '본문' 마커를 찾아 후처리합니다.
+            # 2. LLM 결과물 후처리 및 저장
             if re.search(r'(\[본문\]|본문)', news):
-                # 교체될 텍스트: '[본문]' 다음 줄에 팜플렛이 오고, 그 뒤에 한 칸 띄고 본문이 시작됩니다.
                 replacement_text = f"[본문]\n{pamphlet_text} "
-                # re.sub를 사용하여 '[본문]' 또는 '본문'과 그 뒤의 공백을 찾아 한 번만 교체합니다.
                 final_output = re.sub(r'(\[본문\]|본문)\s+', replacement_text, news, count=1)
             else:
-                # '본문' 마커가 없는 비상시에는, 맨 앞에 붙입니다.
                 final_output = pamphlet_text + '\n\n' + news
-            
-            # 3. 최종 완성본을 저장합니다.
             save_news_and_image(final_output, image_path)
         return news
 
     else:
-        report_step() # 1. 정보 조회 완료 (기타 도메인은 조회 단계가 없으므로 바로 호출)
-        # 🔹 기타 도메인 (coin, fx 등)
+        # 🔹 기타 도메인 (코인, 환율 등) 처리
+        report_step() # 1. 정보 조회 완료 (별도 조회 단계 없음)
         image_path, stock_data, success = capture_naver_foreign_stock_chart(keyword, progress_callback=progress_callback, custom_save_dir=custom_save_dir)
         report_step() # 2. 이미지 캡처 완료
+        
         if not image_path or not success:
-            if progress_callback:
-                progress_callback("이미지 캡처 실패")
+            if progress_callback: progress_callback("이미지 캡처 실패")
             return None
+            
         info_dict = {"이미지": image_path, "키워드": keyword}
-        if debug:
-            print("[DEBUG] 기타 도메인 정보:\n", info_dict)
-        if progress_callback:
-            progress_callback("LLM 기사 생성 중...")
-        news = generate_info_news_from_text(keyword, info_dict, domain)
+        if debug: print("[DEBUG] 기타 도메인 정보:\n", info_dict)
+        if progress_callback: progress_callback("LLM 기사 생성 중...")
+        news = generate_info_news_from_text(keyword, info_dict, domain) # LLM 기사 생성
+        
         if news:
-            # 1. 팜플렛 문구를 별도로 생성합니다. (해외 주식으로 설정)
+            # 해외 주식과 동일한 로직으로 팜플렛 생성 및 후처리
             pamphlet_text = create_pamphlet(keyword, is_foreign=True)
-
-            # 2. LLM 결과물에서 '[본문]' 또는 '본문' 마커를 찾아 후처리합니다.
             if re.search(r'(\[본문\]|본문)', news):
-                # 교체될 텍스트: '[본문]' 다음 줄에 팜플렛이 오고, 그 뒤에 한 칸 띄고 본문이 시작됩니다.
                 replacement_text = f"[본문]\n{pamphlet_text} "
-                # re.sub를 사용하여 '[본문]' 또는 '본문'과 그 뒤의 공백을 찾아 한 번만 교체합니다.
                 final_output = re.sub(r'(\[본문\]|본문)\s+', replacement_text, news, count=1)
             else:
-                # '본문' 마커가 없는 비상시에는, 맨 앞에 붙입니다.
                 final_output = pamphlet_text + '\n\n' + news
-            
-            # 3. 최종 완성본을 저장합니다.
             save_news_and_image(final_output, image_path)
         return news
 
@@ -414,90 +452,56 @@ def capture_and_generate_news(keyword: str, domain: str = "stock", progress_call
 # 기능 : 주식 정보를 위한 프롬프트를 생성하는 함수
 # ------------------------------------------------------------------
 def build_stock_prompt(today_kst):
-    # 다양한 포맷 지원: '2025년 7월 1일', '20250701', '2025-07-01', '2025.07.01' 등
+    """
+    주식 뉴스 생성을 위한 동적 LLM 프롬프트를 생성.
+    날짜, 요일, 장 상태(장중/장마감)에 따라 내용이 달라진다.
+    :param today_kst: 'YYYYMMDD' 형식의 한국 날짜 문자열
+    :return: LLM에 전달할 프롬프트 문자열
+    """
     date_obj = None
+    # 다양한 날짜 형식('YYYY년 M월 D일', 'YYYYMMDD' 등) 파싱 시도
     for fmt in ["%Y년 %m월 %d일", "%Y%m%d", "%Y-%m-%d", "%Y.%m.%d", "%Y/%m/%d", "%Y %m %d"]:
         try:
             date_obj = datetime.strptime(today_kst.split()[0], fmt)
             break
         except Exception:
             continue
-    if not date_obj:
+    if not date_obj: # 파싱 실패 시 현재 날짜 사용
         date_obj = datetime.now()
 
     weekday = date_obj.weekday()
-    is_weekend = weekday in [5, 6]
+    is_weekend = weekday in [5, 6] # 토요일(5), 일요일(6)
 
-   # 주말일 경우 날짜를 금요일로 조정
+    # 주말일 경우, 모든 기준 날짜를 금요일로 조정
     if is_weekend:
-        # weekday가 5(토)이면 1일 빼고, 6(일)이면 2일 뺀다. (weekday - 4)
         effective_date_obj = date_obj - timedelta(days=weekday - 4)
         now_time = f"{effective_date_obj.day}일 KRX 장마감"
-    else:
+    else: # 평일일 경우
         effective_date_obj = date_obj
         now_time = convert_get_today_kst_str()
 
     print("now_time 호출 결과:", now_time)
 
-    # 모든 날짜 계산을 effective_date_obj 기준으로 수행
-    if effective_date_obj.weekday() == 0:  # 월요일은 0
+    # 어제 날짜 계산 (월요일이면 금요일로)
+    if effective_date_obj.weekday() == 0:
         yesterday = effective_date_obj - timedelta(days=3)
     else:
         yesterday = effective_date_obj - timedelta(days=1)
-    before_yesterday = yesterday - timedelta(days=1)
     
-    today_day_str = str(effective_date_obj.day)
-
-    if effective_date_obj.month != yesterday.month:
-        yesterday_str = f"지난달 {yesterday.day}"
-    else:
-        yesterday_str = f"지난 {yesterday.day}"
-    if yesterday.month != before_yesterday.month:
-        before_yesterday_str = f"지난달 {before_yesterday.day}"
-    else:
-        before_yesterday_str = f"지난 {before_yesterday.day}"
-
-    # 'O월 O일' 형식으로 날짜를 변환하는 내부 함수
+    # 날짜를 'O월 O일' 형식으로 변환하는 내부 함수 (OS 호환성 고려)
     def format_month_day(dt):
         if platform.system() == "Windows":
-            return dt.strftime("%#m월 %#d일")
+            return dt.strftime("%#m월 %#d일") # Windows: '7월 1일'
         else:
-            return dt.strftime("%-m월 %-d일")
+            return dt.strftime("%-m월 %-d일") # macOS/Linux: '7월 1일'
     
-    today_month_day_format = format_month_day(effective_date_obj)
-
+    # 기사 제목에 들어갈 날짜/시간 형식 설정
     if "장마감" in now_time:
-        title_time_format = f"\"{today_month_day_format}\" "
+        title_time_format = f"\"{format_month_day(effective_date_obj)}\" "
     else:
-        title_time_format = f"\"{today_month_day_format} 장중\""
+        title_time_format = f"\"{format_month_day(effective_date_obj)} 장중\""
         
-    today_month_day = format_month_day(effective_date_obj)
-        
-    # # 원하는 형식의 최종 문자열을 생성
-    # # 주말 해외주식 날짜 표기를 위한 로직
-    # if weekday in [5, 6, 0]: # 토요일, 일요일, 월요일
-    # # 금요일 날짜 계산
-    #     friday = date_obj - timedelta(days= (weekday - 4) % 7)
-        
-    #     # 한국 날짜(금요일), 미국 날짜(금요일)
-    #     output_current_day = f"{friday.day}일(미국 동부 기준 {friday.day}일)"
-        
-    #     # 이전 날짜(목요일) 계산
-    #     yesterday = friday - timedelta(days=1)
-    #     output_previous_day = f"{yesterday.day}일(미국 동부 기준 {yesterday.day}일)"
-    
-    # else: # 화요일부터 금요일
-    #     # 한국 날짜는 오늘(화요일)의 날짜, 미국 날짜는 어제의 날짜
-    #     yesterday = date_obj - timedelta(days=1)
-    #     output_current_day = f"{date_obj.day}일(미국 동부 기준 {yesterday.day}일)"
-        
-    #     # 이전 날짜는 그저께 날짜
-    #     before_yesterday = yesterday - timedelta(days=1)
-    #     output_previous_day = f"{yesterday.day}일(미국 동부 기준 {before_yesterday.day}일)"
-
-    # # print(f"output_current_day: {output_current_day}")
-    # # print(f"output_previous_day: {output_previous_day}")
-
+    # 최종 프롬프트 템플릿
     stock_prompt = (
     "[Special Rules for Stock-Related News]\n"
         f"1. 제목 작성 시 규칙\n"
@@ -535,4 +539,3 @@ def build_stock_prompt(today_kst):
         f"   - **'이날, 전일, 전 거래일, 전날, 오늘' 이라는 단어와 표현은 엄격히 절대 사용하지 말 것.\n\n**"
     )
     return stock_prompt
-    

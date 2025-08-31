@@ -1,6 +1,6 @@
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLabel, QGroupBox, QHBoxLayout, QLineEdit, QPushButton, QTextEdit, QMessageBox
+from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLabel, QGroupBox, QHBoxLayout, QLineEdit, QPushButton, QTextEdit, QMessageBox, QShortcut
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
-from PyQt5.QtGui import QFont
+from PyQt5.QtGui import QFont, QKeySequence
 import pyperclip
 import webbrowser
 import urllib.parse
@@ -14,7 +14,6 @@ from news.src.services import news_LLM
 
 CHATBOT_URL = "https://chatgpt.com/g/g-67abdb7e8f1c8191978db654d8a57b86-gisa-jaeguseong-caesbos?model=gpt-4o"
 
-# 지원 불가 뉴스 사이트 패턴 (도메인 일부 포함)
 BLOCKED_SITES = {
     "ichannela": "채널A",
     "moneys": "머니S",
@@ -24,6 +23,7 @@ BLOCKED_SITES = {
     "dt.co.kr": "디지털타임스",
     "biz.sbs": "SBS Biz",
     "news1": "뉴스1",
+    "kmib": "국민일보",
 }
 
 def is_blocked_url(url: str):
@@ -37,60 +37,77 @@ def is_blocked_url(url: str):
     except Exception:
         return False, ""
 
-# ------------------------------------------------------------------
-# 작성자 : 최준혁
-# 작성일 : 2025-08-22
-# 기능 : LLM을 이용한 기사 재구성 테스트 탭(프론트)
-# ------------------------------------------------------------------
-class NewsLLMWorker(QThread):
-    finished = pyqtSignal(dict, str)  # result, error
+# -------------------------- Workers --------------------------
+class NewsCrawlerWorker(QThread):
+    finished = pyqtSignal(str, str, str)  # title, body, error
     progress = pyqtSignal(str)
 
-    def __init__(self, url: str, keyword: str):
+    def __init__(self, url: str):
         super().__init__()
         self.url = url
-        self.keyword = keyword
 
     def run(self):
         try:
             self.progress.emit("기사 다운로드 중...")
-            # article_utils를 사용하여 기사 추출 (iframe/스마트 파싱 포함)
             title, body = extract_article_content(self.url, progress_callback=self.progress.emit)
-
-            self.progress.emit("본문 길이 확인 중...")
-            if not body or len(body) < 300:  # 최소 300자 이상
-                self.finished.emit({}, "기사 본문을 추출하지 못했거나 너무 짧습니다.")
+            if self.isInterruptionRequested():
+                self.finished.emit("", "", "크롤링이 취소되었습니다.")
                 return
+            self.progress.emit("본문 길이 확인 중...")
+            if not body or len(body) < 300:
+                self.finished.emit("", "", "기사 본문을 추출하지 못했거나 너무 짧습니다.")
+                return
+            self.finished.emit(title, body, "")
+        except Exception as e:
+            self.progress.emit(f"크롤링 중 오류 발생: {str(e)}")
+            self.finished.emit("", "", f"크롤링 중 오류 발생: {str(e)}")
 
+class NewsLLMWorker(QThread):
+    finished = pyqtSignal(dict, str)  # result, error
+    progress = pyqtSignal(str)
+
+    def __init__(self, url: str, keyword: str, title: str, body: str):
+        super().__init__()
+        self.url = url
+        self.keyword = keyword
+        self.title = title
+        self.body = body
+
+    def run(self):
+        try:
             self.progress.emit("LLM을 통한 기사 생성 중...")
-            # 🔑 news_LLM 쪽에서 title/body를 우선 사용하도록 반드시 수정 필요
             result = news_LLM.generate_article({
                 "url": self.url,
                 "keyword": self.keyword,
-                "title": title,
-                "body": body
+                "title": self.title,
+                "body": self.body
             })
-
-            if result.get("error"):
+            if self.isInterruptionRequested():
+                self.finished.emit({}, "LLM 처리가 취소되었습니다.")
+                return
+            if isinstance(result, dict) and result.get("error"):
                 self.finished.emit({}, result.get("error"))
                 return
-
-            self.finished.emit(result, "")
-
+            self.finished.emit(result if isinstance(result, dict) else {}, "")
         except Exception as e:
-            error_msg = f"오류 발생: {str(e)}"
-            self.progress.emit(error_msg)
-            self.finished.emit({}, error_msg)
+            self.progress.emit(f"LLM 처리 중 오류 발생: {str(e)}")
+            self.finished.emit({}, f"LLM 처리 중 오류 발생: {str(e)}")
 
+# -------------------------- Main UI --------------------------
 class NewsTabTest(QWidget):
     def __init__(self):
         super().__init__()
-        self.worker = None
+        self.crawler_worker = None
+        self.llm_worker = None
+        self.current_title = ""
+        self.current_body = ""
+        self.current_keyword = ""
+        self.current_url = ""
+        self._busy = False
         self.init_ui()
 
     def init_ui(self):
         layout = QVBoxLayout()
-
         title_label = QLabel("📰 뉴스 재구성(테스트)")
         title_label.setFont(QFont("Arial", 16, QFont.Bold))
         title_label.setAlignment(Qt.AlignCenter)
@@ -111,7 +128,6 @@ class NewsTabTest(QWidget):
         keyword_label = QLabel("키워드:")
         self.keyword_input = QLineEdit()
         self.keyword_input.setPlaceholderText("예: AI, 경제, 기술...")
-        self.keyword_input.returnPressed.connect(self.extract_news)
         keyword_layout.addWidget(keyword_label)
         keyword_layout.addWidget(self.keyword_input)
         input_layout.addLayout(keyword_layout)
@@ -120,7 +136,7 @@ class NewsTabTest(QWidget):
         layout.addWidget(input_group)
 
         button_layout = QHBoxLayout()
-        self.extract_btn = QPushButton("🤖 LLM 재구성")
+        self.extract_btn = QPushButton("📄 기사 추출")
         self.extract_btn.clicked.connect(self.extract_news)
         self.reset_btn = QPushButton("🔄 리셋")
         self.reset_btn.clicked.connect(self.reset_inputs)
@@ -130,10 +146,8 @@ class NewsTabTest(QWidget):
         self.open_folder_btn = QPushButton("📁 폴더 열기")
         self.open_folder_btn.clicked.connect(self.open_today_folder)
 
-        button_layout.addWidget(self.extract_btn)
-        button_layout.addWidget(self.reset_btn)
-        button_layout.addWidget(self.cancel_btn)
-        button_layout.addWidget(self.open_folder_btn)
+        for btn in [self.extract_btn, self.reset_btn, self.cancel_btn, self.open_folder_btn]:
+            button_layout.addWidget(btn)
         layout.addLayout(button_layout)
 
         self.progress_label = QLabel("")
@@ -142,65 +156,154 @@ class NewsTabTest(QWidget):
 
         result_group = QGroupBox("결과")
         result_layout = QVBoxLayout()
-
         self.result_text = QTextEdit()
         self.result_text.setReadOnly(True)
-        # 보기 좋게 높이 제한 완화(원하면 제거해도 됨)
         self.result_text.setMaximumHeight(500)
         result_layout.addWidget(self.result_text)
 
-        copy_button_layout = QHBoxLayout()
         self.copy_result_btn = QPushButton("📋 복사하기")
         self.copy_result_btn.clicked.connect(self.copy_result)
         self.copy_result_btn.setEnabled(False)
-        copy_button_layout.addWidget(self.copy_result_btn)
-        result_layout.addLayout(copy_button_layout)
+        result_layout.addWidget(self.copy_result_btn)
 
         result_group.setLayout(result_layout)
         layout.addWidget(result_group)
 
         self.setLayout(layout)
 
+        # 엔터 단축키
+        shortcut_enter = QShortcut(QKeySequence(Qt.Key_Return), self)
+        shortcut_enter.activated.connect(self.extract_news)
+        shortcut_enter2 = QShortcut(QKeySequence(Qt.Key_Enter), self)
+        shortcut_enter2.activated.connect(self.extract_news)
+
+    # -------------------------- 핵심 기능 --------------------------
     def reset_inputs(self):
         self.url_input.clear()
         self.keyword_input.clear()
         self.result_text.clear()
         self.progress_label.setText("")
         self.copy_result_btn.setEnabled(False)
-        if self.worker and self.worker.isRunning():
-            self.worker.terminate()
+
+        if self.crawler_worker and self.crawler_worker.isRunning():
+            self.crawler_worker.requestInterruption()
+        if self.llm_worker and self.llm_worker.isRunning():
+            self.llm_worker.requestInterruption()
+
         self.extract_btn.setEnabled(True)
+        self.extract_btn.setText("📄 기사 추출")
         self.cancel_btn.setEnabled(False)
+        self._busy = False
+        if hasattr(self, 'crawling_done'):
+            delattr(self, 'crawling_done')
 
     def extract_news(self):
-        url = self.url_input.text().strip()
-        keyword = self.keyword_input.text().strip()
-
-        if not url or not keyword:
-            QMessageBox.warning(self, "입력 오류", "URL과 키워드를 모두 입력해주세요.")
+        if self._busy:
+            QMessageBox.information(self, "작업 중", "작업이 이미 진행 중입니다. 취소 후 다시 시도해주세요.")
             return
 
-        # 지원 불가 도메인 사전 차단
-        blocked, site_name = is_blocked_url(url)
-        if blocked:
-            QMessageBox.warning(
-                self,
-                "지원 불가 URL",
-                f"현재 크롤링을 지원하지 않는 사이트입니다: {site_name}\n다른 기사 URL을 입력해주세요.",
+        if not hasattr(self, 'crawling_done') or not self.crawling_done:
+            self.current_url = self.url_input.text().strip()
+            self.current_keyword = self.keyword_input.text().strip()
+            if not self.current_url or not self.current_keyword:
+                QMessageBox.warning(self, "입력 오류", "URL과 키워드를 모두 입력해주세요.")
+                return
+            blocked, site_name = is_blocked_url(self.current_url)
+            if blocked:
+                QMessageBox.warning(self, "지원 불가 URL", f"현재 크롤링을 지원하지 않는 사이트입니다: {site_name}")
+                return
+
+            self._busy = True
+            self.extract_btn.setEnabled(False)
+            self.cancel_btn.setEnabled(True)
+            self.copy_result_btn.setEnabled(False)
+            self.progress_label.setText("기사 크롤링 중...")
+            self.result_text.clear()
+
+            self.crawler_worker = NewsCrawlerWorker(self.current_url)
+            self.crawler_worker.finished.connect(self.on_crawling_finished)
+            self.crawler_worker.progress.connect(self.update_progress)
+            self.crawler_worker.start()
+        else:
+            self._busy = True
+            self.progress_label.setText("LLM 처리 중...")
+            self.extract_btn.setEnabled(False)
+            self.cancel_btn.setEnabled(True)
+
+            self.llm_worker = NewsLLMWorker(
+                self.current_url,
+                self.current_keyword,
+                self.current_title,
+                self.current_body
             )
+            self.llm_worker.finished.connect(self.on_llm_finished)
+            self.llm_worker.progress.connect(self.update_progress)
+            self.llm_worker.start()
+
+    def on_crawling_finished(self, title, body, error):
+        self._busy = False
+        if error:
+            self.progress_label.setText("")
+            QMessageBox.critical(self, "크롤링 오류", error)
+            self.extract_btn.setEnabled(True)
+            self.cancel_btn.setEnabled(False)
             return
 
-        self.extract_btn.setEnabled(False)
-        self.cancel_btn.setEnabled(True)
-        self.copy_result_btn.setEnabled(False)
-        self.progress_label.setText("처리 중...")
-        self.result_text.clear()
+        self.current_title = title
+        self.current_body = body
+        self.crawling_done = True
 
-        self.worker = NewsLLMWorker(url, keyword)
-        self.worker.progress.connect(self.update_progress)
-        self.worker.finished.connect(self.on_generation_finished)
-        self.worker.start()
+        separator = "=" * 80
+        self.result_text.setPlainText(f"{separator}\n{title}\n{separator}\n\n{body}\n{separator}")
+
+        self.progress_label.setText("크롤링 완료! 엔터나 'LLM 재구성' 클릭 가능.")
+        self.extract_btn.setText("🤖 LLM 재구성")
         self.extract_btn.setEnabled(True)
+        self.cancel_btn.setEnabled(False)
+        self.copy_result_btn.setEnabled(True)
+
+    def on_llm_finished(self, result, error):
+        self._busy = False
+        self.extract_btn.setEnabled(True)
+        self.cancel_btn.setEnabled(False)
+        if error:
+            self.progress_label.setText("")
+            QMessageBox.critical(self, "LLM 처리 오류", error)
+            self.extract_btn.setText("📄 기사 추출")
+            if hasattr(self, 'crawling_done'):
+                delattr(self, 'crawling_done')
+            return
+
+        display_text = ""
+        if isinstance(result, dict):
+            display_text = (
+                result.get("display_text")
+                or result.get("content")
+                or result.get("text")
+                or result.get("article")
+                or result.get("result")
+                or ""
+            )
+        self.result_text.setPlainText(display_text)
+
+        kind = "article"
+        if isinstance(result, dict):
+            kind = result.get("display_kind") or result.get("kind") or result.get("type") or "article"
+
+        if kind == "article":
+            self.progress_label.setText("기사 생성 완료. (사실관계 이상 없음)")
+            self.progress_label.setStyleSheet("color: #2E7D32; font-weight: bold;")
+        elif kind == "fact_check":
+            self.progress_label.setText("사실검증 경고: 문제점을 확인하세요.")
+            self.progress_label.setStyleSheet("color: #FF3B30; font-weight: bold;")
+        else:
+            self.progress_label.setText("처리 완료")
+            self.progress_label.setStyleSheet("color: #000000;")
+
+        self.copy_result_btn.setEnabled(True)
+        self.extract_btn.setText("📄 기사 추출")
+        if hasattr(self, 'crawling_done'):
+            delattr(self, 'crawling_done')
 
     def update_progress(self, message: str):
         if any(x in message for x in ["성공", "주의", "확인", "오류", "완료"]):
@@ -209,78 +312,21 @@ class NewsTabTest(QWidget):
             self.progress_label.setStyleSheet("color: black;")
         self.progress_label.setText(message)
 
-    def on_generation_finished(self, result: dict, error: str):
-        self.extract_btn.setEnabled(True)
-        self.cancel_btn.setEnabled(False)
-
-        if error:
-            self.progress_label.setText("")
-            QMessageBox.warning(self, "생성 실패", error)
-            self.copy_result_btn.setEnabled(False)
-            return
-
-        display_text = result.get("display_text", "")
-        kind = result.get("display_kind", "")
-
-        # 기사 저장(선택)
-        if kind == "article" and display_text:
-            keyword = self.keyword_input.text().strip() or "생성기사"
-            saved_path = self.save_article_to_file(keyword, display_text)
-            if saved_path:
-                self.progress_label.setText(f"기사가 저장되었습니다: {os.path.basename(saved_path)}")
-            else:
-                self.progress_label.setText("기사 저장에 실패했습니다.")
-
-        if kind == "article":
-            self.progress_label.setText("기사 생성 완료. (사실관계 이상 없음)")
-            self.progress_label.setStyleSheet("color: #2E7D32; font-weight: bold;")
-        elif kind == "fact_check":
-            self.progress_label.setText("사실검증 경고: 문제점을 확인하세요.")
-            self.progress_label.setStyleSheet("color: #FF3B30; font-weight: bold;")
-        elif kind == "error":
-            self.progress_label.setText("오류가 발생했습니다.")
-            self.progress_label.setStyleSheet("color: #FF3B30; font-weight: bold;")
-        else:
-            self.progress_label.setText("처리 완료")
-            self.progress_label.setStyleSheet("color: #000000;")
-
-        self.result_text.setText(display_text)
-        self.copy_result_btn.setEnabled(True)
-
-    def open_chatbot(self):
-        webbrowser.open(CHATBOT_URL, new=0)
-        QMessageBox.information(self, "챗봇 열기", "챗봇이 열렸습니다. Ctrl+V로 붙여넣기하세요.")
-
     def copy_result(self):
         text = self.result_text.toPlainText()
         pyperclip.copy(text)
-
-    def save_article_to_file(self, keyword: str, content: str) -> str:
-        try:
-            current_date = datetime.now().strftime("%Y%m%d")
-            base_dir = self._get_base_dir()
-            save_dir = os.path.join(base_dir, "기사 재생성", f"재생성{current_date}")
-            os.makedirs(save_dir, exist_ok=True)
-
-            import re
-            safe_keyword = re.sub(r'[\\/*?:"<>|]', '', keyword).strip()
-            filename = f"{safe_keyword}.txt"
-            filepath = os.path.join(save_dir, filename)
-
-            with open(filepath, 'w', encoding='utf-8') as f:
-                f.write(content)
-            return filepath
-        except Exception as e:
-            print(f"기사 저장 중 오류 발생: {str(e)}")
-            return ""
+        QMessageBox.information(self, "복사 완료", "결과가 클립보드에 복사되었습니다.")
 
     def cancel_extraction(self):
-        if self.worker and self.worker.isRunning():
-            self.worker.terminate()
-        self.progress_label.setText("취소됨")
-        self.extract_btn.setEnabled(True)
+        if self.crawler_worker and self.crawler_worker.isRunning():
+            self.crawler_worker.requestInterruption()
+        if self.llm_worker and self.llm_worker.isRunning():
+            self.llm_worker.requestInterruption()
+        self.progress_label.setText("취소 요청됨 — 작업이 안전하게 종료될 때까지 기다려주세요.")
+        self.extract_btn.setEnabled(False)
         self.copy_result_btn.setEnabled(False)
         self.cancel_btn.setEnabled(False)
+        self._busy = True
 
     def _get_base_dir(self) -> str:
         if getattr(sys, 'frozen', False):
@@ -293,16 +339,21 @@ class NewsTabTest(QWidget):
             base_dir = self._get_base_dir()
             folder_path = os.path.join(base_dir, "기사 재생성", f"재생성{current_date}")
             os.makedirs(folder_path, exist_ok=True)
-
             if os.name == 'nt':
-                try:
-                    os.startfile(folder_path)
-                except Exception:
-                    subprocess.run(['explorer', folder_path], check=True, shell=True)
+                os.startfile(folder_path)
             elif os.name == 'posix':
-                if sys.platform == 'darwin' or os.system('which open') == 0:
+                if sys.platform == 'darwin':
                     subprocess.run(['open', folder_path], check=True)
                 else:
                     subprocess.run(['xdg-open', folder_path], check=True)
         except Exception:
             pass
+
+if __name__ == "__main__":
+    from PyQt5.QtWidgets import QApplication
+    app = QApplication(sys.argv)
+    w = NewsTabTest()
+    w.setWindowTitle("뉴스 재구성 테스트 (개별 실행)")
+    w.resize(900, 700)
+    w.show()
+    sys.exit(app.exec_())

@@ -22,6 +22,7 @@ BLOCKED_SITES = {
     "dt.co.kr": "디지털타임스",
     "biz.sbs": "SBS Biz",
     "news1": "뉴스1",
+    "kmib": "국민일보",
 }
 
 def is_blocked_url(url: str):

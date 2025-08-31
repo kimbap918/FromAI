@@ -1,6 +1,6 @@
 # ------------------------------------------------------------------
 # 작성자 : 최준혁
-# 기능 : 셀레니움 크롬 드라이버 초기화 모듈
+# 기능 : 셀레니움 크롬 드라이버 초기화 및 유틸리티 모듈
 # ------------------------------------------------------------------
 import os
 from selenium import webdriver
@@ -17,7 +17,7 @@ from selenium.webdriver.common.by import By
 # ------------------------------------------------------------------
 def initialize_driver(headless: bool = True) -> 'webdriver.Chrome':
     """
-    셀레니움 크롬 드라이버를 옵션과 함께 초기화하여 반환합니다.
+    셀레니움 크롬 드라이버를 옵션과 함께 초기화하여 반환
     :param headless: 헤드리스 모드 여부
     :return: Chrome WebDriver 객체
     """
@@ -50,9 +50,14 @@ def initialize_driver(headless: bool = True) -> 'webdriver.Chrome':
     except Exception as e:
         raise RuntimeError(f"크롬 드라이버 실행 실패: {e}")
 
+# ------------------------------------------------------------------
+# 작성자 : 최준혁
+# 작성일 : 2025-07-10
+# 기능 : 네이버 검색 결과의 파워링크(광고) 제거
+# ------------------------------------------------------------------
 def remove_powerlink(driver, timeout: int = 2) -> None:
     """
-    네이버 검색 결과 페이지의 파워링크(광고) 섹션을 DOM에서 제거합니다.
+    네이버 검색 결과 페이지의 파워링크(광고) 섹션을 DOM에서 제거
     :param driver: Selenium WebDriver
     :param timeout: 문서 로딩 대기 최대 초
     """

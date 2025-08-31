@@ -9,7 +9,14 @@ from datetime import datetime
 from pathlib import Path
 import logging
 
+# ------------------------------------------------------------------
+# 작성자 : 최준혁
+# 기능 : 다양한 실행 환경(.py, PyInstaller)에서 .env 파일 로드
+# ------------------------------------------------------------------
 def _ensure_env_loaded():
+    """
+    GOOGLE_API_KEY 환경 변수가 로드되었는지 확인하고, 로드되지 않았다면 여러 예상 경로에서 .env 파일을 찾아 로드
+    """
     if os.getenv("GOOGLE_API_KEY"):
         return
     
@@ -58,23 +65,42 @@ genai.configure(api_key=api_key)
 model = genai.GenerativeModel("gemini-2.5-flash")
 
 
+# ------------------------------------------------------------------
+# 작성자 : 최준혁
+# 기능 : 파일명으로 사용하기 안전한 문자열로 키워드를 변환
+# ------------------------------------------------------------------
 def _safe_keyword(name: str) -> str:
+    """
+    문자열에서 알파벳, 숫자, 공백, 하이픈, 언더스코어만 남기고 공백을 언더스코어로 변경
+    :param name: 원본 문자열
+    :return: 파일명으로 사용 가능한 문자열
+    """
     name = "".join(c for c in name if c.isalnum() or c in (" ", "-", "_")).strip()
     return name.replace(" ", "_") or "log"
 
+# ------------------------------------------------------------------
+# 작성자 : 최준혁
+# 기능 : 프로그램의 기본 실행 디렉토리 경로 획득
+# ------------------------------------------------------------------
 def _get_base_dir() -> Path:
     """
-    exe 빌드 시: exe가 있는 위치
-    개발/실행 시: 현재 실행 디렉토리(Working Directory)
+    개발 환경과 PyInstaller 빌드 환경을 구분하여 로그 파일 등을 저장할 기본 경로를 반환
+    :return: 기본 디렉토리의 Path 객체
     """
     if getattr(sys, "frozen", False):
         return Path(sys.executable).parent
     return Path.cwd()
 
+# ------------------------------------------------------------------
+# 작성자 : 최준혁
+# 기능 : 사실관계 검증 과정을 기록할 로거(Logger) 설정
+# ------------------------------------------------------------------
 def setup_check_logging(keyword: str) -> tuple[logging.Logger, str]:
     """
-    check_LLM 로깅을 실행 위치에 생성.
-    예) ./기사 재생성/재생성YYYYMMDD/키워드.txt
+    '기사 재생성' 폴더 내에 오늘 날짜의 폴더를 만들고, 키워드를 파일명으로 하는 로그 파일을 설정
+    기존 news_LLM 로그 파일에 이어서 기록(mode="a")
+    :param keyword: 로그 파일명으로 사용할 키워드
+    :return: 설정된 로거 객체와 로그 파일 경로
     """
     current_date = datetime.now().strftime("%Y%m%d")
     base_dir = _get_base_dir()
@@ -102,7 +128,17 @@ def setup_check_logging(keyword: str) -> tuple[logging.Logger, str]:
 
     return logger, log_filepath
 
+# ------------------------------------------------------------------
+# 작성자 : 최준혁
+# 기능 : 메시지를 로거와 콘솔에 동시 출력
+# ------------------------------------------------------------------
 def log_and_print(logger, message: str, level: str = "info"):
+    """
+    주어진 메시지를 지정된 로그 레벨로 파일과 콘솔에 기록
+    :param logger: 사용할 로거 객체
+    :param message: 기록할 메시지
+    :param level: 로그 레벨 ('info', 'warning', 'error', 'debug')
+    """
     if level == "info":
         logger.info(message)
     elif level == "warning":
@@ -115,7 +151,16 @@ def log_and_print(logger, message: str, level: str = "info"):
 # =========================
 # 프롬프트는 그대로 유지
 # =========================
+# ------------------------------------------------------------------
+# 작성자 : 최준혁
+# 기능 : 사실관계 검증을 위한 시스템 프롬프트 생성
+# ------------------------------------------------------------------
 def generate_check_prompt(keyword: str = "") -> str:
+    """
+    Gemini 모델에 전달할 사실관계 검증용 시스템 프롬프트를 생성. 비교 기준, 점검 사항, JSON 출력 형식 등을 정의
+    :param keyword: 검증에 참고할 키워드
+    :return: 완성된 시스템 프롬프트 문자열
+    """
     today_kst = get_today_kst_str()
     keyword_info = f"- 키워드: {keyword}\n" if keyword else ""
 
@@ -180,8 +225,16 @@ def generate_check_prompt(keyword: str = "") -> str:
 
     return prompt
 
-
+# ------------------------------------------------------------------
+# 작성자 : 최준혁
+# 기능 : LLM 응답 텍스트에서 JSON 블록 추출
+# ------------------------------------------------------------------
 def _extract_json_block(text: str):
+    """
+    마크다운 코드 펜스(```json) 또는 중괄호({})로 감싸인 JSON 문자열을 찾아 파싱
+    :param text: LLM이 생성한 전체 텍스트
+    :return: 파싱된 JSON 객체, 실패 시 None
+    """
     fence = re.search(r"```json\s*(\{[\s\S]*?\})\s*```", text)
     if fence:
         try:
@@ -199,7 +252,17 @@ def _extract_json_block(text: str):
 # =========================
 # ▼ 자동 보정 유틸 
 # =========================
+# ------------------------------------------------------------------
+# 작성자 : 최준혁
+# 기능 : LLM이 생성한 다양한 형태의 판정(verdict)을 'OK' 또는 'ERROR'로 정규화
+# ------------------------------------------------------------------
 def _normalize_verdict(raw: str, json_obj: dict) -> str:
+    """
+    '✅', '일치' 등의 긍정 표현은 'OK'로, '❌', '오류' 등의 부정 표현은 'ERROR'로 변환
+    :param raw: LLM이 생성한 원본 verdict 문자열
+    :param json_obj: nonfactual_phrases 존재 여부 확인을 위한 JSON 객체
+    :return: 'OK' 또는 'ERROR' 문자열
+    """
     v = (raw or "").strip()
     vu = v.upper()
     if vu in ("OK", "ERROR"):
@@ -214,7 +277,16 @@ def _normalize_verdict(raw: str, json_obj: dict) -> str:
     nf = json_obj.get("nonfactual_phrases") or []
     return "ERROR" if nf else "OK"
 
+# ------------------------------------------------------------------
+# 작성자 : 최준혁
+# 기능 : 사실과 다른 구문(nonfactual_phrases) 목록을 표준 형식으로 정규화
+# ------------------------------------------------------------------
 def _normalize_nonfactual(nf) -> list[dict]:
+    """
+    다양한 형식의 오류 구문 목록을 {"phrase": ..., "reason": ...} 형태의 딕셔너리 리스트로 통일
+    :param nf: LLM이 생성한 nonfactual_phrases
+    :return: 정규화된 딕셔너리 리스트
+    """
     items = []
     if isinstance(nf, list):
         for it in nf:
@@ -228,8 +300,16 @@ def _normalize_nonfactual(nf) -> list[dict]:
                 items.append({"phrase": phrase, "reason": reason})
     return items
 
+# ------------------------------------------------------------------
+# 작성자 : 최준혁
+# 기능 : 텍스트에 [제목], [해시태그], [본문] 섹션이 없으면 최소한의 기본 틀을 생성하여 보장
+# ------------------------------------------------------------------
 def _ensure_sections(text: str) -> str:
-    """[제목]/[해시태그]/[본문] 강제 보장 (최소 보정)"""
+    """
+    주어진 텍스트에 필수 섹션이 누락된 경우, 기본 제목과 해시태그를 추가하여 완전한 형식으로 반환
+    :param text: 보정할 텍스트
+    :return: 섹션이 보장된 텍스트
+    """
     if not text:
         text = ""
     has_title = "[제목]" in text
@@ -260,8 +340,18 @@ def _ensure_sections(text: str) -> str:
     rebuilt.append(body.strip())
     return "\n".join(rebuilt).strip()
 
+# ------------------------------------------------------------------
+# 작성자 : 최준혁
+# 기능 : 수정된 기사가 없을 때, 오류 구절을 원본에서 제거하여 최소한의 수정을 수행
+# ------------------------------------------------------------------
 def _auto_minimal_patch(generated_article: str, nonfactual_list: list[dict]) -> str:
-    """교정문이 비어 있을 때, 문제 구절만 제거하는 최소 보정."""
+    """
+    LLM이 오류(ERROR)로 판정했으나 수정된 기사를 제공하지 않은 경우,
+    감지된 오류 구문(nonfactual_phrases)을 생성된 기사에서 삭제하는 방식으로 자동 수정
+    :param generated_article: LLM이 생성한 원본 기사
+    :param nonfactual_list: 사실이 아닌 것으로 판별된 구문 리스트
+    :return: 최소한으로 수정된 기사
+    """
     if not generated_article:
         return ""
     patched = generated_article
@@ -274,7 +364,18 @@ def _auto_minimal_patch(generated_article: str, nonfactual_list: list[dict]) -> 
 
 # =========================
 
+# ------------------------------------------------------------------
+# 작성자 : 최준혁
+# 기능 : 생성된 기사와 원문 기사를 비교하여 사실관계를 검증하는 메인 로직
+# ------------------------------------------------------------------
 def check_article_facts(generated_article: str, original_article: str, keyword: str = "check_LLM") -> dict:
+    """
+    두 기사를 LLM에 전달하여 사실관계 오류를 확인하고, 오류가 있을 경우 수정된 기사를 포함한 JSON을 반환
+    :param generated_article: news_LLM이 생성한 기사
+    :param original_article: 원본 기사 본문
+    :param keyword: 로깅 및 프롬프트에 사용될 키워드
+    :return: 검증 결과를 담은 딕셔너리 ('explanation', 'json', 'error' 포함)
+    """
     logger, log_filepath = setup_check_logging(keyword)
 
     log_and_print(logger, "\n" + "="*80)
