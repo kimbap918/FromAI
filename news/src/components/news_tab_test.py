@@ -290,6 +290,10 @@ class NewsTabTest(QWidget):
         if isinstance(result, dict):
             kind = result.get("display_kind") or result.get("kind") or result.get("type") or "article"
 
+        # 기사 완성 시 파일 저장 로직 추가
+        if kind == "article" and display_text and self.current_keyword:
+            self.save_article_to_file(display_text, self.current_keyword)
+
         if kind == "article":
             self.progress_label.setText("기사 생성 완료. (사실관계 이상 없음)")
             self.progress_label.setStyleSheet("color: #2E7D32; font-weight: bold;")
@@ -332,6 +336,33 @@ class NewsTabTest(QWidget):
         if getattr(sys, 'frozen', False):
             return os.path.dirname(sys.executable)
         return os.getcwd()
+
+    def save_article_to_file(self, article_text: str, keyword: str):
+        """
+        완성된 기사를 사용자 입력 키워드로 폴더에 저장
+        :param article_text: 완성된 기사 텍스트 ([제목], [해시태그], [본문] 포함)
+        :param keyword: 사용자가 입력한 키워드
+        """
+        try:
+            current_date = datetime.now().strftime("%Y%m%d")
+            base_dir = self._get_base_dir()
+            folder_path = os.path.join(base_dir, "기사 재생성", f"재생성{current_date}")
+            os.makedirs(folder_path, exist_ok=True)
+            
+            # 키워드를 안전한 파일명으로 변환
+            safe_keyword = "".join(c for c in keyword if c.isalnum() or c in (" ", "-", "_")).strip()
+            safe_keyword = safe_keyword.replace(" ", "_") or "article"
+            
+            file_path = os.path.join(folder_path, f"{safe_keyword}.txt")
+            
+            # 파일에 기사 저장
+            with open(file_path, 'w', encoding='utf-8') as f:
+                f.write(article_text)
+            
+            self.progress_label.setText(f"기사가 저장되었습니다: {safe_keyword}.txt")
+            
+        except Exception as e:
+            self.progress_label.setText(f"파일 저장 중 오류: {str(e)}")
 
     def open_today_folder(self):
         try:
