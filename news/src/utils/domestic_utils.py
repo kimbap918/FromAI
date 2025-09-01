@@ -262,12 +262,12 @@ def capture_wrap_company_area(stock_code: str, progress_callback=None, debug=Fal
         # 'KRX' 탭이 있는지 확인하고 있으면 클릭 (캡처 영역 크기 조절을 위함)
         if driver.find_elements(By.CSS_SELECTOR, "a.top_tab_link"):
             width, height = 965, 505
-            # elements = driver.find_elements(By.CSS_SELECTOR, "a.top_tab_link")
-            # for el in elements:
-            #     if "KRX" in el.text.upper():
-            #         el.click()
-            #         time.sleep(0.3)
-            #         break
+            elements = driver.find_elements(By.CSS_SELECTOR, "a.top_tab_link")
+            for el in elements:
+                if "KRX" in el.text.upper():
+                    el.click()
+                    time.sleep(0.3)
+                    break
         else:
             width, height = 965, 465
 

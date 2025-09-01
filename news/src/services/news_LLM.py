@@ -1,5 +1,4 @@
 # news_LLM.py — JSON 검증 연동 + verdict 안정 처리 버전
-
 import os
 import sys
 import google.generativeai as genai
@@ -27,6 +26,7 @@ except ImportError:
 # 🔒 형식 고정(양식 보정) 유틸
 # ---------------------------
 import re
+import json  # ✅ 추가: JSON 보정을 위한 임포트
 
 # ------------------------------------------------------------------
 # 작성자 : 최준혁
@@ -40,6 +40,25 @@ def _truncate(s: str, n: int) -> str:
     :return: 잘린 문자열
     """
     return s if len(s) <= n else s[:n].rstrip()
+
+# ✅ 추가: 코드펜스 제거 & 안전 JSON 파싱 유틸
+def _strip_code_fences(s: str) -> str:
+    """ ``` 또는 ```json 로 감싼 텍스트의 펜스를 제거 """
+    if not isinstance(s, str):
+        return s
+    s = s.strip()
+    s = re.sub(r"^```(?:json)?\s*\n?", "", s, flags=re.I)
+    s = re.sub(r"\n?```$", "", s, flags=re.I)
+    return s.strip()
+
+def _json_loads_maybe(s: str):
+    """ 문자열 s를 JSON으로 파싱 시도. 실패 시 None """
+    if not isinstance(s, str):
+        return None
+    try:
+        return json.loads(_strip_code_fences(s))
+    except Exception:
+        return None
 
 # ------------------------------------------------------------------
 # 작성자 : 최준혁
@@ -58,6 +77,65 @@ def ensure_output_sections(article_text: str, keyword: str, fallback_title: str)
         article_text = ""
 
     text = article_text.strip()
+
+    # ✅ 추가: JSON/코드펜스 응답을 감지해 섹션 재구성
+    obj = _json_loads_maybe(text)
+    if isinstance(obj, dict):
+        titles, hashtags, body = [], [], ""
+
+        # 제목 추출
+        for k in ("titles", "title_list", "title"):
+            v = obj.get(k)
+            if isinstance(v, list):
+                titles = [str(x).strip() for x in v if str(x).strip()]
+                break
+            if isinstance(v, str) and v.strip():
+                titles = [v.strip()]
+                break
+
+        # 해시태그 추출
+        for k in ("hashtags", "tags"):
+            v = obj.get(k)
+            if isinstance(v, list):
+                hashtags = [("#" + str(x).strip().lstrip("#").replace(" ", "")) for x in v if str(x).strip()]
+                break
+            if isinstance(v, str) and v.strip():
+                hashtags = [t if t.startswith("#") else "#" + t for t in v.strip().split()]
+
+        # 본문 추출
+        for k in ("body", "content", "article", "text"):
+            v = obj.get(k)
+            if isinstance(v, str) and v.strip():
+                body = v.strip()
+                break
+
+        if titles or hashtags or body:
+            base = _truncate(f"{keyword} {fallback_title}".strip(), 35) if fallback_title else _truncate(keyword, 35)
+            t1 = titles[0] if len(titles) >= 1 else (base or "제목 제안 1")
+            t2 = titles[1] if len(titles) >= 2 else (_truncate(f"{keyword} 핵심 정리", 35) if keyword else "제목 제안 2")
+            t3 = titles[2] if len(titles) >= 3 else (_truncate(f"{keyword} 행보 업데이트", 35) if keyword else "제목 제안 3")
+
+            tags = []
+            if keyword:
+                tags.append("#" + keyword.replace(" ", ""))
+            for t in hashtags:
+                if t not in tags:
+                    tags.append(t)
+            for extra in ["#뉴스", "#이슈", "#정보"]:
+                if len(tags) >= 5:
+                    break
+                if extra not in tags:
+                    tags.append(extra)
+            if len(tags) < 3:
+                tags = (tags + ["#뉴스", "#정보", "#업데이트"])[:3]
+            tags = tags[:5]
+
+            return "[제목]\n{}\n{}\n{}\n\n[해시태그]\n{}\n\n[본문]\n{}".format(
+                _truncate(t1, 35), _truncate(t2, 35), _truncate(t3, 35),
+                " ".join(tags),
+                (body or "").strip()
+            )
+
     has_title = "[제목]" in text
     has_tags  = "[해시태그]" in text
     has_body  = "[본문]" in text
@@ -350,9 +428,10 @@ def generate_system_prompt(keyword: str, today_kst: str) -> str:
         - 날짜가 이미 지난 시점 혹은 이미 발생한 사실은 과거 시제(…했다/…이었다), 진행 중인 사실은 현재 시제(…한다), 예정된 사실은 미래 지향 서술(…할 예정이다/…로 예정돼 있다)로 기술한다.
         - 추측성 표현(…할 것으로 보인다, …전망이다)은 사용하지 않는다.
         - 날짜를 노출할 필요가 없으면 직접적인 날짜 표기는 피하고, '당시', '이후', '이전', '같은 날'과 같은 상대적 시간 표현을 사용한다.
+        - 인용문 내의 날짜를 제외하고 날짜가 주어지는 경우 시제를 아래 규칙과 같이 변경한다.
         - [오늘(KST) 기준일]을 기준으로 동일 일의 경우 "O일"로 표기한다. "O월 O일", "오늘 OO일", "오늘(OO일)" 등의 표현 금지.
         - [오늘(KST) 기준일]을 기준으로 동일 월의 과거인 경우 "O월 O일, O일 -> 지난 O일", 동일 월의 미래인 경우 "O월 O일, O일 -> 오는 O일"로 표기한다.
-        - [오늘(KST) 기준일]을 기준으로 직전 월의 과거인 경우 "O월 O일, O일 -> 지난달 O일"로 표기한다.
+        - [오늘(KST) 기준일]을 기준으로 직전 월인 과거인 경우(예: [오늘(KST) 기준일]이 2025년 9월 1일인 경우, 2025년 8월 20일 -> 지난달 20일) "O월 O일, O일 -> 지난달 O일"로 표기한다.
         - [오늘(KST) 기준일]을 기준으로 년도가 주어진 과거인 경우 "OOOO년 O월 O일, "OOOO년" -> 지난 OOOO년, "지난 OOOO년 O월 O일"으로 표기한다.
         - [오늘(KST) 기준일]을 기준으로 년도가 주어진 미래인 경우 "OOOO년 O월 O일, "OOOO년" -> 오는 OOOO년, "오는 OOOO년 O월 O일"으로 표기한다.
 
@@ -376,9 +455,9 @@ def generate_system_prompt(keyword: str, today_kst: str) -> str:
         - **공백 포함 300~700자 내외로 완성** (절대 800자 초과 금지, 원문이 짧으면 불필요한 내용 추가 금지)
         - 출력 직전에 스스로 글자수를 세고, 800자를 넘으면 문장을 줄여 800자 이내로 조정한다.
         - 핵심 내용만 간결하게 전달 (중복 제거, 장황한 설명 생략)
-        - 원문의 주요 사실은 모두 포함하되, 표현 방식은 완전히 변경
+        - **원문의 주요 사실은 모두 포함하되, 표현 방식은 완전히 변경**
         - 문장은 짧고 명확하게 (한 문장당 15~20자 내외 권장)
-        - 인용문은 원문 그대로 유지 (단어 하나도 변경 금지)
+        - **인용문은 원문 그대로 유지 (단어 하나도 변경 금지)**
         - 비격식체를 (예: "~이다", "~했다", "~한다")를 일관되게 사용, **서술식("~습니다", "~입니다")표현은 절대 사용하지 않는다.**
         - 맞춤법 정확히 준수
         - '...', '~~', '!!' 등 불필요한 기호 사용 금지
@@ -519,10 +598,19 @@ def generate_article(state: dict) -> dict:
             json_obj = check_res.get("json")
             explanation = check_res.get("explanation", "")
             if json_obj:
-                # 🚑 방어코딩: 어떤 타입이 와도 문자열화 후 처리
-                verdict_val = json_obj.get("verdict", "")
-                verdict = str(verdict_val).strip().upper()
-                corrected_article_val = json_obj.get("corrected_article", "")
+                # ✅ 보강: 문자열/코드펜스 JSON도 안전 파싱
+                if isinstance(json_obj, str):
+                    parsed = _json_loads_maybe(json_obj)
+                    if isinstance(parsed, dict):
+                        verdict_val = parsed.get("verdict", "")
+                        corrected_article_val = parsed.get("corrected_article", "")
+                    else:
+                        verdict_val = ""
+                        corrected_article_val = ""
+                else:
+                    verdict_val = json_obj.get("verdict", "")
+                    corrected_article_val = json_obj.get("corrected_article", "")
+                verdict = str(verdict_val or "").strip().upper()
                 corrected_article = str(corrected_article_val or "").strip()
 
         # 결과 분기
@@ -561,7 +649,7 @@ def generate_article(state: dict) -> dict:
         log_and_print(logger, "📰 NEWS_LLM - 기사 재구성 완료")
         log_and_print(logger, "="*80)
         
-        # 생성된 파일 자동으로 열기 (Windows에서만 동작)
+        # 생성된 파일 자동으로 열기 (Windows에서만 동작) – 현재는 로그 파일만 자동 오픈
         if os.name == 'nt' and 'log_filepath' in locals() and os.path.exists(log_filepath):
             try:
                 os.startfile(log_filepath)
