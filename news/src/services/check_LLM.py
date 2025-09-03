@@ -2,6 +2,7 @@ import os
 import sys
 import json
 import re
+import time  # ✅ (1) RTT 측정용 추가
 import google.generativeai as genai
 from news.src.utils.common_utils import get_today_kst_str
 from dotenv import load_dotenv
@@ -9,6 +10,10 @@ from datetime import datetime
 from pathlib import Path
 import logging
 
+try:
+    from news.src.utils.article_utils import extract_publish_datetime
+except Exception:
+    extract_publish_datetime = None
 # ------------------------------------------------------------------
 # 작성자 : 최준혁
 # 기능 : 다양한 실행 환경(.py, PyInstaller)에서 .env 파일 로드
@@ -148,30 +153,29 @@ def log_and_print(logger, message: str, level: str = "info"):
     elif level == "debug":
         logger.debug(message)
 
-# =========================
-# 프롬프트는 그대로 유지
-# =========================
+
 # ------------------------------------------------------------------
 # 작성자 : 최준혁
 # 기능 : 사실관계 검증을 위한 시스템 프롬프트 생성
 # ------------------------------------------------------------------
-def generate_check_prompt(keyword: str = "") -> str:
-    """
-    Gemini 모델에 전달할 사실관계 검증용 시스템 프롬프트를 생성. 비교 기준, 점검 사항, JSON 출력 형식 등을 정의
-    :param keyword: 검증에 참고할 키워드
-    :return: 완성된 시스템 프롬프트 문자열
-    """
+def generate_check_prompt(keyword: str = "", published_kst: str | None = None) -> str:
     today_kst = get_today_kst_str()
     keyword_info = f"- 키워드: {keyword}\n" if keyword else ""
+    published_line = (
+        f"- 원문 기사 작성일(사이트 추출): {published_kst}\n"
+        if (published_kst and str(published_kst).strip())
+        else "- 원문 기사 작성일(사이트 추출): 확인 불가\n"
+    )
 
-    prompt = """
+    prompt = f"""
     
         사용자가 입력한 두 개의 기사('생성된 기사'와 '원문 기사')를 비교하여 사실관계를 판단하라.
         사용자는 콤마(,)를 사용하여 두 개의 기사를 구분하며, 첫 번째가 '생성된 기사', 두 번째가 '원문 기사'이다.
 
         [오늘(KST) 기준일]
         - 오늘 날짜(Asia/Seoul): {today_kst}
-        
+        - 원문 기사 작성일(사이트 추출): {published_line}
+     
         [키워드]
         {keyword_info}
 
@@ -221,8 +225,7 @@ def generate_check_prompt(keyword: str = "") -> str:
         ],
         "corrected_article": "수정된 전체 기사 (문제가 있을 때만, [제목]/[해시태그]/[본문] 포함)"
         }}
-        """.format(today_kst=today_kst, keyword_info=keyword_info)
-
+        """
     return prompt
 
 # ------------------------------------------------------------------
@@ -368,12 +371,20 @@ def _auto_minimal_patch(generated_article: str, nonfactual_list: list[dict]) -> 
 # 작성자 : 최준혁
 # 기능 : 생성된 기사와 원문 기사를 비교하여 사실관계를 검증하는 메인 로직
 # ------------------------------------------------------------------
-def check_article_facts(generated_article: str, original_article: str, keyword: str = "check_LLM") -> dict:
+def check_article_facts(
+    generated_article: str,
+    original_article: str,
+    keyword: str = "check_LLM",
+    source_url: str | None = None,        # ✅ (2) 작성일시 주입을 위한 파라미터 추가
+    published_kst: str | None = None      # ✅ (2) 외부에서 직접 전달 가능
+) -> dict:
     """
     두 기사를 LLM에 전달하여 사실관계 오류를 확인하고, 오류가 있을 경우 수정된 기사를 포함한 JSON을 반환
     :param generated_article: news_LLM이 생성한 기사
     :param original_article: 원본 기사 본문
     :param keyword: 로깅 및 프롬프트에 사용될 키워드
+    :param source_url: 원문 기사 URL(있다면 발행일 재추출 시도)
+    :param published_kst: 'YYYY-MM-DD HH:MM' 등 가독형 KST 문자열(우선 주입)
     :return: 검증 결과를 담은 딕셔너리 ('explanation', 'json', 'error' 포함)
     """
     logger, log_filepath = setup_check_logging(keyword)
@@ -385,10 +396,27 @@ def check_article_facts(generated_article: str, original_article: str, keyword: 
     log_and_print(logger, f"  - 생성된 기사 길이: {len(generated_article)}자")
     log_and_print(logger, f"  - 원문 기사 길이: {len(original_article)}자")
     log_and_print(logger, f"  - 로그 파일: {log_filepath}")
+    if source_url:
+        log_and_print(logger, f"  - source_url: {source_url}")
+
+    # ✅ (2) 작성일시 주입: 우선순위 published_kst 인자 → URL 추출 → 미확인
+    published_kst_str = (published_kst or "").strip() or None
+    if not published_kst_str and source_url and extract_publish_datetime:
+        try:
+            dt_raw = extract_publish_datetime(source_url)  # 예: '20250901 08:39' 또는 None
+            if dt_raw:
+                m = re.match(r"^(\d{4})(\d{2})(\d{2})\s+(\d{2}:\d{2})$", dt_raw)
+                published_kst_str = (
+                    f"{m.group(1)}-{m.group(2)}-{m.group(3)} {m.group(4)}" if m else dt_raw
+                )
+                log_and_print(logger, f"  - 원문 기사 작성일(KST): {published_kst_str}")
+        except Exception as e:
+            log_and_print(logger, f"  - 작성일 추출 실패: {e}", "warning")
 
     try:
         log_and_print(logger, f"\n🤖 AI 모델 호출:")
-        system_prompt = generate_check_prompt(keyword=keyword)
+        # ✅ (2) 프롬프트에 작성일시 주입
+        system_prompt = generate_check_prompt(keyword=keyword, published_kst=published_kst_str)
         user_request = f"생성된 기사: {generated_article}, \n\n원문 기사: {original_article}"
         log_and_print(logger, f"  - 모델: gemini-2.5-flash")
         log_and_print(logger, f"  - 시스템 프롬프트 길이: {len(system_prompt)}자")
@@ -411,8 +439,27 @@ def check_article_facts(generated_article: str, original_article: str, keyword: 
         ]
 
         log_and_print(logger, f"\n⏳ AI 응답 대기 중...")
+        t0 = time.perf_counter()                     # ✅ (1) 시작
         response = model.generate_content(contents)
+        rtt = time.perf_counter() - t0               # ✅ (1) 경과
+
+        # 토큰 계산
+        usage = getattr(response, "usage_metadata", None)
+        if usage:
+            p = getattr(usage, "prompt_token_count", 0)
+            c = getattr(usage, "candidates_token_count", 0)
+            t = getattr(usage, "total_token_count", 0)
+            th = getattr(usage, "thoughts_token_count", 0)  # ✅ 사고 토큰
+            tu = getattr(usage, "tool_use_prompt_token_count", 0)
+            cc = getattr(usage, "cached_content_token_count", 0)
+            resid = t - (p + c + th + tu)  # 남는다면 API/버전별 집계 차이
+            log_and_print(logger,
+                f"🧾 토큰 상세 | 입력={p}, 출력={c}, 생각={th}, 툴프롬프트={tu}, 캐시={cc}, 합계={t}, 잔차={resid}")
+        else:
+            log_and_print(logger, "🧾 usage_metadata 없음", "warning")    
+
         full_text = (response.text or "").strip()
+        log_and_print(logger, f"  - RTT: {rtt*1000:.0f}ms")  # ✅ (1) 밀리초로 기록
 
         log_and_print(logger, f"\n📤 AI 응답 결과:")
         log_and_print(logger, f"  - 응답 길이: {len(full_text)}자")
@@ -461,7 +508,7 @@ def check_article_facts(generated_article: str, original_article: str, keyword: 
             else:
                 corrected = str(corrected)
 
-            # 오류인데 교정문이 비어 있으면 자동 최소 보정 생성  ### NEW
+            # 오류인데 교정문이 비어 있으면 자동 최소 보정 생성
             if json_obj["verdict"] == "ERROR" and not corrected.strip():
                 corrected = _auto_minimal_patch(generated_article, nf)
 
@@ -522,6 +569,7 @@ if __name__ == "__main__":
     generated = input("생성된 기사(제목/해시태그/본문 포함)를 붙여넣으세요: ").strip()
     original = input("원문 기사를 붙여넣으세요: ").strip()
 
+    # 참고: 필요 시 여기에서 source_url, published_kst를 추가 입력받아 전달할 수 있습니다.
     result = check_article_facts(generated, original, keyword)
     if result["error"]:
         print("❌ 오류:", result["error"])

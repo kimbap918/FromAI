@@ -6,7 +6,8 @@ import os
 import re
 import subprocess
 import platform
-from datetime import datetime, timedelta
+import holidays
+from datetime import datetime, timedelta, date
 from typing import Optional
 from shutil import copyfile
 
@@ -218,56 +219,76 @@ def capture_stock_chart(keyword: str, progress_callback=None) -> str:
 # 작성일 : 2025-08-12
 # 기능 : 기사 헤드 라인 템플릿 생성 함수
 # ------------------------------------------------------------------
-def create_pamphlet(keyword: str, is_foreign: bool) -> str:
+def create_pamphlet(keyword: str, is_foreign: bool, now_kst_dt: datetime = None) -> str:
     """
     국내/해외 및 장중/장마감 여부에 따라 다른 헤드라인 템플릿을 생성합니다.
+    오늘이 공휴일(또는 주말)인 경우, 템플릿은 '직전 거래일' 기준으로 날짜를 출력합니다.
     :param keyword: 뉴스 키워드
     :param is_foreign: 해외 주식이면 True, 국내 주식이면 False
-    :return: 생성된 템플릿 문자열
+    :param now_kst_dt: 테스트용 현재 시각 (기본값은 datetime.now(TZ))
     """
-    now_kst_dt = datetime.now(TZ)
-    weekday = now_kst_dt.weekday() # 요일 확인 (월요일=0, 일요일=6)
+    if now_kst_dt is None:
+        now_kst_dt = datetime.now(TZ)
 
-    # ▼▼▼ 1. 해외 주식일 경우의 로직 ▼▼▼
+    weekday = now_kst_dt.weekday()  # 월요일=0, 일요일=6
+    today_kst_date = now_kst_dt.date()
+
+    # 한국/미국 휴일 객체
+    kr_h = holidays.KR(years=[today_kst_date.year - 1, today_kst_date.year, today_kst_date.year + 1])
+    us_h = holidays.US(years=[today_kst_date.year - 1, today_kst_date.year, today_kst_date.year + 1])
+
+    # 직전 거래일 계산 함수
+    def _prev_trading_day(d: date, holi) -> date:
+        cur = d
+        if cur.weekday() >= 5 or cur in holi:
+            pass
+        else:
+            cur = cur - timedelta(days=1)
+        while cur.weekday() >= 5 or cur in holi:
+            cur = cur - timedelta(days=1)
+        return cur
+
+    # 마지막 거래일 계산 함수 (신규 추가)
+    def _get_last_trading_day(d: date, holi) -> date:
+        cur = d
+        while cur.weekday() >= 5 or cur in holi:
+            cur = cur - timedelta(days=1)
+        return cur
+
+    is_kr_holiday_or_weekend = (today_kst_date.weekday() >= 5) or (today_kst_date in kr_h)
+
+    # ▼▼▼ 해외 주식 ▼▼▼
     if is_foreign:
-        korea_display_date = now_kst_dt # 한국 표시 날짜 기본값
+        # 미국 증시는 한국 시간 기준으로 하루 전날 마감됩니다.
+        us_date_ref = (now_kst_dt - timedelta(days=1)).date()
+        last_us_trading_day = _get_last_trading_day(us_date_ref, us_h)
+
+        # 한국 표시 날짜는 미국 마지막 거래일 + 1일 입니다.
+        last_kr_trading_day = last_us_trading_day + timedelta(days=1)
         
-        # 미국 증시는 한국 시간 기준 다음날 오전에 마감되므로, 날짜 계산이 필요.
-        if weekday == 5:  # 토요일 -> 금요일 기준
-            yesterday = now_kst_dt - timedelta(days=1)
-        elif weekday == 6:  # 일요일 -> 금요일 기준
-            yesterday = now_kst_dt - timedelta(days=2)
-            korea_display_date = now_kst_dt - timedelta(days=1)
-        elif weekday == 0:  # 월요일 -> 금요일 기준
-            yesterday = now_kst_dt - timedelta(days=3)
-            korea_display_date = now_kst_dt - timedelta(days=2)
-        else: # 화~금 -> 전날 기준
-            yesterday = now_kst_dt - timedelta(days=1)
-        
-        # '23일(미국 동부 기준 22일) 기준' 형태의 문자열 생성
-        date_str = f"{korea_display_date.day}일(미국 동부 기준 {yesterday.day}일) 기준"
-        
+        date_str = f"{last_kr_trading_day.day}일(미국 동부 기준 {last_us_trading_day.day}일) 기준"
         return f"{date_str}, 네이버페이 증권에 따르면"
 
-    # ▼▼▼ 2. 국내 주식일 경우의 로직 ▼▼▼
+    # ▼▼▼ 국내 주식 ▼▼▼
+    
     else:
-        # 주말(토, 일)에는 가장 최근 장 마감일인 금요일 기준으로 처리
-        if weekday == 5: # 토요일
-            friday_dt = now_kst_dt - timedelta(days=1)
-            time_status_str = f"{friday_dt.day}일 KRX 장마감"
-        elif weekday == 6: # 일요일
-            friday_dt = now_kst_dt - timedelta(days=2)
-            time_status_str = f"{friday_dt.day}일 KRX 장마감"
-        else: # 평일에는 현재 시간 기준으로 장중/장마감 표시
+        if is_kr_holiday_or_weekend:
+            # 주말 또는 공휴일이면 마지막 거래일 기준으로 '장마감'을 표시
+            last_kr_biz = _get_last_trading_day(today_kst_date, kr_h)
+            time_status_str = f"{last_kr_biz.day}일 KRX 장마감"
+            print(f"[DEBUG] 국내주식: 주말/공휴일 분기 → {time_status_str}")
+        else:
+            # 평일 영업일이면 현재 시간에 따라 상태 표시
             time_status_str = convert_get_today_kst_str()
+            print(f"[DEBUG] 국내주식: 평일 영업일 분기 → {time_status_str}")
 
-        # 장마감/장중 여부에 따라 다른 포맷의 문자열 반환
         if "장마감" in time_status_str:
             day_part = time_status_str.split(' ')[0]
+            print(f"[DEBUG] 국내주식 최종 → 마감 기준일: {day_part}")
             return f"{day_part} KRX 마감 기준, 네이버페이 증권에 따르면"
         else:
+            print(f"[DEBUG] 국내주식 최종 → 장중 기준:", time_status_str)
             return f"{time_status_str} 기준, 네이버페이 증권에 따르면"
-
 # ------------------------------------------------------------------
 # 작성자 : 최준혁
 # 작성일 : 2025-07-25
