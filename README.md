@@ -33,13 +33,12 @@
 - Python 3.11.13 (newsbot 가상환경)
 - pip, PyInstaller, 기타 requirements.txt의 모든 패키지
 
-## 디렉토리 구조 (1.1.6 기준)
+## 디렉토리 구조 (2.1.0 기준)
 
 ```
 FromAI1.1.6/
 ├── gui_loader.py              # 메인 실행/빌드 엔트리포인트 (PyQt5 GUI)
 ├── gui_loader.spec            # PyInstaller 빌드 스펙 파일
-├── download_nltk_data.py      # nltk 데이터 다운로드용 스크립트
 ├── requirements.txt           # Python 의존성 패키지 목록
 ├── .env                       # 환경 변수 설정 파일 (API 키 등)
 ├── news/                      # 뉴스 관련 모듈
@@ -49,9 +48,6 @@ FromAI1.1.6/
 │       ├── utils/             # 유틸리티 함수 모음
 │       └── assets/            # 아이콘 등 리소스 파일
 ├── travel/                    # 여행 관련 모듈 (향후 확장용)
-├── dist/                      # 빌드된 실행파일이 생성되는 폴더
-├── build/                     # 빌드 임시파일 (자동 생성)
-├── nltk_data/                 # nltk 데이터 (자동 생성)
 └── README.md                  # 메인 문서
 ```
 
@@ -91,3 +87,4 @@ FromAI1.1.6/
 
 ## 👨‍💻 기타
 문의/협업: 제작자 최준혁 
+
