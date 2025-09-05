@@ -36,7 +36,7 @@
 ## 디렉토리 구조 (2.1.0 기준)
 
 ```
-FromAI1.1.6/
+FromAI/
 ├── gui_loader.py              # 메인 실행/빌드 엔트리포인트 (PyQt5 GUI)
 ├── gui_loader.spec            # PyInstaller 빌드 스펙 파일
 ├── requirements.txt           # Python 의존성 패키지 목록
@@ -59,34 +59,28 @@ FromAI1.1.6/
    pip install -r requirements.txt
    ```
 
-2. **nltk 데이터 다운로드(최초 1회만)**
-   ```bash
-   python download_nltk_data.py
-   ```
-
-3. **개발/테스트**
+2. **개발/테스트**
    - 개발 중에는 `python gui_loader.py`로 바로 실행
    - 기사 추출 등 리소스 경로는 상대경로로 관리
 
-4. **빌드(실행파일 생성)**
+3. **빌드(실행파일 생성)**
    ```bash
    pyinstaller gui_loader.spec
    ```
    - 빌드 후 `dist/gui_loader.exe` 실행
-   - `nltk_data` 폴더가 exe와 같은 폴더에 있어야 기사 추출 정상 동작
 
-5. **빌드 옵션/리소스 관리**
+4. **빌드 옵션/리소스 관리**
    - 빌드 옵션, 포함 리소스, 아이콘 등은 모두 `gui_loader.spec`에서 관리
    - 옵션 변경 시 spec 파일만 수정하면 됨
 
 ## ⚠️ 주의/팁
 - **build/** 폴더는 임시파일이므로 삭제해도 무방
-- **dist/** 폴더의 exe와 `nltk_data` 폴더를 함께 배포해야 기사 추출 정상 동작
 - **requirements.txt, gui_loader.spec**는 반드시 버전관리(git 등)로 보관
 - **상대경로 사용**: 코드에서 파일/폴더 접근 시 항상 os.path.join, os.path.dirname(__file__) 등으로 경로 지정
 - **User-Agent**: 기사 추출 시 User-Agent를 명시적으로 지정(이미 코드에 적용됨)
 
 ## 👨‍💻 기타
 문의/협업: 제작자 최준혁 
+
 
 
