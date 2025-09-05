@@ -4,6 +4,7 @@ from PyQt5.QtGui import QFont, QKeySequence
 import pyperclip
 import webbrowser
 import urllib.parse
+import re
 import os
 import subprocess
 from datetime import datetime
@@ -193,6 +194,35 @@ class NewsTabTest(QWidget):
         shortcut_enter2 = QShortcut(QKeySequence(Qt.Key_Enter), self)
         shortcut_enter2.activated.connect(self.extract_news)
 
+    def highlight_dates(self, text: str) -> str:
+        """
+        텍스트에서 날짜 패턴을 찾아 HTML로 하이라이트 처리
+        """
+        # YYYY.MM.DD, YYYY-MM-DD, YYYY/MM/DD, YYYY년 MM월 DD일 등 다양한 형식
+        # 시간(HH:MM)은 선택적으로 포함
+        date_pattern = re.compile(
+            r'('
+            r'\d{4}[-.년/]\s*\d{1,2}[-.월/]\s*\d{1,2}일?(?:\s*\d{1,2}시?:\s*\d{1,2}분?)?'  # YYYY-MM-DD HH:MM
+            r'|(?:지난|오는)\s*\d{1,2}월\s*\d{1,2}일(?:부터|까지|에는?|에도)?'  # 지난/오는 MM월 DD일 + particles
+            r'|\b\d{1,2}월\s*\d{1,2}일(?:부터|까지|에는?|에도)?'  # MM월 DD일 (우선 매칭) + particles
+            r'|(?:지난|오는)\s*(?<!\d)\d{1,2}일(?:부터|까지|에는?|에도|에|엔)?'  # 지난/오는 DD일 + particles
+            r'|(?<!\d)\d{1,2}일(?:부터|까지|에는?|에도|에|엔)?(?:\s*\d{1,2}시?:\s*\d{1,2}분?)?'  # standalone DD일 (+ optional time) + particles
+            r'|(?<!\d)\d{4}년(?:부터|까지|에는?|에도|에|엔)?'  # 4-digit year + optional particles
+            r'|(?<!\d)\d{2}년(?:부터|까지|에는?|에도|에|엔)?'  # 2-digit year + optional particles
+            r'|(?:지난|오는)\s*\b\d{1,2}월\b(?!\s*\d{1,2}일)(?:부터|까지|에는?|에도)?'  # 지난/오는 MM월 (standalone) + particles
+            r'|\b\d{1,2}월\b(?!\s*\d{1,2}일)(?:부터|까지|에는?|에도)?'  # standalone MM월 + particles
+            r'|(오전|오후)\s*\d{1,2}시(?:\s*\d{1,2}분)?'  # 오전/오후 HH시 MM분
+            r')'
+        )
+
+        def replacer(match):
+            return f'<span style="background-color: yellow;">{match.group(0)}</span>'
+
+        # 원본 텍스트의 줄바꿈을 <br>로 유지
+        escaped_text = text.replace('\n', '<br>')
+        highlighted_text = date_pattern.sub(replacer, escaped_text)
+        return highlighted_text
+
     # -------------------------- 핵심 기능 --------------------------
     def reset_inputs(self):
         self.url_input.clear()
@@ -290,22 +320,15 @@ class NewsTabTest(QWidget):
             return
 
         display_text = ""
+        kind = ""
         if isinstance(result, dict):
-            display_text = (
-                result.get("display_text")
-                or result.get("content")
-                or result.get("text")
-                or result.get("article")
-                or result.get("result")
-                or ""
-            )
-        self.llm_result_text.setPlainText(display_text)
+            display_text = result.get("display_text", "")
+            kind = result.get("display_kind", "")
 
-        kind = "article"
-        if isinstance(result, dict):
-            kind = result.get("display_kind") or result.get("kind") or result.get("type") or "article"
+        # 날짜 하이라이트 적용
+        highlighted_html = self.highlight_dates(display_text)
+        self.llm_result_text.setHtml(highlighted_html)
 
-        # 기사 완성 시 파일 저장 로직 추가
         if kind == "article" and display_text and self.current_keyword:
             self.save_article_to_file(display_text, self.current_keyword)
 
@@ -369,13 +392,31 @@ class NewsTabTest(QWidget):
             safe_keyword = "".join(c for c in keyword if c.isalnum() or c in (" ", "-", "_")).strip()
             safe_keyword = safe_keyword.replace(" ", "_") or "article"
             
-            file_path = os.path.join(folder_path, f"{safe_keyword}.txt")
+            # 기사 파일명은 *_재구성.txt 패턴으로 저장. 동일 파일명이 있으면 (2), (3) 순번을 부여
+            base_name = f"{safe_keyword}_재구성"
+            filename = f"{base_name}.txt"
+            file_path = os.path.join(folder_path, filename)
+            if os.path.exists(file_path):
+                for i in range(2, 1000):
+                    candidate = os.path.join(folder_path, f"{base_name}({i}).txt")
+                    if not os.path.exists(candidate):
+                        file_path = candidate
+                        filename = os.path.basename(candidate)
+                        break
             
             # 파일에 기사 저장
             with open(file_path, 'w', encoding='utf-8') as f:
                 f.write(article_text)
-            
-            self.progress_label.setText(f"기사가 저장되었습니다: {safe_keyword}.txt")
+
+            # 파일 저장 후 바로 열기
+            if os.name == 'nt': # Windows
+                os.startfile(file_path)
+            elif sys.platform == 'darwin': # macOS
+                subprocess.run(['open', file_path], check=True)
+            else: # Linux
+                subprocess.run(['xdg-open', file_path], check=True)
+
+            self.progress_label.setText(f"기사가 저장 및 실행되었습니다: {filename}")
             
         except Exception as e:
             self.progress_label.setText(f"파일 저장 중 오류: {str(e)}")

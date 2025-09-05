@@ -190,7 +190,8 @@ def setup_logging(keyword: str) -> tuple[logging.Logger, str]:
     log_dir.mkdir(parents=True, exist_ok=True)
 
     safe_keyword = _safe_keyword(keyword)
-    log_filepath = str(log_dir / f"{safe_keyword}.txt")
+    # Use distinct suffix to avoid collision with finalized article files
+    log_filepath = str(log_dir / f"{safe_keyword}_log.txt")
 
     logger_name = f"news_llm_{safe_keyword}"
     logger = logging.getLogger(logger_name)
@@ -628,13 +629,13 @@ def generate_article(state: dict) -> dict:
         log_and_print(logger, "📰 NEWS_LLM - 기사 재구성 완료")
         log_and_print(logger, "="*80)
 
-        # Windows에서 로그 파일 오픈(옵션)
-        if os.name == 'nt' and 'log_filepath' in locals() and os.path.exists(log_filepath):
-            try:
-                os.startfile(log_filepath)
-                log_and_print(logger, f"\n📂 생성된 파일을 엽니다: {log_filepath}")
-            except Exception as e:
-                log_and_print(logger, f"\n⚠️ 파일을 여는 중 오류가 발생했습니다: {e}", "warning")
+        # Windows에서 로그 파일 자동 오픈은 사용하지 않음 (기사 파일과 혼동 방지)
+        # if os.name == 'nt' and 'log_filepath' in locals() and os.path.exists(log_filepath):
+        #     try:
+        #         os.startfile(log_filepath)
+        #         log_and_print(logger, f"\n📂 생성된 파일을 엽니다: {log_filepath}")
+        #     except Exception as e:
+        #         log_and_print(logger, f"\n⚠️ 파일을 여는 중 오류가 발생했습니다: {e}", "warning")
 
         return result
 
