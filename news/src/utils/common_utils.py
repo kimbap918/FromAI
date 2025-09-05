@@ -219,7 +219,7 @@ def capture_stock_chart(keyword: str, progress_callback=None) -> str:
 # 작성일 : 2025-08-12
 # 기능 : 기사 헤드 라인 템플릿 생성 함수
 # ------------------------------------------------------------------
-def create_pamphlet(keyword: str, is_foreign: bool, now_kst_dt: datetime = None) -> str:
+def create_template(keyword: str, is_foreign: bool, now_kst_dt: datetime = None) -> str:
     """
     국내/해외 및 장중/장마감 여부에 따라 다른 헤드라인 템플릿을 생성합니다.
     오늘이 공휴일(또는 주말)인 경우, 템플릿은 '직전 거래일' 기준으로 날짜를 출력합니다.
@@ -380,14 +380,14 @@ def capture_and_generate_news(keyword: str, domain: str = "stock", progress_call
             
             if news:
                 # 1. 팜플렛(기사 서두) 문구 생성 (해외 주식용)
-                pamphlet_text = create_pamphlet(keyword, is_foreign=True)
+                template_text = create_template(keyword, is_foreign=True)
 
                 # 2. LLM 결과물에서 '[본문]' 마커를 찾아 팜플렛 삽입
                 if re.search(r'(\[본문\]|본문)', news):
-                    replacement_text = f"[본문]\n{pamphlet_text} "
+                    replacement_text = f"[본문]\n{template_text} "
                     final_output = re.sub(r'(\[본문\]|본문)\s+', replacement_text, news, count=1)
                 else: # 마커가 없으면 맨 앞에 추가
-                    final_output = pamphlet_text + '\n\n' + news
+                    final_output = template_text + '\n\n' + news
                 
                 # 3. 최종 결과물 저장
                 save_news_and_image(final_output, image_path)
@@ -431,13 +431,13 @@ def capture_and_generate_news(keyword: str, domain: str = "stock", progress_call
         
         if news:
             # 1. 팜플렛 문구 생성 (국내 주식용)
-            pamphlet_text = create_pamphlet(keyword, is_foreign= False)
+            template_text = create_template(keyword, is_foreign= False)
             # 2. LLM 결과물 후처리 및 저장
             if re.search(r'(\[본문\]|본문)', news):
-                replacement_text = f"[본문]\n{pamphlet_text} "
+                replacement_text = f"[본문]\n{template_text} "
                 final_output = re.sub(r'(\[본문\]|본문)\s+', replacement_text, news, count=1)
             else:
-                final_output = pamphlet_text + '\n\n' + news
+                final_output = template_text + '\n\n' + news
             save_news_and_image(final_output, image_path)
         return news
 
@@ -458,12 +458,12 @@ def capture_and_generate_news(keyword: str, domain: str = "stock", progress_call
         
         if news:
             # 해외 주식과 동일한 로직으로 팜플렛 생성 및 후처리
-            pamphlet_text = create_pamphlet(keyword, is_foreign=True)
+            template_text = create_template(keyword, is_foreign=True)
             if re.search(r'(\[본문\]|본문)', news):
-                replacement_text = f"[본문]\n{pamphlet_text} "
+                replacement_text = f"[본문]\n{template_text} "
                 final_output = re.sub(r'(\[본문\]|본문)\s+', replacement_text, news, count=1)
             else:
-                final_output = pamphlet_text + '\n\n' + news
+                final_output = template_text + '\n\n' + news
             save_news_and_image(final_output, image_path)
         return news
 

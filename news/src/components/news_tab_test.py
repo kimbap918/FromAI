@@ -1,4 +1,4 @@
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLabel, QGroupBox, QHBoxLayout, QLineEdit, QPushButton, QTextEdit, QMessageBox, QShortcut
+from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLabel, QGroupBox, QHBoxLayout, QLineEdit, QPushButton, QTextEdit, QMessageBox, QShortcut, QSplitter
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
 from PyQt5.QtGui import QFont, QKeySequence
 import pyperclip
@@ -108,7 +108,7 @@ class NewsTabTest(QWidget):
 
     def init_ui(self):
         layout = QVBoxLayout()
-        title_label = QLabel("📰 뉴스 재구성(테스트)")
+        title_label = QLabel("📰 뉴스 LLM 재구성")
         title_label.setFont(QFont("Arial", 16, QFont.Bold))
         title_label.setAlignment(Qt.AlignCenter)
         layout.addWidget(title_label)
@@ -154,20 +154,36 @@ class NewsTabTest(QWidget):
         self.progress_label.setAlignment(Qt.AlignCenter)
         layout.addWidget(self.progress_label)
 
-        result_group = QGroupBox("결과")
-        result_layout = QVBoxLayout()
-        self.result_text = QTextEdit()
-        self.result_text.setReadOnly(True)
-        self.result_text.setMaximumHeight(500)
-        result_layout.addWidget(self.result_text)
+        # -------------------------- 결과 (좌/우 분할) --------------------------
+        splitter = QSplitter(Qt.Horizontal)
 
-        self.copy_result_btn = QPushButton("📋 복사하기")
-        self.copy_result_btn.clicked.connect(self.copy_result)
-        self.copy_result_btn.setEnabled(False)
-        result_layout.addWidget(self.copy_result_btn)
+        # 원문 그룹
+        original_group = QGroupBox("원문")
+        original_layout = QVBoxLayout()
+        self.original_text = QTextEdit()
+        self.original_text.setReadOnly(True)
+        self.copy_original_btn = QPushButton("📋 원문 복사")
+        self.copy_original_btn.clicked.connect(lambda: self.copy_to_clipboard(self.original_text))
+        original_layout.addWidget(self.original_text)
+        original_layout.addWidget(self.copy_original_btn)
+        original_group.setLayout(original_layout)
 
-        result_group.setLayout(result_layout)
-        layout.addWidget(result_group)
+        # 재구성 결과 그룹
+        llm_group = QGroupBox("재구성 결과")
+        llm_layout = QVBoxLayout()
+        self.llm_result_text = QTextEdit()
+        self.llm_result_text.setReadOnly(True)
+        self.copy_llm_btn = QPushButton("📋 재구성 결과 복사")
+        self.copy_llm_btn.clicked.connect(lambda: self.copy_to_clipboard(self.llm_result_text))
+        llm_layout.addWidget(self.llm_result_text)
+        llm_layout.addWidget(self.copy_llm_btn)
+        llm_group.setLayout(llm_layout)
+
+        splitter.addWidget(original_group)
+        splitter.addWidget(llm_group)
+        splitter.setSizes([500, 500])  # 초기 크기 설정
+
+        layout.addWidget(splitter, 1)  # Stretch factor를 1로 설정하여 남는 공간을 모두 차지하도록 함
 
         self.setLayout(layout)
 
@@ -181,9 +197,9 @@ class NewsTabTest(QWidget):
     def reset_inputs(self):
         self.url_input.clear()
         self.keyword_input.clear()
-        self.result_text.clear()
+        self.original_text.clear()
+        self.llm_result_text.clear()
         self.progress_label.setText("")
-        self.copy_result_btn.setEnabled(False)
 
         if self.crawler_worker and self.crawler_worker.isRunning():
             self.crawler_worker.requestInterruption()
@@ -216,9 +232,9 @@ class NewsTabTest(QWidget):
             self._busy = True
             self.extract_btn.setEnabled(False)
             self.cancel_btn.setEnabled(True)
-            self.copy_result_btn.setEnabled(False)
             self.progress_label.setText("기사 크롤링 중...")
-            self.result_text.clear()
+            self.original_text.clear()
+            self.llm_result_text.clear()
 
             self.crawler_worker = NewsCrawlerWorker(self.current_url)
             self.crawler_worker.finished.connect(self.on_crawling_finished)
@@ -254,13 +270,12 @@ class NewsTabTest(QWidget):
         self.crawling_done = True
 
         separator = "=" * 80
-        self.result_text.setPlainText(f"{separator}\n{title}\n{separator}\n\n{body}\n{separator}")
+        self.original_text.setPlainText(f"{title}\n{separator}\n\n{body}")
 
         self.progress_label.setText("크롤링 완료! 엔터나 'LLM 재구성' 클릭 가능.")
         self.extract_btn.setText("🤖 LLM 재구성")
         self.extract_btn.setEnabled(True)
         self.cancel_btn.setEnabled(False)
-        self.copy_result_btn.setEnabled(True)
 
     def on_llm_finished(self, result, error):
         self._busy = False
@@ -284,7 +299,7 @@ class NewsTabTest(QWidget):
                 or result.get("result")
                 or ""
             )
-        self.result_text.setPlainText(display_text)
+        self.llm_result_text.setPlainText(display_text)
 
         kind = "article"
         if isinstance(result, dict):
@@ -304,7 +319,6 @@ class NewsTabTest(QWidget):
             self.progress_label.setText("처리 완료")
             self.progress_label.setStyleSheet("color: #000000;")
 
-        self.copy_result_btn.setEnabled(True)
         self.extract_btn.setText("📄 기사 추출")
         if hasattr(self, 'crawling_done'):
             delattr(self, 'crawling_done')
@@ -316,10 +330,13 @@ class NewsTabTest(QWidget):
             self.progress_label.setStyleSheet("color: black;")
         self.progress_label.setText(message)
 
-    def copy_result(self):
-        text = self.result_text.toPlainText()
-        pyperclip.copy(text)
-        QMessageBox.information(self, "복사 완료", "결과가 클립보드에 복사되었습니다.")
+    def copy_to_clipboard(self, text_widget: QTextEdit):
+        text = text_widget.toPlainText()
+        if text:
+            pyperclip.copy(text)
+            QMessageBox.information(self, "복사 완료", "결과가 클립보드에 복사되었습니다.")
+        else:
+            QMessageBox.warning(self, "복사 실패", "복사할 내용이 없습니다.")
 
     def cancel_extraction(self):
         if self.crawler_worker and self.crawler_worker.isRunning():
@@ -328,7 +345,6 @@ class NewsTabTest(QWidget):
             self.llm_worker.requestInterruption()
         self.progress_label.setText("취소 요청됨 — 작업이 안전하게 종료될 때까지 기다려주세요.")
         self.extract_btn.setEnabled(False)
-        self.copy_result_btn.setEnabled(False)
         self.cancel_btn.setEnabled(False)
         self._busy = True
 
@@ -381,10 +397,21 @@ class NewsTabTest(QWidget):
             pass
 
 if __name__ == "__main__":
-    from PyQt5.QtWidgets import QApplication
+    from PyQt5.QtWidgets import QApplication, QDesktopWidget
     app = QApplication(sys.argv)
+
+    # 화면 크기를 가져와서 창 크기 및 위치 설정
+    desktop = QDesktopWidget()
+    available_geometry = desktop.availableGeometry()
+    screen_width = available_geometry.width()
+    screen_height = available_geometry.height()
+
+    window_width = screen_width // 2
+    window_height = screen_height
+
     w = NewsTabTest()
     w.setWindowTitle("뉴스 재구성 테스트 (개별 실행)")
-    w.resize(900, 700)
+    w.setGeometry(screen_width // 2, available_geometry.top(), window_width, window_height)
+
     w.show()
     sys.exit(app.exec_())

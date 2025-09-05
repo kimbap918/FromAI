@@ -77,7 +77,7 @@ class MainWindow(QMainWindow):
 
     def init_ui(self):
         self.setWindowTitle("통합 뉴스 도구v2.0.0 - 제작자: 최준혁, 곽은규")
-        self.setGeometry(100, 100, 800, 600)
+        self.setGeometry(100, 100, 1000, 1000)
 
         # 메인 레이아웃
         central_widget = QWidget()
@@ -87,7 +87,7 @@ class MainWindow(QMainWindow):
         # 탭 위젯
         tab_widget = QTabWidget()
         tab_widget.addTab(NewsTab(), "📰 뉴스 재구성")
-        tab_widget.addTab(NewsTabTest(), "🧪 뉴스 재구성(테스트)")
+        tab_widget.addTab(NewsTabTest(), "🧪 뉴스 LLM 재구성")
         tab_widget.addTab(HwanTab(), "💱 환율 차트")
         tab_widget.addTab(StockTab(), "📈 주식 차트")
         tab_widget.addTab(TossTab(), "📈 토스 인기 종목")
