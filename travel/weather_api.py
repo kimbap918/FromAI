@@ -1,15 +1,66 @@
-#############################################################################################################################
-#############################################################################################################################
-#8월 11일 날씨 정확도 개선, 문제 해결
-# weather_api.py
-# 스마트한 기상청 API (문제 해결 버전)
+# weather_api.py - 기상청 API 기반 날씨 데이터 수집
+# ===================================================================================
+# 파일명     : weather_api.py
+# 작성자     : 하승주, 홍석원
+# 최초작성일 : 2025-09-04
+# 설명       : 카카오 API로 주소→좌표 변환 및 기상청 API로 실시간 날씨 수집
+#              초단기실황 + 단기예보 데이터 통합 처리로 전국 모든 지역 지원
+# ===================================================================================
+#
+# 【주요 기능】
+# - 카카오 API로 주소→좌표 변환
+# - 기상청 API로 실시간 날씨 데이터 수집
+# - 초단기실황 + 단기예보 데이터 통합 처리
+# - 전국 모든 지역 지원 (하드코딩 매핑 제거)
+#
+# 【API 통합】
+# 1. 카카오 API: 주소 검색 및 좌표 변환
+# 2. 기상청 초단기실황: 현재 기온, 습도, 바람 (매시 40분 발표)
+# 3. 기상청 단기예보: 강수확률, 최저/최고기온 (02,05,08,11,14,17,20,23시 발표)
+#
+# 【데이터 수집 전략】
+# - 초단기실황 우선: 정확한 발표시각 계산하여 최신 데이터 확보
+# - 단기예보 보완: 실황에 없는 예보 정보 추가
+# - 실패 시 폴백: 여러 시간대 재시도 및 어제 예보 활용
+#
+# 【좌표 변환 로직】
+# - LatLon → 기상청 격자좌표 (X,Y) 수학적 변환
+# - Lambert Conformal Conic 투영법 사용
+# - 정확한 격자 매핑으로 데이터 정확도 보장
+#
+# 【안정성 기능】
+# - 재시도 로직: 각 API별 최대 3회 재시도
+# - 타임아웃 설정: 연결/읽기 30초 (REQUEST_TIMEOUT)
+# - 오류 분류: HTTP 오류, JSON 파싱 오류, API 결과 코드 오류 구분
+#
+# 【데이터 정규화】
+# - 표준 OpenWeatherMap 호환 형식으로 출력
+# - main.temp, weather.description 등 일관된 구조
+# - 한국어 텍스트: 날씨 상태, 풍향 등
+#
+# 【오늘 기온 문제 해결】
+# - 오전 6시 이전: 어제 예보의 오늘 최저기온 활용
+# - 오후 3시 이전: 어제 예보의 오늘 최고기온 활용
+# - 시간대별 적절한 데이터 소스 선택
+#
+# 【사용처】
+# - weather_tab.py: 날씨 조회 기능
+# - travel_logic.py: 여행 기사에 날씨 정보 포함
+# ===================================================================================
 
 import requests
 import math
+import time
 from datetime import datetime, timedelta
 
 import os
 from dotenv import load_dotenv
+
+# Custom print function to log to a file with UTF-8 encoding
+def custom_print(*args, **kwargs):
+    pass
+    # Also print to original stdout for debugging in console
+    # print(*args, **kwargs)
 
 load_dotenv()
 
@@ -29,7 +80,7 @@ except ImportError:
 try:
     from data import KOREA_REGIONS, SIMPLE_REGION_MAPPING
 except ImportError:
-    print("⚠️ data.py에서 import 실패. 전국 지역 지원을 위해 카카오 API 사용")
+    custom_print("⚠️ data.py에서 import 실패. 전국 지역 지원을 위해 카카오 API 사용")
     # 하드코딩된 매핑 제거 - 모든 지역을 카카오 API로 처리
     SIMPLE_REGION_MAPPING = {}
     KOREA_REGIONS = []
@@ -69,7 +120,7 @@ class WeatherAPI:
             if response.status_code == 200:
                 data = response.json()
                 if data['documents']:
-                    print(f"   📋 검색 결과 {len(data['documents'])}개:")
+                    print(f"   📋 '{address}' 검색 결과 {len(data['documents'])}개:")
                     
                     # 모든 검색 결과 출력
                     for i, doc in enumerate(data['documents']):
@@ -85,7 +136,7 @@ class WeatherAPI:
                     full_address = best_coord['address_name']
                     
                     print(f"✅ 좌표 변환 성공: {full_address}")
-                    print(f"   📍 위도: {lat:.4f}, 경도: {lon:.4f}")
+                    custom_print(f"   📍 위도: {lat:.4f}, 경도: {lon:.4f}")
                     return lat, lon, full_address
                 else:
                     raise Exception(f"'{address}' 지역을 찾을 수 없습니다. 정확한 지역명을 입력해주세요.")
@@ -240,7 +291,7 @@ class WeatherAPI:
             print("❌ 단기예보: 데이터 없음")
         
         # 최종 결과
-        print(f"\n🎯 === 최종 결과 ===")
+        custom_print(f"\n🎯 === 최종 결과 ===")
         print(f"📊 총 항목 수: {len(final_weather)}")
         print(f"📋 수집된 항목:")
         for key, value in final_weather.items():
@@ -253,202 +304,166 @@ class WeatherAPI:
         return final_weather
     
     def try_current_weather(self, grid_x, grid_y, base_time):
-        """초단기실황 데이터 (JSON 파싱 오류 해결)"""
-        try:
-            base_date = base_time.strftime('%Y%m%d')
-            base_time_str = base_time.strftime('%H%M')
-            
-            print(f"   🔍 API 호출: {base_date} {base_time_str}")
-            
-            params = {
-                'serviceKey': self.kma_api_key,
-                'pageNo': '1',
-                'numOfRows': '100',
-                'dataType': 'JSON',
-                'base_date': base_date,
-                'base_time': base_time_str,
-                'nx': str(grid_x),
-                'ny': str(grid_y)
-            }
-            
-            response = requests.get(self.kma_current_url, params=params, timeout=REQUEST_TIMEOUT)
-            print(f"   📡 응답 코드: {response.status_code}")
-            
-            if response.status_code == 200:
-                # 응답 내용 확인
+        """초단기실황 데이터 (재시도 로직 추가)"""
+        max_retries = 3
+        retry_delay = 1 # 초
+
+        for attempt in range(max_retries):
+            try:
+                base_date = base_time.strftime('%Y%m%d')
+                base_time_str = base_time.strftime('%H%M')
+                
+                print(f"   🔍 API 호출 (시도 {attempt + 1}/{max_retries}): {base_date} {base_time_str}")
+                
+                params = {
+                    'serviceKey': self.kma_api_key, 'pageNo': '1', 'numOfRows': '100',
+                    'dataType': 'JSON', 'base_date': base_date, 'base_time': base_time_str,
+                    'nx': str(grid_x), 'ny': str(grid_y)
+                }
+                
+                response = requests.get(self.kma_current_url, params=params, timeout=REQUEST_TIMEOUT)
+                print(f"   📡 응답 코드: {response.status_code}")
+
+                if response.status_code != 200:
+                    print(f"   ❌ HTTP 오류: {response.status_code}")
+                    time.sleep(retry_delay)
+                    continue
+
                 response_text = response.text.strip()
                 if not response_text:
                     print("   ❌ 빈 응답")
-                    return None
-                
-                # JSON 파싱 시도
+                    time.sleep(retry_delay)
+                    continue
+
                 try:
                     data = response.json()
                 except ValueError as json_error:
                     print(f"   ❌ JSON 파싱 오류: {json_error}")
                     print(f"   📄 응답 내용 (처음 200자): {response_text[:200]}")
-                    return None
-                
-                # API 응답 구조 확인
-                if 'response' not in data:
+                    time.sleep(retry_delay)
+                    continue
+
+                if 'response' not in data or 'header' not in data['response']:
                     print(f"   ❌ 응답 구조 오류: response 키 없음")
-                    return None
+                    time.sleep(retry_delay)
+                    continue
                 
-                header = data['response'].get('header', {})
+                header = data['response']['header']
                 result_code = header.get('resultCode', '')
                 result_msg = header.get('resultMsg', '')
-                
                 print(f"   📋 결과: {result_code} - {result_msg}")
                 
                 if result_code == '00':
-                    # body 구조 확인
                     body = data['response'].get('body', {})
-                    if not body:
-                        print("   ⚠️ body 없음")
-                        return None
-                    
+                    if not body: return None
+
                     items = body.get('items', {})
-                    if isinstance(items, list):
-                        item_list = items
-                    elif isinstance(items, dict):
-                        item_list = items.get('item', [])
-                    else:
-                        print(f"   ⚠️ items 구조 오류: {type(items)}")
-                        return None
-                    
-                    print(f"   📊 데이터 항목 수: {len(item_list) if item_list else 0}")
-                    
-                    if not item_list:
-                        print("   ⚠️ 빈 데이터")
-                        return None
-                    
-                    # 받은 원본 데이터 출력
-                    for item in item_list:
-                        category = item.get('category', 'Unknown')
-                        value = item.get('obsrValue', 'N/A')
-                        print(f"   📝 {category}: {value}")
-                    
-                    # 데이터 파싱
+                    item_list = items.get('item', []) if isinstance(items, dict) else items
+                    if not item_list: return None
+
                     current_weather = {}
                     for item in item_list:
-                        category = item.get('category')
-                        value = item.get('obsrValue')
+                        category, value = item.get('category'), item.get('obsrValue')
+                        if not category or not value: continue
                         
-                        if not category or not value:
-                            continue
-                        
-                        if category == 'T1H':      # 기온
-                            try:
-                                current_weather['temperature'] = float(value)
-                            except ValueError:
-                                pass
-                        elif category == 'REH':    # 습도
-                            try:
-                                current_weather['humidity'] = float(value)
-                            except ValueError:
-                                pass
-                        elif category == 'PTY':    # 강수형태
-                            current_weather['precipitation_type'] = self.get_precipitation_text(value)
-                        elif category == 'RN1':    # 1시간 강수량
-                            current_weather['hourly_precipitation'] = self.parse_precipitation_amount(value)
-                        elif category == 'WSD':    # 풍속
-                            try:
-                                current_weather['wind_speed'] = float(value)
-                            except ValueError:
-                                pass
-                        elif category == 'VEC':    # 풍향
-                            try:
+                        try:
+                            if category == 'T1H': current_weather['temperature'] = float(value)
+                            elif category == 'REH': current_weather['humidity'] = float(value)
+                            elif category == 'PTY': current_weather['precipitation_type'] = self.get_precipitation_text(value)
+                            elif category == 'RN1': current_weather['hourly_precipitation'] = self.parse_precipitation_amount(value)
+                            elif category == 'WSD': current_weather['wind_speed'] = float(value)
+                            elif category == 'VEC': 
                                 wind_deg = float(value)
                                 current_weather['wind_direction'] = wind_deg
                                 current_weather['wind_direction_text'] = self.get_wind_direction_text(wind_deg)
-                            except ValueError:
-                                pass
+                        except (ValueError, TypeError):
+                            pass
                     
-                    print(f"   ✅ 파싱 완료: {current_weather}")
                     return current_weather if current_weather else None
                 else:
                     print(f"   ❌ API 오류: {result_code} - {result_msg}")
-                    return None
-            else:
-                print(f"   ❌ HTTP 오류: {response.status_code}")
-                return None
-                
-        except Exception as e:
-            print(f"   💥 예외: {str(e)}")
-            return None
+                    time.sleep(retry_delay)
+
+            except requests.exceptions.RequestException as req_err:
+                print(f"   💥 요청 예외 (시도 {attempt + 1}): {req_err}")
+                time.sleep(retry_delay)
+
+            except Exception as e:
+                print(f"   💥 일반 예외 (시도 {attempt + 1}): {e}")
+                time.sleep(retry_delay)
+
+        # print(f"   ❌ 모든 재시도({max_retries}번) 실패.") # 이 메시지는 get_weather_with_fallback에서 처리
+        return None
     
     def try_forecast_weather(self, grid_x, grid_y):
-        """단기예보 데이터 (정확한 발표시각 계산)"""
-        try:
-            now = datetime.now()
-            
-            # 단기예보 발표 시각: 02, 05, 08, 11, 14, 17, 20, 23시 (10분 후 데이터 제공)
-            forecast_times = [2, 5, 8, 11, 14, 17, 20, 23]
-            current_hour = now.hour
-            current_minute = now.minute
-            
-            base_time = None
-            base_date = now.strftime('%Y%m%d')
-            
-            # 현재 시각 기준으로 가장 최근 발표시각 찾기
-            for time in reversed(forecast_times):
-                if current_hour > time or (current_hour == time and current_minute >= 10):
-                    base_time = f"{time:02d}00"
-                    break
-            
-            if base_time is None:
-                # 오늘 발표된 것이 없으면 어제 마지막 발표 사용
-                yesterday = now - timedelta(days=1)
-                base_date = yesterday.strftime('%Y%m%d')
-                base_time = "2300"
-            
-            print(f"   🔍 API 호출: {base_date} {base_time}")
-            
-            params = {
-                'serviceKey': self.kma_api_key,
-                'pageNo': '1',
-                'numOfRows': '1000',
-                'dataType': 'JSON',
-                'base_date': base_date,
-                'base_time': base_time,
-                'nx': str(grid_x),
-                'ny': str(grid_y)
-            }
-            
-            response = requests.get(self.kma_forecast_url, params=params, timeout=REQUEST_TIMEOUT)
-            print(f"   📡 응답 코드: {response.status_code}")
-            
-            if response.status_code == 200:
-                data = response.json()
+        """단기예보 데이터 (재시도 로직 추가)"""
+        max_retries = 3
+        retry_delay = 1  # 초
+
+        for attempt in range(max_retries):
+            try:
+                now = datetime.now()
                 
-                if 'response' not in data:
+                # 단기예보 발표 시각: 02, 05, 08, 11, 14, 17, 20, 23시 (10분 후 데이터 제공)
+                forecast_times = [2, 5, 8, 11, 14, 17, 20, 23]
+                current_hour = now.hour
+                current_minute = now.minute
+                
+                base_time = None
+                base_date = now.strftime('%Y%m%d')
+                
+                for time_val in reversed(forecast_times):
+                    if current_hour > time_val or (current_hour == time_val and current_minute >= 10):
+                        base_time = f"{time_val:02d}00"
+                        break
+                
+                if base_time is None:
+                    yesterday = now - timedelta(days=1)
+                    base_date = yesterday.strftime('%Y%m%d')
+                    base_time = "2300"
+                
+                print(f"   🔍 API 호출 (시도 {attempt + 1}/{max_retries}): {base_date} {base_time}")
+                
+                params = {
+                    'serviceKey': self.kma_api_key, 'pageNo': '1', 'numOfRows': '1000',
+                    'dataType': 'JSON', 'base_date': base_date, 'base_time': base_time,
+                    'nx': str(grid_x), 'ny': str(grid_y)
+                }
+                
+                response = requests.get(self.kma_forecast_url, params=params, timeout=REQUEST_TIMEOUT)
+                print(f"   📡 응답 코드: {response.status_code}")
+
+                if response.status_code != 200:
+                    print(f"   ❌ HTTP 오류: {response.status_code}")
+                    time.sleep(retry_delay)
+                    continue
+
+                # JSON 파싱 시도
+                try:
+                    data = response.json()
+                except ValueError as json_error:
+                    print(f"   ❌ JSON 파싱 오류: {json_error}")
+                    print(f"   📄 응답 내용 (처음 200자): {response.text.strip()[:200]}")
+                    time.sleep(retry_delay)
+                    continue
+
+                if 'response' not in data or 'header' not in data['response']:
                     print(f"   ❌ 응답 구조 오류")
-                    return None
+                    time.sleep(retry_delay)
+                    continue
                 
                 result_code = data['response']['header']['resultCode']
                 result_msg = data['response']['header'].get('resultMsg', '')
-                
                 print(f"   📋 결과: {result_code} - {result_msg}")
                 
                 if result_code == '00':
                     body = data['response'].get('body', {})
-                    if not body:
-                        return None
+                    if not body: return None
                     
                     items = body.get('items', {})
-                    if isinstance(items, list):
-                        item_list = items
-                    elif isinstance(items, dict):
-                        item_list = items.get('item', [])
-                    else:
-                        return None
-                    
-                    print(f"   📊 데이터 항목 수: {len(item_list) if item_list else 0}")
-                    
-                    if not item_list:
-                        return None
-                    
-                    # 오늘/내일 날짜
+                    item_list = items.get('item', []) if isinstance(items, dict) else items
+                    if not item_list: return None
+
                     today = now.strftime('%Y%m%d')
                     tomorrow = (now + timedelta(days=1)).strftime('%Y%m%d')
                     current_hour_str = f"{now.hour:02d}00"
@@ -456,74 +471,138 @@ class WeatherAPI:
                     forecast_data = {}
                     found_items = []
                     
+                    can_get_today_min = now.hour >= 6
+                    can_get_today_max = now.hour >= 15
+                    
+                    today_tmn_found = any(i.get('category') == 'TMN' and i.get('fcstDate') == today and i.get('fcstTime') == '0600' for i in item_list)
+                    today_tmx_found = any(i.get('category') == 'TMX' and i.get('fcstDate') == today and i.get('fcstTime') == '1500' for i in item_list)
+
+                    missing_today_temps = []
+                    if not today_tmn_found and can_get_today_min: 
+                        missing_today_temps.append("TMN")
+                    if not today_tmx_found:  # can_get_today_max 조건 제거
+                        missing_today_temps.append("TMX")
+
+                    if missing_today_temps:
+                        print(f"🔍 missing_today_temps: {missing_today_temps}")
+                        yesterday_forecast = self.get_yesterday_forecast_for_today(grid_x, grid_y)
+                        print(f"🔍 yesterday_forecast: {yesterday_forecast}")
+                        if yesterday_forecast:
+                            if "TMN" in missing_today_temps and 'yesterday_min_for_today' in yesterday_forecast:
+                                forecast_data['min_temp_today'] = yesterday_forecast['yesterday_min_for_today']
+                                found_items.append(f"today TMN={forecast_data['min_temp_today']}°C (어제예보)")
+                                print(f"✅ TMN 추가됨: {forecast_data['min_temp_today']}")
+                            if "TMX" in missing_today_temps and 'yesterday_max_for_today' in yesterday_forecast:
+                                forecast_data['max_temp_today'] = yesterday_forecast['yesterday_max_for_today']
+                                found_items.append(f"today TMX={forecast_data['max_temp_today']}°C (어제예보)")
+                                print(f"✅ TMX 추가됨: {forecast_data['max_temp_today']}")
+
                     for item in item_list:
-                        category = item.get('category')
-                        value = item.get('fcstValue')
-                        fcst_date = item.get('fcstDate')
-                        fcst_time = item.get('fcstTime')
-                        
-                        if not all([category, value, fcst_date, fcst_time]):
-                            continue
-                        
-                        # 현재 시간 이후 첫 데이터 또는 가장 가까운 시간
+                        category, value, fcst_date, fcst_time = item.get('category'), item.get('fcstValue'), item.get('fcstDate'), item.get('fcstTime')
+                        if not all([category, value, fcst_date, fcst_time]): continue
+
                         if fcst_date == today and fcst_time >= current_hour_str:
                             if category == 'POP' and 'rain_probability' not in forecast_data:
-                                try:
-                                    forecast_data['rain_probability'] = int(value)
-                                    found_items.append(f"POP={value}%")
-                                except ValueError:
-                                    pass
+                                forecast_data['rain_probability'] = int(value)
                             elif category == 'PCP' and 'precipitation_amount' not in forecast_data:
                                 forecast_data['precipitation_amount'] = self.parse_precipitation_amount(value)
-                                found_items.append(f"PCP={value}")
                             elif category == 'SKY' and 'sky_condition' not in forecast_data:
                                 forecast_data['sky_condition'] = self.get_sky_text(value)
-                                found_items.append(f"SKY={self.get_sky_text(value)}")
+
+                        if fcst_date == today and category == 'TMN' and fcst_time == '0600' and 'min_temp_today' not in forecast_data and can_get_today_min:
+                            if value not in ['-999', '-', '']: forecast_data['min_temp_today'] = float(value)
                         
-                        # 오늘 최저/최고 기온 (06시 TMN, 15시 TMX)
-                        if fcst_date == today:
-                            if category == 'TMN' and fcst_time == '0600' and value not in ['-999', '-', ''] and 'min_temp_today' not in forecast_data:
-                                try:
-                                    forecast_data['min_temp_today'] = float(value)
-                                    found_items.append(f"today TMN={value}°C")
-                                except ValueError:
-                                    pass
-                            elif category == 'TMX' and fcst_time == '1500' and value not in ['-999', '-', ''] and 'max_temp_today' not in forecast_data:
-                                try:
-                                    forecast_data['max_temp_today'] = float(value)
-                                    found_items.append(f"today TMX={value}°C")
-                                except ValueError:
-                                    pass
+                        if fcst_date == today and category == 'TMX' and fcst_time == '1500' and can_get_today_max:
+                            if value not in ['-999', '-', '']: forecast_data['max_temp_today'] = float(value)
+
+                        if fcst_date == tomorrow and category == 'TMN' and fcst_time == '0600' and 'min_temp_tomorrow' not in forecast_data:
+                            if value not in ['-999', '-', '']: forecast_data['min_temp_tomorrow'] = float(value)
                         
-                        # 내일 최저/최고 기온 (06시 TMN, 15시 TMX)
-                        elif fcst_date == tomorrow:
-                            if category == 'TMN' and fcst_time == '0600' and value not in ['-999', '-', ''] and 'min_temp_tomorrow' not in forecast_data:
-                                try:
-                                    forecast_data['min_temp_tomorrow'] = float(value)
-                                    found_items.append(f"tomorrow TMN={value}°C")
-                                except ValueError:
-                                    pass
-                            elif category == 'TMX' and fcst_time == '1500' and value not in ['-999', '-', ''] and 'max_temp_tomorrow' not in forecast_data:
-                                try:
-                                    forecast_data['max_temp_tomorrow'] = float(value)
-                                    found_items.append(f"tomorrow TMX={value}°C")
-                                except ValueError:
-                                    pass
+                        if fcst_date == tomorrow and category == 'TMX' and fcst_time == '1500' and 'max_temp_tomorrow' not in forecast_data:
+                            if value not in ['-999', '-', '']: forecast_data['max_temp_tomorrow'] = float(value)
                     
-                    print(f"   ✅ 찾은 항목: {found_items}")
-                    print(f"   📊 최종 데이터: {forecast_data}")
+                    # 단기예보 파싱이 끝난 후, 간단하게 처리
+                    if 'max_temp_today' not in forecast_data or forecast_data.get('max_temp_today') is None:
+                        # 오늘 최고기온이 없으면 어제 예보 사용
+                        yesterday_forecast = self.get_yesterday_forecast_for_today(grid_x, grid_y)
+                        if yesterday_forecast and 'yesterday_max_for_today' in yesterday_forecast:
+                            forecast_data['max_temp_today'] = yesterday_forecast['yesterday_max_for_today']
+                            found_items.append(f"today TMX={forecast_data['max_temp_today']}°C (어제예보)")
+                            print(f"✅ 최고기온 후처리로 추가됨: {forecast_data['max_temp_today']}")
                     
                     return forecast_data if forecast_data else None
-                else:
+
+                else: # API 에러 코드 '00'이 아닌 경우
                     print(f"   ❌ API 오류: {result_code} - {result_msg}")
-                    return None
-            else:
-                print(f"   ❌ HTTP 오류: {response.status_code}")
-                return None
+                    time.sleep(retry_delay)
+            
+            except requests.exceptions.RequestException as req_err:
+                print(f"   💥 요청 예외 (시도 {attempt + 1}): {req_err}")
+                time.sleep(retry_delay)
+            
+            except Exception as e:
+                print(f"   💥 일반 예외 (시도 {attempt + 1}): {e}")
+                time.sleep(retry_delay)
+
+        print(f"   ❌ 모든 재시도({max_retries}번) 실패.")
+        return None
+    
+    def get_yesterday_forecast_for_today(self, grid_x, grid_y):
+        """어제 예보한 오늘 기온 데이터 가져오기 (재시도 로직 추가)"""
+        max_retries = 3
+        retry_delay = 1
+
+        for attempt in range(max_retries):
+            try:
+                now = datetime.now()
+                yesterday = now - timedelta(days=1)
+                today = now.strftime('%Y%m%d')
                 
-        except Exception as e:
-            print(f"   💥 예외: {str(e)}")
-            return None
+                print(f"      🔍 어제 예보 확인 (시도 {attempt + 1}/{max_retries}): {yesterday.strftime('%Y%m%d')} 23시")
+                
+                params = {
+                    'serviceKey': self.kma_api_key, 'pageNo': '1', 'numOfRows': '1000',
+                    'dataType': 'JSON', 'base_date': yesterday.strftime('%Y%m%d'),
+                    'base_time': '2300', 'nx': str(grid_x), 'ny': str(grid_y)
+                }
+                
+                response = requests.get(self.kma_forecast_url, params=params, timeout=REQUEST_TIMEOUT)
+
+                if response.status_code != 200:
+                    print(f"      ❌ HTTP 오류: {response.status_code}")
+                    time.sleep(retry_delay)
+                    continue
+
+                data = response.json()
+                if data.get('response', {}).get('header', {}).get('resultCode') == '00':
+                    items = data.get('response', {}).get('body', {}).get('items', {})
+                    item_list = items.get('item', []) if isinstance(items, dict) else items
+                    
+                    yesterday_data = {}
+                    for item in item_list:
+                        category, value, fcst_date = item.get('category'), item.get('fcstValue'), item.get('fcstDate')
+                        if fcst_date == today and value not in ['-999', '-', '']:
+                            try:
+                                if category == 'TMN':
+                                    yesterday_data['yesterday_min_for_today'] = float(value)
+                                elif category == 'TMX':
+                                    yesterday_data['yesterday_max_for_today'] = float(value)
+                            except (ValueError, TypeError):
+                                pass
+                    
+                    if yesterday_data:
+                        print(f"      ✅ 어제 예보에서 {list(yesterday_data.keys())} 찾음")
+                    return yesterday_data if yesterday_data else None
+                else:
+                    print(f"      ❌ 어제 예보 API 오류")
+                    time.sleep(retry_delay)
+
+            except (requests.exceptions.RequestException, ValueError) as e:
+                print(f"      ❌ 어제 예보 확인 실패 (시도 {attempt + 1}): {e}")
+                time.sleep(retry_delay)
+
+        print(f"      ❌ 어제 예보 확인 최종 실패.")
+        return None
     
     def parse_precipitation_amount(self, value):
         """강수량 파싱"""
@@ -582,13 +661,29 @@ class WeatherAPI:
             
             # 표준 형식으로 변환
             temperature = weather_data.get('temperature', 20.0)
+            
+            # 오늘 최저/최고 기온 매핑 - 수정된 부분
+            today_min = (weather_data.get('min_temp_today') or 
+                        weather_data.get('yesterday_min_for_today'))
+            today_max = (weather_data.get('max_temp_today') or 
+                        weather_data.get('yesterday_max_for_today'))
+            
+            # 디버깅 출력 추가
+            print(f"🔍 기온 매핑 확인:")
+            print(f"   - weather_data에서 min_temp_today: {weather_data.get('min_temp_today')}")
+            print(f"   - weather_data에서 max_temp_today: {weather_data.get('max_temp_today')}")
+            print(f"   - weather_data에서 yesterday_min_for_today: {weather_data.get('yesterday_min_for_today')}")
+            print(f"   - weather_data에서 yesterday_max_for_today: {weather_data.get('yesterday_max_for_today')}")
+            print(f"   - 최종 today_min: {today_min}")
+            print(f"   - 최종 today_max: {today_max}")
+            
             formatted_data = {
                 'main': {
                     'temp': temperature,
                     'feels_like': temperature,
                     'humidity': weather_data.get('humidity', 60),
-                    'temp_min': weather_data.get('min_temp_today'),
-                    'temp_max': weather_data.get('max_temp_today')
+                    'temp_min': today_min,  # min_temp_today를 temp_min에 매핑
+                    'temp_max': today_max   # max_temp_today를 temp_max에 매핑
                 },
                 'weather': [{
                     'description': self.get_weather_description(weather_data),
@@ -605,8 +700,8 @@ class WeatherAPI:
                     'amount': weather_data.get('precipitation_amount', 0)
                 },
                 'forecast': {
-                    'today_min': weather_data.get('min_temp_today'),
-                    'today_max': weather_data.get('max_temp_today'),
+                    'today_min': today_min,
+                    'today_max': today_max,
                     'tomorrow_min': weather_data.get('min_temp_tomorrow'),
                     'tomorrow_max': weather_data.get('max_temp_tomorrow')
                 },
@@ -619,6 +714,11 @@ class WeatherAPI:
                 'data_source': f"기상청 ({', '.join(weather_data.get('data_sources', []))})",
                 'raw_data': weather_data  # 디버깅용
             }
+            
+            # 최종 확인 출력
+            print(f"✅ 최종 매핑 확인:")
+            print(f"   - formatted_data['main']['temp_min']: {formatted_data['main']['temp_min']}")
+            print(f"   - formatted_data['main']['temp_max']: {formatted_data['main']['temp_max']}")
             
             return formatted_data
             
@@ -654,13 +754,22 @@ class WeatherAPI:
             region_info = weather_data.get('region_info', {})
             matched_region = region_info.get('matched_region', city_name)
             
+            # 기온 표시 개선 - None 처리
+            current_temp = main['temp']
+            min_temp = main.get('temp_min')
+            max_temp = main.get('temp_max')
+            
+            # 최저/최고 기온 텍스트 처리
+            min_temp_text = f"{min_temp}°C" if min_temp is not None else "정보없음"
+            max_temp_text = f"{max_temp}°C" if max_temp is not None else "정보없음"
+            
             weather_text = f"""
 📍 {matched_region} 상세 날씨 정보
 
 🌡️ 기온:
-- 현재: {main['temp']}°C
-- 최저: {main.get('temp_min', '--')}°C (오늘)
-- 최고: {main.get('temp_max', '--')}°C (오늘)
+- 현재: {current_temp}°C
+- 최저: {min_temp_text} (오늘)
+- 최고: {max_temp_text} (오늘)
 - 습도: {main['humidity']}%
 
 🌤️ 날씨:
@@ -677,11 +786,16 @@ class WeatherAPI:
 - 풍향: {wind.get('direction', '--')} ({wind.get('deg', '--')}°)"""
 
             if forecast.get('tomorrow_min') or forecast.get('tomorrow_max'):
+                tomorrow_min = forecast.get('tomorrow_min')
+                tomorrow_max = forecast.get('tomorrow_max')
+                tomorrow_min_text = f"{tomorrow_min}°C" if tomorrow_min is not None else "--"
+                tomorrow_max_text = f"{tomorrow_max}°C" if tomorrow_max is not None else "--"
+                
                 weather_text += f"""
 
 🔮 내일 예보:
-- 최저: {forecast.get('tomorrow_min', '--')}°C
-- 최고: {forecast.get('tomorrow_max', '--')}°C"""
+- 최저: {tomorrow_min_text}
+- 최고: {tomorrow_max_text}"""
 
             weather_text += f"""
 
@@ -700,8 +814,8 @@ class WeatherAPI:
 
 # 테스트 실행
 if __name__ == "__main__":
-    print("🌤️ 수정된 날씨 API 테스트 (문제 해결 버전)")
-    print("=" * 50)
+    print("🌤️ 수정된 날씨 API 테스트 (오늘 기온 문제 완전 해결)")
+    print("=" * 60)
     
     try:
         weather_api = WeatherAPI()
@@ -715,8 +829,8 @@ if __name__ == "__main__":
         ]
         
         for test_city in test_cities:
-            print(f"\n📍 {test_city} 테스트:")
-            print("-" * 30)
+            custom_print(f"\n📍 {test_city} 테스트:")
+            print("-" * 40)
             
             try:
                 weather_data = weather_api.get_weather_data(test_city)
@@ -725,9 +839,9 @@ if __name__ == "__main__":
             except Exception as city_error:
                 print(f"❌ {test_city} 오류: {city_error}")
             
-            print("\n" + "=" * 50)
+            custom_print("\n" + "=" * 60)
         
     except Exception as e:
-        print(f"❌ 전체 오류: {e}")                                                                                                            
+        print(f"❌ 전체 오류: {e}")
         import traceback
         traceback.print_exc()

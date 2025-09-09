@@ -1,4 +1,41 @@
-# 장소 카테고리를 표준화하고 분류하는 유틸리티를 제공합니다.
+# category_utils.py - 장소 카테고리 분류 유틸리티
+# ===================================================================================
+# 파일명     : category_utils.py
+# 작성자     : 하승주, 홍석원
+# 최초작성일 : 2025-09-04
+# 설명       : 네이버 장소 데이터의 다양한 카테고리명을 표준 UI 카테고리로 통합
+#              키워드 기반 매칭을 통해 '기타' 분류 최소화 및 16개 카테고리 세분화
+# ===================================================================================
+#
+# 【주요 기능】
+# - 네이버 장소 데이터의 다양한 카테고리명을 표준 UI 카테고리로 통합
+# - 키워드 기반 매칭을 통해 '기타' 분류 최소화
+# - 음식점, 카페, 관광지 등 16개 주요 카테고리로 세분화
+#
+# 【작동 방식】
+# 1. 입력받은 카테고리 문자열에서 키워드 추출
+# 2. 미리 정의된 키워드 사전과 매칭
+# 3. 우선순위에 따라 적절한 UI 카테고리 반환
+# 4. 매칭되지 않는 경우 '기타'로 분류
+#
+# 【카테고리 체계】
+# - 음식점: 한식, 중식, 양식, 분식 등 모든 식당
+# - 주점/바: 술집, 호프, 와인바 등
+# - 카페/디저트: 커피전문점, 베이커리, 디저트카페
+# - 전시/문화: 박물관, 미술관, 문화재 등
+# - 공연/엔터테인먼트: 극장, 콘서트홀, 오락시설
+# - 체험/액티비티: 공방, 레포츠, 농장체험 등
+# - 자연/공원: 산, 해변, 공원, 등산로 등
+# - 쇼핑: 시장, 백화점, 아울렛 등
+# - 숙소: 호텔, 펜션, 캠핑장 등
+# - 스포츠시설: 헬스장, 수영장, 골프장 등
+# - 기타 6개 카테고리
+#
+# 【사용처】
+# - travel_logic.py의 필터링 로직
+# - db_manager.py의 카테고리 매핑 생성
+# ===================================================================================
+
 def normalize_category_for_ui(category):
     """
     장소의 카테고리 문자열을 분석하여 표준화된 UI용 카테고리명으로 변환합니다.
@@ -7,7 +44,7 @@ def normalize_category_for_ui(category):
     if not category:
         return "기타"
 
-    # 1. 음식점 (세분화 및 확장)
+    # 1. 음식점 
     food_keywords = [
         "음식점", "식당", "맛집", "레스토랑", "밥집", "한식", "중식", "일식", "양식", "분식",
         "고기", "구이", "갈비", "삼겹살", "소고기", "돼지고기", "곱창", "막창", "족발", "보쌈",
@@ -23,7 +60,7 @@ def normalize_category_for_ui(category):
     if any(keyword in category for keyword in food_keywords):
         return "음식점"
 
-    # 2. 주점/바 (신규 분리)
+    # 2. 주점/바 
     bar_keywords = [
         "술집", "주점", "호프", "맥주", "와인바", "칵테일바", "이자카야", "선술집",
         "포장마차", "막걸리", "바", "펍", "요리주점", "전통", "민속주점", "와인"
@@ -31,7 +68,14 @@ def normalize_category_for_ui(category):
     if any(keyword in category for keyword in bar_keywords):
         return "주점/바"
 
-    # 3. 카페/디저트 (확장)
+    # 3.키즈 아이
+    kids_keywords = [
+        "키즈", "키즈카페", "어린이", "실내놀이터", "유아", "놀이방", "어린이도서관"
+    ]
+    if any(keyword in category for keyword in kids_keywords):
+        return "키즈/아이"    
+
+    # 3. 카페/디저트 
     cafe_keywords = [
         "카페", "커피", "디저트", "베이커리", "빵집", "케이크", "아이스크림", "빙수",
         "도넛", "와플", "마카롱", "타르트", "찻집", "다방", "북카페", "애견카페", "차",
@@ -42,7 +86,14 @@ def normalize_category_for_ui(category):
     if any(keyword in category for keyword in cafe_keywords):
         return "카페/디저트"
 
-    # 4. 전시/문화 (확장)
+    # 13. 종교/전통 
+    religion_keywords = [
+        "종교", "사찰", "절", "암자", "성당", "교회", "서원", "향교", "사당"
+    ]
+    if any(keyword in category for keyword in religion_keywords):
+        return "종교/전통"    
+
+    # 4. 전시/문화 
     culture_keywords = [
         "전시", "미술관", "박물관", "갤러리", "과학관", "기념관", "역사", "문화", "유적",
         "문화재", "민속촌", "고궁", "왕릉", "성곽", "동물원", "식물원", "수목원",
@@ -53,7 +104,7 @@ def normalize_category_for_ui(category):
     if any(keyword in category for keyword in culture_keywords):
         return "전시/문화"
 
-    # 5. 공연/엔터테인먼트 (신규 분리)
+    # 5. 공연/엔터테인먼트 
     entertainment_keywords = [
         "공연", "극장", "콘서트", "뮤지컬", "연극", "영화관", "노래방", "PC방",
         "만화카페", "보드게임", "방탈출", "VR", "게임", "오락실", "플레이스테이션방",
@@ -63,20 +114,18 @@ def normalize_category_for_ui(category):
     if any(keyword in category for keyword in entertainment_keywords):
         return "공연/엔터테인먼트"
 
-    # 6. 체험/액티비티 (재정의 및 확장)
+    # 6. 체험/액티비티 
     activity_keywords = [
         "체험", "공방", "클래스", "만들기", "도예", "목공", "가죽", "캔들", "향수",
         "쿠킹", "농장", "목장", "낚시", "서핑", "패러글라이딩", "카트", "짚라인",
-        "레포츠", "레저", "스키", "썰매", "승마", "활쏘기", "사격", "실내", "키즈", "키즈카페",
+        "레포츠", "레저", "스키", "썰매", "승마", "활쏘기", "사격", 
         "워터파크", "드럼", "한복", "ATV", "레일바이크", "루지", "모노레일", "번지점프",
-        "서바이벌", "케이블카", "템플스테이", "관광농원", "팜스테이", "체험마을", "요리교육",
-        "취미교육", "음악교육", "미술교육", "꽃꽂이", "사진", "스튜디오", "소품대여",
-        "파티복대여", "한복대여", "유람선", "관광선", "통기타", "클래식기타", "플룻", "피아노"
+        "서바이벌", "케이블카", "템플스테이", "관광농원", "팜스테이", "체험마을", "요리교육", "유람선", "관광선",
     ]
     if any(keyword in category for keyword in activity_keywords):
         return "체험/액티비티"
 
-    # 7. 자연/공원 (확장)
+    # 7. 자연/공원 
     nature_keywords = [
         "자연", "공원", "산", "계곡", "강", "호수", "폭포", "동굴", "숲", "휴양림",
         "해수욕장", "해변", "해안", "둘레길", "트레킹", "오름", "공원묘원", "항구", "봉우리", "고지",
@@ -88,7 +137,7 @@ def normalize_category_for_ui(category):
     if any(keyword in category for keyword in nature_keywords):
         return "자연/공원"
 
-    # 8. 쇼핑 (확장)
+    # 8. 쇼핑 
     shopping_keywords = [
         "쇼핑", "시장", "백화점", "아울렛", "면세점", "마트", "상점", "편집샵",
         "소품샵", "문구", "팬시", "서점", "꽃집", "공판장", "수산시장", "농수산물",
@@ -97,7 +146,7 @@ def normalize_category_for_ui(category):
     if any(keyword in category for keyword in shopping_keywords):
         return "쇼핑"
 
-    # 9. 숙소 (확장)
+    # 9. 숙소 
     lodging_keywords = [
         "숙소", "호텔", "펜션", "리조트", "콘도", "모텔", "여관", "민박", "게스트하우스",
         "캠핑", "글램핑", "카라반", "한옥스테이", "휴양소", "수련원"
@@ -105,7 +154,7 @@ def normalize_category_for_ui(category):
     if any(keyword in category for keyword in lodging_keywords):
         return "숙소"
 
-    # 11. 교육/학문 (신규)
+    # 11. 교육/학문 
     education_keywords = [
         "교육", "학교", "대학교", "도서관", "학원", "어린이집", "유치원", "연수원",
         "군구립도서관", "시립도서관", "전문도서관", "만화,도서"
@@ -113,7 +162,7 @@ def normalize_category_for_ui(category):
     if any(keyword in category for keyword in education_keywords):
         return "교육/학문"
 
-    # 12. 공공/의료/금융 (신규)
+    # 12. 공공/의료/금융 
     public_keywords = [
         "관공서", "주민센터", "우체국", "경찰서", "소방서", "세무서", "법원",
         "병원", "의원", "약국", "동물병원", "보건소",
@@ -122,22 +171,19 @@ def normalize_category_for_ui(category):
     if any(keyword in category for keyword in public_keywords):
         return "공공/의료/금융"
 
-    # 13. 종교/전통 (확장)
-    religion_keywords = [
-        "종교", "사찰", "절", "암자", "성당", "교회", "서원", "향교", "사당"
-    ]
-    if any(keyword in category for keyword in religion_keywords):
-        return "종교/전통"
 
-    # 14. 뷰티/생활 (신규)
+
+    # 14. 뷰티/생활 
     life_keywords = [
         "미용실", "헤어샵", "이발소", "네일", "피부관리", "마사지", "스파", "찜질방",
-        "사우나", "목욕탕", "세탁소", "사진관", "수선", "온천", "다이어트", "비만"
+        "사우나", "목욕탕", "세탁소", "사진관", "수선", "온천", "다이어트", "비만",
+        "취미교육", "음악교육", "미술교육", "꽃꽂이", "사진", "스튜디오", "소품대여",
+        "파티복대여", "한복대여",  "통기타", "클래식기타", "플룻", "피아노"
     ]
     if any(keyword in category for keyword in life_keywords):
         return "뷰티/생활"
 
-    # 15. 스포츠시설 (신규)
+    # 15. 스포츠시설 
     sports_keywords = [
         "스포츠", "운동", "헬스", "피트니스", "요가", "필라테스", "수영장", "골프", "킥복싱",
         "테니스", "볼링", "당구", "축구", "야구", "풋살장", "복싱", "태권도장", "롤러", "배드민턴장",
@@ -147,6 +193,7 @@ def normalize_category_for_ui(category):
     ]
     if any(keyword in category for keyword in sports_keywords):
         return "스포츠시설"
+
 
     # 16. 기타
     return "기타"

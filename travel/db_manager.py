@@ -1,287 +1,363 @@
-#################################################################################################
-#################################################################################################
-####8월 8일 읍면동 반영 시도####
-import sqlite3
+# db_manager.py - SQLite 데이터베이스 관리 및 장소 검색
+# ===================================================================================
+# 파일명     : db_manager.py
+# 작성자     : 하승주, 홍석원
+# 최초작성일 : 2025-09-04
+# 설명       : 네이버 크롤링 데이터가 저장된 SQLite DB 연결/조회 및
+#              지역별(도/시/동) 계층적 장소 검색과 카테고리 기반 필터링 지원
+# ===================================================================================
+#
+# 【주요 기능】
+# - 네이버 크롤링 데이터가 저장된 SQLite DB 연결/조회
+# - 지역별(도/시/동) 계층적 장소 검색
+# - 카테고리 및 리뷰 기반 필터링
+# - UI용 카테고리 매핑 데이터 생성
+# - 크롤링 단계: 크롤링한 장소 데이터를 DB에 저장/갱신 (initialize_db, save_places_to_db 등 활용)
+# - 앱 실행 단계: DB에서 지역/카테고리별 장소를 검색하여 기사 생성에 활용
+#
+# 【DB 스키마】
+# - places 테이블: 장소 정보 저장
+#   * naver_place_id, name, category, address
+#   * total_visitor_reviews_count, total_blog_reviews_count  
+#   * introduction, keywords, visitor_reviews
+#
+# 【핵심 검색 기능】
+# - get_province_list(): 도/특별시 목록 (장소 수 순 정렬)
+# - get_city_list(): 특정 도의 시/군/구 목록
+# - get_dong_list(): 특정 시의 읍/면/동 목록
+# - search_places_advanced_with_dong(): 다단계 지역 필터 검색
+#
+# 【지역 정규화】
+# - 강원특별자치도 ↔ 강원도 통합 처리
+# - 전라북도 ↔ 전북특별자치도 통합 처리
+# - 별칭 매핑으로 검색 범위 확장
+#
+# 【데이터 관리】
+# - save_places_to_db(): 크롤링 데이터 저장
+# - update_introduction(): 실시간 크롤링으로 소개 정보 업데이트
+# - check_place_exists(): 중복 체크
+#
+# 【사용처】
+# - travel_logic.py: 장소 검색 및 필터링
+# - travel_tab.py: UI 드롭다운 데이터 제공
+# - chatbot_app.py: 기사 작성 전 DB 연결/테이블 확인
+# ===================================================================================
+
 import os
+import sqlite3
+from collections import defaultdict
+from typing import List, Dict, Tuple, Iterable, Optional
 from category_utils import normalize_category_for_ui
 
-def create_connection(db_name):
-    """데이터베이스 연결을 생성하고 반환합니다."""
+# ---------------------------
+# [크롤링 단계] DB 연결/초기화
+# ---------------------------
+def create_connection(db_path: str) -> Optional[sqlite3.Connection]:
     try:
-        conn = sqlite3.connect(db_name, timeout=10)
-        return conn
+        return sqlite3.connect(db_path, timeout=10)
     except sqlite3.Error as e:
-        print(f"[DB ERROR] DB 연결 실패: {e}")
+        print(f"[DB ERROR] 연결 실패: {e}")
         return None
 
-def get_category_mapping(db_path):
+def initialize_db(db_path: str) -> None:
     conn = create_connection(db_path)
-    if not conn:
-        return {}
+    if not conn: return
     try:
-        cursor = conn.cursor()
-        cursor.execute("SELECT DISTINCT category FROM places WHERE category IS NOT NULL AND category != ''")
-        all_categories = [row[0] for row in cursor.fetchall()]
-        
-        mapping = {}
-        for original_cat in all_categories:
-            normalized_cat = normalize_category_for_ui(original_cat)
-            if normalized_cat not in mapping:
-                mapping[normalized_cat] = []
-            mapping[normalized_cat].append(original_cat)
-        return mapping
+        c = conn.cursor()
+        c.execute("""
+        CREATE TABLE IF NOT EXISTS places (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            naver_place_id TEXT UNIQUE NOT NULL,
+            name TEXT,
+            category TEXT,
+            address TEXT,
+            total_visitor_reviews_count INTEGER DEFAULT 0,
+            total_blog_reviews_count INTEGER DEFAULT 0,
+            introduction TEXT,
+            keywords TEXT,
+            visitor_reviews TEXT,
+            search_keyword TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        """)
+        conn.commit()
+        print(f"[DB] '{os.path.basename(db_path)}' 초기화 완료")
     except sqlite3.Error as e:
-        print(f"[DB ERROR] 카테고리 매핑 조회 실패: {e}")
-        return {}
+        print(f"[DB ERROR] 테이블 생성 실패: {e}")
     finally:
-        if conn:
+        conn.close()
+
+# ---------------------------
+# [크롤링 단계] 레거시 호환 (앱 실행 때도 연결 확인용으로 사용)
+# ---------------------------
+def connect_db(db_path: str):
+    conn = create_connection(db_path)
+    cur = conn.cursor() if conn else None
+    return conn, cur
+
+def create_places_table(cursor) -> bool:
+    try:
+        cursor.execute("SELECT 1 FROM places LIMIT 1")
+        return True
+    except Exception:
+        return False
+
+# ---------------------------
+# 공용 유틸 (크롤링 + 앱 실행 둘 다 사용)
+# ---------------------------
+# 강원/전북 단일 표기: 강원특별자치도→강원, 전라북도/전북특별자치도→전북
+_PROV_CANON_MAP = {
+    "강원특별자치도": "강원", "강원": "강원",
+    "전북특별자치도": "전북", "전라북도": "전북", "전북": "전북",
+}
+
+def _canon_province(raw: str) -> str:
+    raw = (raw or "").strip()
+    return _PROV_CANON_MAP.get(raw, raw)
+
+def _aliases_for_province(canon: str) -> List[str]:
+    # 검색 시 사용할 주소 1토큰 후보들
+    if canon == "강원":
+        return ["강원", "강원특별자치도"]
+    if canon == "전북":
+        return ["전북", "전라북도", "전북특별자치도"]
+    return [canon]
+
+def _first_token(addr: str) -> str:
+    parts = (addr or "").split()
+    return parts[0] if parts else ""
+
+def _nth_token(addr: str, n: int) -> str:
+    parts = (addr or "").split()
+    return parts[n] if len(parts) > n else ""
+
+def _iter_addresses(conn: sqlite3.Connection) -> Iterable[str]:
+    for (addr,) in conn.execute("SELECT address FROM places WHERE address IS NOT NULL AND address != ''"):
+        yield addr
+
+def _normalize_dong_for_ui(dong: str) -> str:
+    if not dong: return "기타"
+    road_suffix = ("길", "로", "대로", "가로", "거리", "avenue", "street", "road")
+    return "도로명" if dong.endswith(road_suffix) else dong
+
+def _is_numeric_token(tok: str) -> bool:
+    t = (tok or "").replace("-", "")
+    return t.isdigit()
+
+# ---------------------------
+# [크롤링 단계] 중복 검사 / 저장 / 업데이트
+# ---------------------------
+def check_place_exists(conn_or_path, naver_place_id: str) -> bool:
+    try:
+        if isinstance(conn_or_path, sqlite3.Connection):
+            cur = conn_or_path.cursor()
+            close = False
+        else:
+            conn = create_connection(conn_or_path)
+            if not conn: return False
+            cur, close = conn.cursor(), True
+        cur.execute("SELECT 1 FROM places WHERE naver_place_id = ?", (naver_place_id,))
+        ok = cur.fetchone() is not None
+        if close: conn.close()
+        return ok
+    except sqlite3.Error as e:
+        print(f"[DB ERROR] 존재 확인 실패: {e}")
+        return False
+
+def save_places_to_db(conn: sqlite3.Connection, places_data: List[Dict]) -> int:
+    if not places_data: return 0
+    try:
+        before = conn.execute("SELECT COUNT(*) FROM places").fetchone()[0]
+        conn.executemany("""
+            INSERT OR IGNORE INTO places (
+              naver_place_id, name, category, address,
+              total_visitor_reviews_count, total_blog_reviews_count,
+              introduction, keywords, visitor_reviews, search_keyword
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, [(
+            p.get("naver_place_id"),
+            p.get("장소명"),
+            p.get("카테고리"),
+            p.get("주소"),
+            int(p.get("총 방문자 리뷰 수", 0) or 0),
+            int(p.get("총 블로그 리뷰 수", 0) or 0),
+            p.get("소개"),
+            p.get("키워드"),
+            p.get("방문자 리뷰"),
+            p.get("검색어"),
+        ) for p in places_data])
+        conn.commit()
+        after = conn.execute("SELECT COUNT(*) FROM places").fetchone()[0]
+        saved = after - before
+        if saved:
+            print(f"[DB] 새 장소 {saved}건 저장")
+        return saved
+    except sqlite3.Error as e:
+        print(f"[DB ERROR] 저장 실패: {e}")
+        return 0
+
+def update_introduction(conn_or_path, naver_place_id: str, new_introduction: str) -> None:
+    conn = None
+    internal = False
+    try:
+        if isinstance(conn_or_path, sqlite3.Connection):
+            conn = conn_or_path
+        else:
+            conn = create_connection(conn_or_path)
+            internal = True
+            if not conn: 
+                print("[DB ERROR] 연결 실패로 소개 업데이트 중단")
+                return
+        conn.execute("UPDATE places SET introduction = ? WHERE naver_place_id = ?",
+                     (new_introduction, naver_place_id))
+        if internal:
+            conn.commit()
+    except sqlite3.Error as e:
+        print(f"[DB ERROR] 소개 업데이트 실패(ID={naver_place_id}): {e}")
+    finally:
+        if conn and internal:
             conn.close()
 
-def get_province_list(db_path):
+# ---------------------------
+# [앱 실행 단계] 지역 리스트 (장소 많은 순 정렬)
+# ---------------------------
+def get_province_list(db_path: str) -> List[str]:
     conn = create_connection(db_path)
-    if not conn:
-        return []
+    if not conn: return []
     try:
-        cursor = conn.cursor()
-        cursor.execute("SELECT DISTINCT SUBSTR(address, 1, INSTR(address, ' ') - 1) FROM places WHERE address LIKE '%_ %'")
-        provinces = [row[0] for row in cursor.fetchall() if row[0]]
-        return sorted(list(set(provinces)))
-    except sqlite3.Error as e:
-        print(f"[DB ERROR] 도/특별시 목록 조회 실패: {e}")
-        return []
+        cnt = defaultdict(int)
+        for addr in _iter_addresses(conn):
+            p = _canon_province(_first_token(addr))
+            if p: cnt[p] += 1
+        # 장소 수 내림차순, 이름 오름차순
+        return [p for p, _ in sorted(cnt.items(), key=lambda x: (-x[1], x[0]))]
     finally:
-        if conn:
-            conn.close()
+        conn.close()
 
-def get_city_list(province, db_path):
+def get_city_list(province: str, db_path: str) -> List[str]:
     conn = create_connection(db_path)
-    if not conn:
-        return []
+    if not conn: return []
     try:
-        cursor = conn.cursor()
-        query = f"SELECT DISTINCT SUBSTR(address, INSTR(address, ' ') + 1, INSTR(SUBSTR(address, INSTR(address, ' ') + 1), ' ') - 1) FROM places WHERE address LIKE ?"
-        cursor.execute(query, (province + ' %',))
-        cities = [row[0] for row in cursor.fetchall() if row[0]]
-        return sorted(list(set(cities)))
-    except sqlite3.Error as e:
-        print(f"[DB ERROR] 시/군/구 목록 조회 실패: {e}")
-        return []
+        aliases = _aliases_for_province(_canon_province(province))
+        cnt = defaultdict(int)
+        for addr in _iter_addresses(conn):
+            p = _first_token(addr)
+            if p not in aliases: 
+                # 별칭이 짧은 '전북'이 주소에 직접 들어갈 수도 있어 보조 체크
+                if _canon_province(p) != _canon_province(province):
+                    continue
+            c = _nth_token(addr, 1)
+            if c: cnt[c] += 1
+        return [c for c, _ in sorted(cnt.items(), key=lambda x: (-x[1], x[0]))]
     finally:
-        if conn:
-            conn.close()
+        conn.close()
 
-def normalize_dong_for_ui(dong_name):
+def get_dong_list(province: str, city: str, db_path: str) -> List[str]:
+    conn = create_connection(db_path)
+    if not conn: return []
+    try:
+        aliases = _aliases_for_province(_canon_province(province))
+        cnt = defaultdict(int)
+        for addr in _iter_addresses(conn):
+            p = _first_token(addr)
+            if (p not in aliases) and (_canon_province(p) != _canon_province(province)):
+                continue
+            if _nth_token(addr, 1) != city:
+                continue
+            d = _nth_token(addr, 2)
+            if not d or _is_numeric_token(d):
+                continue
+            d = _normalize_dong_for_ui(d)
+            cnt[d] += 1
+        return [d for d, _ in sorted(cnt.items(), key=lambda x: (-x[1], x[0]))]
+    finally:
+        conn.close()
+
+# ---------------------------
+# [앱 실행 단계] 장소 검색 (도/시/동) — 주소 기반
+#   * province='강원' → 강원/강원특별자치도 모두 매칭
+#   * city/dong 미지정(None) 허용
+# ---------------------------
+def search_places_advanced_with_dong(
+    db_path: str, province: Optional[str], city: Optional[str], dong: Optional[str], categories: List[str]
+) -> List[Dict]:
+    conn = create_connection(db_path)
+    if not conn: return []
+    try:
+        sql = "SELECT name, category, address, keywords, total_visitor_reviews_count, total_blog_reviews_count, visitor_reviews, introduction, naver_place_id FROM places"
+        where = []
+        params: List[str] = []
+
+        # 주소 LIKE 조건(별칭 포함)
+        if province:
+            aliases = _aliases_for_province(_canon_province(province))
+        else:
+            aliases = []
+
+        # 경우의 수(도/시/동 조합)
+        like_blocks = []
+        if aliases:
+            for a in aliases:
+                prefix = a
+                if city:  prefix += f" {city}"
+                if dong:  prefix += f" {dong}"
+                like_blocks.append("address LIKE ?")
+                params.append(prefix + "%")
+        elif city or dong:
+            # 도 없이 시/동만 온 특수 케이스(드뭄)
+            prefix = ""
+            if city: prefix += f"% {city}"
+            if dong: prefix += f" {dong}"
+            if prefix:
+                like_blocks.append("address LIKE ?")
+                params.append(prefix + "%")
+
+        if like_blocks:
+            where.append("(" + " OR ".join(like_blocks) + ")")
+
+        if where:
+            sql += " WHERE " + " AND ".join(where)
+
+        rows = conn.execute(sql, params).fetchall()
+        cols = ["name","category","address","keywords","total_visitor_reviews","total_blog_reviews","visitor_reviews","intro","naver_place_id"]
+        return [dict(zip(cols, r)) for r in rows]
+    finally:
+        conn.close()
+
+# ---------------------------
+# [앱 실행 단계] 기사/통계용 매핑
+# ---------------------------
+def get_category_mapping(db_path: str) -> Dict[str, List[Tuple[str, str]]]:
     """
-    읍/면/동명을 UI용으로 정규화합니다.
-    도로명(~길, ~로 등)은 "도로명"으로 통합합니다.
+    UI 카테고리 → [(장소명, 동)] 목록.
+    * 간결화: category를 normalize_category_for_ui로만 정규화
     """
-    if not dong_name:
-        return "기타"
-    
-    # 도로명 키워드들
-    road_keywords = ["길", "로", "대로", "가로", "거리", "avenue", "street", "road"]
-    
-    # 도로명으로 끝나는 경우 "도로명"으로 통합
-    if any(dong_name.endswith(keyword) for keyword in road_keywords):
-        return "도로명"
-    
-    # 그 외는 그대로 반환
-    return dong_name
-
-def get_dong_mapping(province, city, db_path):
-    """읍/면/동의 UI 매핑을 가져오는 함수 (카테고리 매핑과 동일한 방식)"""
+    out: Dict[str, List[Tuple[str, str]]] = defaultdict(list)
     conn = create_connection(db_path)
-    if not conn:
-        return {}
-    
+    if not conn: return out
     try:
-        cursor = conn.cursor()
-        
-        # 주소에서 도로명/지역명 추출
-        cursor.execute("""
-            SELECT DISTINCT address FROM places 
-            WHERE address LIKE ? AND address LIKE ?
-        """, (f'{province}%', f'%{city}%'))
-        
-        addresses = cursor.fetchall()
-        all_dongs = []
-        
-        for address_tuple in addresses:
-            address = address_tuple[0]
-            parts = address.split()
-            
-            # 주소 형태: "광주 동구 제봉로 100-1 길" -> 3번째 부분인 "제봉로"를 추출
+        for name, cat, addr in conn.execute("SELECT name, category, address FROM places WHERE name IS NOT NULL"):
+            ui = normalize_category_for_ui(cat or "")
+            dong = _nth_token(addr or "", 2)
+            out[ui].append((name, dong))
+    finally:
+        conn.close()
+    return out
+
+def get_dong_mapping(db_path: str) -> Dict[str, List[str]]:
+    """
+    '도 시 동' 키 → [장소명...] 목록.
+    (UI 검색 자동완성/기사용 간단 통계)
+    """
+    out: Dict[str, List[str]] = defaultdict(list)
+    conn = create_connection(db_path)
+    if not conn: return out
+    try:
+        for name, addr in conn.execute("SELECT name, address FROM places WHERE address IS NOT NULL AND address != ''"):
+            parts = addr.split()
             if len(parts) >= 3:
-                dong_part = parts[2]  # 3번째 부분 (0-indexed로 2번째)
-                
-                # 숫자로만 이루어진 경우는 제외 (예: "100-1" 같은 번지수)
-                if not dong_part.replace('-', '').isdigit():
-                    all_dongs.append(dong_part)
-        
-        # 매핑 생성 (카테고리와 동일한 방식)
-        mapping = {}
-        for original_dong in all_dongs:
-            normalized_dong = normalize_dong_for_ui(original_dong)
-            if normalized_dong not in mapping:
-                mapping[normalized_dong] = []
-            if original_dong not in mapping[normalized_dong]:
-                mapping[normalized_dong].append(original_dong)
-                
-        return mapping
-        
-    except sqlite3.Error as e:
-        print(f"[DB ERROR] 읍/면/동 매핑 조회 실패: {e}")
-        return {}
+                key = f"{_canon_province(parts[0])} {parts[1]} {parts[2]}"
+                out[key].append(name)
     finally:
-        if conn:
-            conn.close()
-
-def get_dong_list(province, city, db_path):
-    """특정 도/시와 시/군/구의 읍/면/동(UI용 정규화된) 목록을 가져오는 함수"""
-    dong_mapping = get_dong_mapping(province, city, db_path)
-    return sorted(list(dong_mapping.keys()))
-
-def search_provinces_by_partial_name(partial_name, db_path):
-    provinces = get_province_list(db_path)
-    return [p for p in provinces if partial_name.lower() in p.lower()]
-
-def search_cities_by_partial_name(province, partial_name, db_path):
-    cities = get_city_list(province, db_path)
-    return [c for c in cities if partial_name.lower() in c.lower()]
-
-def search_dongs_by_partial_name(province, city, partial_dong, db_path):
-    """부분 읍/면/동명으로 검색하는 함수"""
-    dong_mapping = get_dong_mapping(province, city, db_path)
-    all_dongs = list(dong_mapping.keys())
-    suggestions = [dong for dong in all_dongs if partial_dong.lower() in dong.lower()]
-    return suggestions
-
-def search_places_advanced(db_path, province, city, categories):
-    conn = create_connection(db_path)
-    if not conn:
-        return []
-    try:
-        cursor = conn.cursor()
-        query = "SELECT name, category, address, keywords, visitor_reviews, introduction, total_visitor_reviews_count, total_blog_reviews_count FROM places WHERE 1=1"
-        params = []
-
-        if province and province != '전체':
-            query += " AND address LIKE ?"
-            params.append(province + '%')
-        
-        if city and city != '전체':
-            query += " AND address LIKE ?"
-            params.append(f"%{city}%")
-
-        if categories:
-            placeholders = ', '.join('?' for _ in categories)
-            query += f" AND category IN ({placeholders})"
-            params.extend(categories)
-
-        cursor.execute(query, params)
-        places = cursor.fetchall()
-        
-        # 결과를 딕셔너리 리스트로 변환
-        result = []
-        for row in places:
-            result.append({
-                'name': row[0],
-                'category': row[1],
-                'address': row[2],
-                'keywords': row[3],
-                'visitor_reviews': row[4],
-                'intro': row[5],
-                'total_visitor_reviews': row[6],
-                'total_blog_reviews': row[7]
-            })
-        return result
-
-    except sqlite3.Error as e:
-        print(f"[DB ERROR] 장소 검색 실패: {e}")
-        return []
-    finally:
-        if conn:
-            conn.close()
-
-def search_places_advanced_with_dong(db_path, province, city, dong, categories):
-    """읍/면/동까지 포함한 고급 장소 검색 함수"""
-    conn = create_connection(db_path)
-    if not conn:
-        return []
-    
-    try:
-        cursor = conn.cursor()
-        
-        # 기본 쿼리
-        query = """
-            SELECT name, category, address, keywords, visitor_reviews, introduction,
-                   total_visitor_reviews_count, total_blog_reviews_count
-            FROM places 
-            WHERE 1=1
-        """
-        params = []
-        
-        # 도/특별시 필터
-        if province and province != "전체":
-            query += " AND address LIKE ?"
-            params.append(f'{province}%')
-        
-        # 시/군/구 필터  
-        if city and city != "전체":
-            query += " AND address LIKE ?"
-            params.append(f'%{city}%')
-        
-        # 읍/면/동 필터 (매핑 고려)
-        if dong and dong != "전체":
-            # 선택된 dong이 매핑된 그룹인지 확인
-            dong_mapping = get_dong_mapping(province, city, db_path)
-            if dong in dong_mapping:
-                # 매핑된 그룹이면 해당하는 모든 원본 dong들로 검색
-                original_dongs = dong_mapping[dong]
-                dong_conditions = []
-                for original_dong in original_dongs:
-                    dong_conditions.append("address LIKE ?")
-                    params.append(f'%{original_dong}%')
-                
-                if dong_conditions:
-                    query += f" AND ({' OR '.join(dong_conditions)})"
-            else:
-                # 일반적인 dong 검색
-                query += " AND address LIKE ?"
-                params.append(f'%{dong}%')
-        
-        # 카테고리 필터
-        if categories:
-            category_conditions = []
-            for category in categories:
-                category_conditions.append("category LIKE ?")
-                params.append(f'%{category}%')
-            
-            if category_conditions:
-                query += f" AND ({' OR '.join(category_conditions)})"
-        
-        cursor.execute(query, params)
-        results = cursor.fetchall()
-        
-        places = []
-        for row in results:
-            place = {
-                'name': row[0] if row[0] else '',
-                'category': row[1] if row[1] else '',
-                'address': row[2] if row[2] else '',
-                'keywords': row[3] if row[3] else '',
-                'visitor_reviews': row[4] if row[4] else '',
-                'intro': row[5] if row[5] else '',
-                'total_visitor_reviews': row[6] if row[6] else 0,
-                'total_blog_reviews': row[7] if row[7] else 0
-            }
-            places.append(place)
-        
-        return places
-    
-    except sqlite3.Error as e:
-        print(f"[DB ERROR] 장소 검색 오류: {e}")
-        return []
-    finally:
-        if conn:
-            conn.close()
+        conn.close()
+    return out
