@@ -2,7 +2,6 @@ from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLabel, QGroupBox, QHBoxLayout
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
 from PyQt5.QtGui import QFont, QKeySequence
 import pyperclip
-import webbrowser
 import urllib.parse
 import re
 import os
@@ -12,8 +11,6 @@ import sys
 
 from news.src.utils.article_utils import extract_article_content
 from news.src.services import news_LLM
-
-CHATBOT_URL = "https://chatgpt.com/g/g-67abdb7e8f1c8191978db654d8a57b86-gisa-jaeguseong-caesbos?model=gpt-4o"
 
 BLOCKED_SITES = {
     "ichannela": "채널A",
@@ -207,7 +204,11 @@ class NewsTabTest(QWidget):
             r'|\b\d{1,2}월\s*\d{1,2}일(?:부터|까지|에는?|에도)?'  # MM월 DD일 (우선 매칭) + particles
             r'|(?:지난|오는)\s*(?<!\d)\d{1,2}일(?:부터|까지|에는?|에도|에|엔)?'  # 지난/오는 DD일 + particles
             r'|(?<!\d)\d{1,2}일(?:부터|까지|에는?|에도|에|엔)?(?:\s*\d{1,2}시?:\s*\d{1,2}분?)?'  # standalone DD일 (+ optional time) + particles
+            r'|(?:지난|오는)\s*(?<!\d)\d{4}년도(?:부터|까지|에는?|에도|에|엔)?'  # 지난/오는 YYYY년도
+            r'|(?<!\d)\d{4}년도(?:부터|까지|에는?|에도|에|엔)?'  # standalone YYYY년도
             r'|(?<!\d)\d{4}년(?:부터|까지|에는?|에도|에|엔)?'  # 4-digit year + optional particles
+            r'|(?:지난|오는)\s*(?<!\d)\d{2}년도(?:부터|까지|에는?|에도|에|엔)?'  # 지난/오는 YY년도
+            r'|(?<!\d)\d{2}년도(?:부터|까지|에는?|에도|에|엔)?'  # standalone YY년도
             r'|(?<!\d)\d{2}년(?:부터|까지|에는?|에도|에|엔)?'  # 2-digit year + optional particles
             r'|(?:지난|오는)\s*\b\d{1,2}월\b(?!\s*\d{1,2}일)(?:부터|까지|에는?|에도)?'  # 지난/오는 MM월 (standalone) + particles
             r'|\b\d{1,2}월\b(?!\s*\d{1,2}일)(?:부터|까지|에는?|에도)?'  # standalone MM월 + particles

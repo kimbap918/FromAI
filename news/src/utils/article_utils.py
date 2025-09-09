@@ -9,10 +9,6 @@ from newspaper import Article
 from typing import Callable, Optional, Tuple, List, Iterable
 import re
 import json
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-import time
-import nltk
 from urllib.parse import urljoin
 import os
 from datetime import datetime, timezone
@@ -40,10 +36,6 @@ try:
 except Exception:
     date_parser = None
 
-# NLTK 데이터 경로 설정
-nltk_data_path = './nltk_data'
-if os.path.exists(nltk_data_path):
-    nltk.data.path.append(nltk_data_path)
 
 # 최소 본문 길이
 MIN_BODY_LENGTH = 300
@@ -56,7 +48,7 @@ HEADERS = {
 }
 
 # ------------------------------------------------------------------
-# 기능 : 기사 본문 추출(기존 로직 유지)
+# 기능 : 기사 본문 추출
 # ------------------------------------------------------------------
 def extract_article_content(
     url: str,
@@ -177,7 +169,6 @@ def extract_with_iframe(url: str) -> tuple[str, str]:
 # ===========================
 #        날짜 추출 보강부 
 # ===========================
-
 _META_DATE_KEYS: List[str] = [
     # Open Graph / Facebook
     'article:published_time',

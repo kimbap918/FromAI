@@ -4,16 +4,13 @@ from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QLabel, QGroupBox, QHBoxLayou
                            QLineEdit, QPushButton, QTextEdit, QMessageBox, QProgressBar)
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
 from PyQt5.QtGui import QFont
-import pyperclip
 import platform
-import webbrowser
 import os
 from datetime import datetime
 
 from news.src.utils.common_utils import capture_and_generate_news
 from news.src.utils.domestic_utils import check_investment_restricted, finance
-
-STOCK_CHATBOT_URL = "https://chatgpt.com/g/g-67a44d9d833c8191bf2974019d233d4e-jeongboseong-gisa-caesbos-culceo-sanggwaneobseum"
+from news.src.utils.data_manager import data_manager
 
 # ------------------------------------------------------------------
 # 작성자 : 최준혁
@@ -22,26 +19,18 @@ STOCK_CHATBOT_URL = "https://chatgpt.com/g/g-67a44d9d833c8191bf2974019d233d4e-je
 # 기능 : PyQt5에서 주식 코드 검색 후 차트 캡처하는 기능
 # ------------------------------------------------------------------
 class StockWorker(QThread):
-    # 다중 주식 처리 모드 (새 버전)
+    # 다중 주식 처리 모드 
     finished = pyqtSignal(str, str)  # combined_news, error
     progress = pyqtSignal(str, str)  # message, current_keyword
     progress_all = pyqtSignal(int, int)  # current, total
     step_progress = pyqtSignal(int, int)  # current_step, total_steps
 
-    # 단일 주식 처리 모드 (이전 버전)
-    # finished = pyqtSignal(str, str)  # news, error
-    # progress = pyqtSignal(str)
-
     def __init__(self, keywords):
         super().__init__()
-        # 다중 주식 처리 모드 (새 버전)
+        # 다중 주식 처리 모드 
         self.keywords = [k.strip() for k in keywords.split(',') if k.strip()]
         self.results = []
         self.is_running = True
-        
-        # # 단일 주식 처리 모드 (이전 버전)
-        # self.keyword = keywords  # 단일 키워드
-        # self.is_running = True
 
     def stop(self):
         self.is_running = False
@@ -58,6 +47,8 @@ class StockWorker(QThread):
             total = len(self.keywords)
             self.progress.emit(f"총 {total}개의 종목을 처리합니다.", "")
             
+            new_listing_statuses = {}
+
             for idx, keyword in enumerate(self.keywords, 1):
                 # 더 자주 취소 체크를 위해 루프 시작 시 확인
                 if not self.is_running:
@@ -70,12 +61,24 @@ class StockWorker(QThread):
                 try:
                     stock_code = finance(keyword)
 
+                    is_newly_listed_stock = False
                     if stock_code:
-                        if check_investment_restricted(stock_code, None, keyword):
-                            message = f"[{keyword}]는 거래금지종목입니다."
-                            self.results.append((keyword, "", message))
-                            self.progress.emit(f"❌ {message}", keyword)
-                            continue
+                        try:
+                            # 신규상장 확인 로직을 'or' 조건으로 변경하여 안정성 향상
+                            if data_manager.is_newly_listed(keyword) or data_manager.is_newly_listed(stock_code):
+                                new_listing_statuses[keyword] = True
+                                is_newly_listed_stock = True
+                                message = f"[{keyword}]는 신규상장종목입니다."
+                                self.progress.emit(f"✅ {message}", keyword)
+                        except Exception as e:
+                            print(f"{keyword}의 신규상장 정보 확인 중 오류: {e}")
+
+                        if not is_newly_listed_stock:
+                            if check_investment_restricted(stock_code, None, keyword):
+                                message = f"[{keyword}]는 거래금지종목입니다."
+                                self.results.append((keyword, "", message))
+                                self.progress.emit(f"❌ {message}", keyword)
+                                continue
                     else:
                         pass
 
@@ -135,31 +138,20 @@ class StockWorker(QThread):
             # Combine all results
             combined_news = []
             for keyword, news, error in self.results:
+                display_keyword = f"[ {keyword} ]"
+                if new_listing_statuses.get(keyword): # get(keyword)는 키가 없으면 None을 반환하여 안전
+                    display_keyword = f"[ {keyword} 신규상장입니다. ]"
                 if news:
-                    combined_news.append(f"[ {keyword} ]\n{news}")
+                    combined_news.append(f"{display_keyword}\n{news}")
                 elif error:
-                    combined_news.append(f"[ {keyword} ]\n{error}")
-            
+                    combined_news.append(f"{display_keyword}\n{error}")
+
             self.finished.emit("\n\n" + "="*50 + "\n\n".join(combined_news), "")
             
         except Exception as e:
             self.progress.emit(f"오류 발생: {str(e)}", "")
             self.finished.emit("", str(e))
         
-        # # 단일 주식 처리 모드 (이전 버전)
-        # try:
-        #     self.progress.emit("주식 차트 및 기사 생성 중...")
-        #     news = capture_and_generate_news(self.keyword, progress_callback=self.progress.emit)
-        #     if news:
-        #         self.progress.emit("기사 생성 성공!")
-        #         self.finished.emit(news, "")
-        #     else:
-        #         self.progress.emit("기사 생성에 실패했습니다.")
-        #         self.finished.emit("", "기사 생성에 실패했습니다.")
-        # except Exception as e:
-        #     self.progress.emit(f"오류 발생: {str(e)}")
-        #     self.finished.emit("", str(e))
-
 # ------------------------------------------------------------------
 # 작성자 : 최준혁
 # 작성일 : 2025-07-09
@@ -206,15 +198,12 @@ class StockTab(QWidget):
         self.cancel_btn = QPushButton("❌ 취소")
         self.cancel_btn.clicked.connect(self.cancel_capture)
         self.cancel_btn.setEnabled(False)
-        # self.open_chart_folder_btn = QPushButton("📁 차트 폴더 열기")
-        # self.open_chart_folder_btn.clicked.connect(self.open_folder)
         self.open_article_folder_btn = QPushButton("📰 기사 폴더 열기")
         self.open_article_folder_btn.clicked.connect(self.open_article_folder)
 
         button_layout.addWidget(self.capture_btn)
         button_layout.addWidget(self.reset_btn)
         button_layout.addWidget(self.cancel_btn)
-        # button_layout.addWidget(self.open_chart_folder_btn)
         button_layout.addWidget(self.open_article_folder_btn)
         layout.addLayout(button_layout)
 
