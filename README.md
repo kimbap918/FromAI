@@ -31,7 +31,7 @@
 - Python 3.11.13 (newsbot 가상환경)
 - pip, PyInstaller, 기타 requirements.txt의 모든 패키지
 
-## 디렉토리 구조 (2.1.0 기준)
+## 디렉토리 구조 (2.2.0 기준)
 
 ```
 FromAI/
@@ -79,6 +79,7 @@ FromAI/
 
 ## 👨‍💻 기타
 문의/협업: 제작자 최준혁 
+
 
 
 
