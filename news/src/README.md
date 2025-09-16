@@ -163,12 +163,12 @@ PyQt5를 기반으로 한 GUI 컴포넌트들이 위치합니다. 각 탭별로 
 [사용자 입력]  URL + 키워드
         │
         ▼
-**(크롤링)** article_utils.extract_article_content()
+(크롤링) article_utils.extract_article_content()
   - OUT: (title, body)
   - 실패 시: 에러 메시지/재시도 안내
         │
         ▼
-**(기사 생성)** news_LLM.generate_article()
+(기사 생성) news_LLM.generate_article()
   state = { url, keyword, title, body }
   ├─ 오늘(KST)·원문 작성일 확보
   ├─ 프롬프트 구성: generate_system_prompt()
@@ -177,7 +177,7 @@ PyQt5를 기반으로 한 GUI 컴포넌트들이 위치합니다. 각 탭별로 
   └─ (옵션) Fast-pass/간이 일치성 체크로 조기 통과 판단
         │
         ▼
-**(사실 검증)** check_LLM.check_article_facts()
+(사실 검증) check_LLM.check_article_facts()
   ├─ 검증 프롬프트: generate_check_prompt()
   ├─ LLM 응답 JSON 추출: _extract_json_block()
   ├─ 오류 목록 정규화: _normalize_nonfactual()
@@ -186,19 +186,19 @@ PyQt5를 기반으로 한 GUI 컴포넌트들이 위치합니다. 각 탭별로 
   └─ 수정본 누락 시 최소 패치: _auto_minimal_patch()
         │
         ▼
-**(병합)** news_LLM.generate_article 내부에서
+(병합) news_LLM.generate_article 내부에서
   - verdict == "OK"  → display_text = 생성 기사
   - verdict == "ERROR" → display_text = corrected_article(수정본)
   - verdict == "UNKNOWN"/파싱실패 → display_text = 경고문
         │
         ▼
-**(UI 반영)**
+(UI 반영)
   - 좌측: 원문 (title + body)
   - 우측: display_text (날짜 하이라이트 포함)
   - 복사 버튼/진행 메시지/에러 안내
         │
         ▼
-**(저장)** common_utils.save_news_to_file(...)
+(저장) common_utils.save_news_to_file(...)
   - 일자 폴더 규칙으로 .txt 저장
   - 필요 시 이미지/클립보드 연동
 
@@ -441,6 +441,7 @@ UI 표시: 진행률/취소/완료 메시지 + 폴더 열기 버튼
 <br>
 
 ---
+
 
 
 
