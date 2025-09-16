@@ -54,15 +54,23 @@ import time
 from datetime import datetime, timedelta
 
 import os
+import sys
 from dotenv import load_dotenv
 
 # Custom print function to log to a file with UTF-8 encoding
 def custom_print(*args, **kwargs):
-    pass
-    # Also print to original stdout for debugging in console
-    # print(*args, **kwargs)
+    print(*args, **kwargs)
 
-load_dotenv()
+# PyInstaller에 의해 생성된 임시 폴더의 .env 파일을 찾기 위한 경로 설정
+if getattr(sys, 'frozen', False):
+    # PyInstaller로 빌드된 경우, sys._MEIPASS는 임시 폴더의 경로
+    base_path = sys._MEIPASS
+else:
+    # 일반 Python 환경에서 실행된 경우, 현재 파일의 디렉토리
+    base_path = os.path.dirname(os.path.abspath(__file__))
+
+dotenv_path = os.path.join(base_path, '.env')
+load_dotenv(dotenv_path=dotenv_path)
 
 # API 키들 (환경 변수에서 로드)
 KAKAO_API_KEY = os.getenv("KAKAO_API_KEY")
@@ -89,6 +97,13 @@ class WeatherAPI:
     def __init__(self):
         self.kakao_api_key = KAKAO_API_KEY
         self.kma_api_key = KMA_API_KEY
+
+        # API 키 유효성 검사 추가
+        if not self.kakao_api_key or self.kakao_api_key == "YOUR_KAKAO_API_KEY_HERE":
+            raise ValueError("KAKAO_API_KEY가 설정되지 않았거나 올바르지 않습니다. .env 파일을 확인해주세요.")
+        if not self.kma_api_key or self.kma_api_key == "YOUR_KMA_API_KEY_HERE":
+            raise ValueError("KMA_API_KEY가 설정되지 않았거나 올바르지 않습니다. .env 파일을 확인해주세요.")
+
         self.kakao_url = KAKAO_COORD_URL
         # 기상청 API URLs
         self.kma_current_url = "http://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getUltraSrtNcst"  # 초단기실황
@@ -114,6 +129,11 @@ class WeatherAPI:
             'query': address,
             'size': 5  # 여러 후보 검색
         }
+        
+        # --- DEBUGGING PRINTS START ---
+        print(f"DEBUG: KAKAO_API_KEY loaded: {self.kakao_api_key[:5]}...{self.kakao_api_key[-5:]}") # Print partial key for security
+        print(f"DEBUG: Authorization header being sent: {headers['Authorization']}")
+        # --- DEBUGGING PRINTS END ---
         
         try:
             response = requests.get(self.kakao_url, headers=headers, params=params, timeout=REQUEST_TIMEOUT)
@@ -141,7 +161,10 @@ class WeatherAPI:
                 else:
                     raise Exception(f"'{address}' 지역을 찾을 수 없습니다. 정확한 지역명을 입력해주세요.")
             else:
-                raise Exception(f"카카오 API 오류: {response.status_code}")
+                if response.status_code == 401:
+                    raise Exception(f"카카오 API 인증 오류 (401): KAKAO_API_KEY를 확인하거나, 카카오 개발자 콘솔에서 앱의 플랫폼 설정을 확인해주세요.")
+                else:
+                    raise Exception(f"카카오 API 오류: {response.status_code} - {response.text.strip()}")
                 
         except requests.exceptions.RequestException as e:
             raise Exception(f"카카오 API 연결 오류: {e}")
@@ -299,8 +322,10 @@ class WeatherAPI:
                 print(f"   • {key}: {value}")
         
         if not final_weather or len(final_weather) <= 1:  # data_sources만 있는 경우
+            print(f"DEBUG: get_weather_with_fallback: Raising exception - final_weather: {final_weather}")
             raise Exception("모든 기상청 API에서 데이터를 가져올 수 없습니다.")
         
+        print(f"DEBUG: get_weather_with_fallback: Returning final_weather: {final_weather}")
         return final_weather
     
     def try_current_weather(self, grid_x, grid_y, base_time):
@@ -658,6 +683,7 @@ class WeatherAPI:
             
             print("🌡️ 날씨 데이터 수집 중...")
             weather_data = self.get_weather_with_fallback(grid_x, grid_y)
+            print(f"DEBUG: get_weather_data: weather_data after fallback: {weather_data}")
             
             # 표준 형식으로 변환
             temperature = weather_data.get('temperature', 20.0)
@@ -727,6 +753,9 @@ class WeatherAPI:
     
     def get_weather_description(self, weather_data):
         """종합 날씨 설명"""
+        if weather_data is None:
+            print("DEBUG: get_weather_description received None weather_data. Returning default.")
+            return "날씨 정보 없음" # Or raise a more specific error
         parts = []
         
         if weather_data.get('sky_condition'):

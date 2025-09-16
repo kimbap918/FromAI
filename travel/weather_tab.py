@@ -490,23 +490,22 @@ class SimpleWeatherTabWidget(QWidget):
         self._article_thread.start()
     
     def _on_article_generated(self, article: dict):
-        """기사 생성 완료 — 제목1~3 + 본문 + 해시태그 출력"""
-        titles = article.get("titles") or [article.get("title", "제목 없음")]
-        lines = []
-        for i, t in enumerate(titles[:3], start=1):
-            lines.append(f"제목{i}: {t}")
-
+        """기사 생성 완료 — 제목, 본문, 해시태그를 최종 형식으로 조립하여 출력"""
+        titles = article.get("titles", [])
         body = (article.get("content") or "").strip()
-        if body:
-            lines.append("")
-            lines.append(body)
-
         tags = article.get("hashtags") or []
-        if tags:
-            lines.append("")
-            lines.append(" ".join(tags))
 
-        display_text = "\n".join(lines)
+        parts = []
+        if titles:
+            parts.append("\n".join(titles))
+        
+        if body:
+            parts.append(body)
+
+        if tags:
+            parts.append('#' + ' #'.join(tags))
+
+        display_text = "\n\n".join(parts)
         self.article_display.setText(display_text)
         
         # 버튼 활성화

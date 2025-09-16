@@ -177,7 +177,6 @@ class WeatherArticleGenerator:
                     'title': f"[{region_name or '전국'}] 현재 발효 중인 기상특보 없음",
                     'titles': [f"[{region_name or '전국'}] 현재 발효 중인 기상특보 없음"],
                     'content': "현재 해당 지역에 발효 중인 기상특보가 없거나 모든 특보에 대한 기사 생성을 완료했습니다.",
-                    'hashtags': [],
                     'type': 'warning'
                 }
 
@@ -314,54 +313,55 @@ class WeatherArticleGenerator:
         return ids1 == ids2
 
     def _parse_response(self, response):
-        """모델 응답에서 제목1~3, 본문, 해시태그를 안전하게 분리"""
+        """AI 응답에서 제목, 본문, 해시태그를 각각 분리하여 반환"""
         try:
             import re
             text = (response or "").strip()
+            lines = [line.strip() for line in text.splitlines() if line.strip()]
 
-            # 제목들 (정확한 라벨 우선)
-            t1 = re.search(r'^\s*제목1:\s*(.+)$', text, re.M)
-            t2 = re.search(r'^\s*제목2:\s*(.+)$', text, re.M)
-            t3 = re.search(r'^\s*제목3:\s*(.+)$', text, re.M)
-            titles = [t1.group(1).strip() if t1 else None,
-                      t2.group(1).strip() if t2 else None,
-                      t3.group(1).strip() if t3 else None]
+            if not lines:
+                return {"title": "", "titles": [], "content": "", "hashtags": []}
 
-            # 해시태그(문서 끝 #으로 시작하는 단 한 줄)
-            h = re.search(r'(?:\r?\n)(#[^\r\n]+)\s*$', text)
-            hashtags_line = h.group(1).strip() if h else ""
-            hashtags = [tag for tag in (hashtags_line.split() if hashtags_line else []) if tag.startswith('#')]
+            # 해시태그 분리
+            hashtag_lines = [line for line in lines if line.startswith('#')]
+            non_hashtag_lines = [line for line in lines if not line.startswith('#')]
 
-            # 본문 = 전체에서 제목 라인 제거 후, 해시태그 라인 이전까지만
-            body = text
-            for pat in (r'^\s*제목1:.*$', r'^\s*제목2:.*$', r'^\s*제목3:.*$'):
-                body = re.sub(pat, '', body, flags=re.M)
-            if h:
-                body = body[:h.start()].rstrip()
+            # 제목 분리 (AI가 생성한 제목은 보통 3줄 이하)
+            titles = []
+            # 본문은 보통 100자를 훌쩍 넘기므로, 그 이전의 짧은 줄들을 제목으로 간주
+            for i, line in enumerate(non_hashtag_lines):
+                if len(line) < 100 and i < 3: # 제목 길이 제한을 100으로 늘리고, 최대 3줄까지 탐색
+                    titles.append(line)
+                else:
+                    break
+            
+            # 본문 분리 (제목으로 식별된 줄들을 제외)
+            body_lines = non_hashtag_lines[len(titles):]
+            body = '\n'.join(body_lines)
 
-            # 폴백: 라벨이 없고 첫 줄이 짧으면 그걸 제목1로
-            if not any(titles):
-                lines = [ln for ln in body.splitlines() if ln.strip()]
-                if lines and 0 < len(lines[0].strip()) <= 60:
-                    titles[0] = lines[0].strip()
-                    body = '\n'.join(lines[1:]).lstrip()
+            # 해시태그 파싱
+            hashtags = []
+            if hashtag_lines:
+                full_hashtag_str = ' '.join(hashtag_lines)
+                hashtags = [tag.strip() for tag in full_hashtag_str.split('#') if tag.strip()]
 
-            primary_title = titles[0] or "제목 없음"
+            # 제목에서 "제목1:" 등 접두사 제거
+            cleaned_titles = [re.sub(r'^\s*제목\d:\s*', '', t).strip() for t in titles]
+
             return {
-                "title": primary_title,          # 기존 호환 필드
-                "titles": [t for t in titles if t],
-                "content": body.strip(),
-                "hashtags": hashtags
+                "title": cleaned_titles[0] if cleaned_titles else "제목 없음",
+                "titles": cleaned_titles,
+                "content": body, # content에는 오직 본문만 포함
+                "hashtags": hashtags,
             }
 
         except Exception as e:
             print(f"응답 파싱 오류: {e}")
-            # 완전 폴백: 기존 동작에 가깝게
             return {
                 "title": "제목 파싱 오류",
-                "titles": ["제목 파싱 오류"],
-                "content": response or "",
-                "hashtags": []
+                "titles": [],
+                "content": response or "(기사 생성에 실패했습니다)",
+                "hashtags": [],
             }
 
     def _call_gemini_api(self, prompt):
@@ -403,123 +403,121 @@ class WeatherArticleGenerator:
             print(f"Gemini API 오류: {e}")
             return None
 
-    # --- Fallback and Formatting Methods ---
+#     # --- Fallback and Formatting Methods ---
 
-    def _fallback_weather_article(self, weather_data, region_name):
-        """프롬프트 모듈이 없을 때 사용하는 기본 날씨 기사"""
-        try:
-            weather_text = self._format_weather_data(weather_data, region_name)
+#     def _fallback_weather_article(self, weather_data, region_name):
+#         """프롬프트 모듈이 없을 때 사용하는 기본 날씨 기사"""
+#         try:
+#             weather_text = self._format_weather_data(weather_data, region_name)
             
-            simple_prompt = f'''다음 날씨 정보로 간단한 날씨 기사를 작성해주세요:
+#             simple_prompt = f'''다음 날씨 정보로 간단한 날씨 기사를 작성해주세요:
 
-{weather_text}
+# {weather_text}
 
-형식:
-제목1: ...
-제목2: ...
-제목3: ...
+# 형식:
+# 제목1: ...
+# 제목2: ...
+# 제목3: ...
 
-[본문]
+# [본문]
 
-#해시태그1 #해시태그2 #해시태그3 #해시태그4 #해시태그5 #해시태그6 #해시태그7 #해시태그8
-'''
-            response = self._call_gemini_api(simple_prompt)
-            if response:
-                parsed = self._parse_response(response)
-                title = parsed.get("title") or f"{region_name} 날씨"
-                return {
-                    'title': title,
-                    'titles': parsed.get("titles") or [title],
-                    'content': parsed.get("content", ""),
-                    'hashtags': parsed.get("hashtags", []),
-                    'type': 'weather'
-                }
-            return None
+# #해시태그1 #해시태그2 #해시태그3 #해시태그4 #해시태그5 #해시태그6 #해시태그7 #해시태그8
+# '''
+#             response = self._call_gemini_api(simple_prompt)
+#             if response:
+#                 parsed = self._parse_response(response)
+#                 title = parsed.get("title") or f"{region_name} 날씨"
+#                 return {
+#                     'title': title,
+#                     'titles': parsed.get("titles") or [title],
+#                     'content': parsed.get("content", ""),
+#                     'type': 'weather'
+#                 }
+#             return None
             
-        except Exception as e:
-            print(f"폴백 날씨 기사 생성 오류: {e}")
-            return None
+#         except Exception as e:
+#             print(f"폴백 날씨 기사 생성 오류: {e}")
+#             return None
 
-    def _fallback_warning_article(self, warning_data, region_name):
-        """프롬프트 모듈이 없을 때 사용하는 기본 특보 기사"""
-        try:
-            warning_text = self._format_warning_data(warning_data, region_name)
+#     def _fallback_warning_article(self, warning_data, region_name):
+#         """프롬프트 모듈이 없을 때 사용하는 기본 특보 기사"""
+#         try:
+#             warning_text = self._format_warning_data(warning_data, region_name)
             
-            simple_prompt = f'''다음 기상특보 정보로 간단한 특보 기사를 작성해주세요:
+#             simple_prompt = f'''다음 기상특보 정보로 간단한 특보 기사를 작성해주세요:
 
-{warning_text}
+# {warning_text}
 
-형식:
-제목1: [기상특보] ...
-제목2: [기상특보] ...
-제목3: [기상특보] ...
+# 형식:
+# 제목1: [기상특보] ...
+# 제목2: [기상특보] ...
+# 제목3: [기상특보] ...
 
-[본문]
+# [본문]
 
-#기상특보 #특보종류 #지역명 #기상청 #날씨경보 #특보전망 #기상현상 #날씨특보
-'''
-            response = self._call_gemini_api(simple_prompt)
-            if response:
-                parsed = self._parse_response(response)
-                title = parsed.get("title")
-                if title and not title.startswith('[기상특보]'):
-                    title = f"[기상특보] {title}"
-                return {
-                    'title': title or f"[기상특보] {region_name} 기상특보",
-                    'titles': parsed.get("titles") or [title or f"[기상특보] {region_name} 기상특보"],
-                    'content': parsed.get("content", ""),
-                    'hashtags': parsed.get("hashtags", []),
-                    'type': 'warning'
-                }
-            return None
+# #기상특보 #특보종류 #지역명 #기상청 #날씨경보 #특보전망 #기상현상 #날씨특보
+# '''
+#             response = self._call_gemini_api(simple_prompt)
+#             if response:
+#                 parsed = self._parse_response(response)
+#                 title = parsed.get("title")
+#                 if title and not title.startswith('[기상특보]'):
+#                     title = f"[기상특보] {title}"
+#                 return {
+#                     'title': title or f"[기상특보] {region_name} 기상특보",
+#                     'titles': parsed.get("titles") or [title or f"[기상특보] {region_name} 기상특보"],
+#                     'content': parsed.get("content", ""),
+#                     'type': 'warning'
+#                 }
+#             return None
             
-        except Exception as e:
-            print(f"폴백 특보 기사 생성 오류: {e}")
-            return None
+#         except Exception as e:
+#             print(f"폴백 특보 기사 생성 오류: {e}")
+#             return None
 
-    def _format_weather_data(self, weather_data, region_name):
-        """날씨 데이터를 간단한 텍스트로 변환"""
-        try:
-            text_lines = [f"지역: {region_name}"]
+#     def _format_weather_data(self, weather_data, region_name):
+#         """날씨 데이터를 간단한 텍스트로 변환"""
+#         try:
+#             text_lines = [f"지역: {region_name}"]
             
-            if 'main' in weather_data:
-                main = weather_data['main']
-                if 'temp' in main:
-                    text_lines.append(f"현재기온: {main['temp']}°C")
-                if 'temp_min' in main and main['temp_min']:
-                    text_lines.append(f"최저기온: {main['temp_min']}°C")
-                if 'temp_max' in main and main['temp_max']:
-                    text_lines.append(f"최고기온: {main['temp_max']}°C")
-                if 'humidity' in main:
-                    text_lines.append(f"습도: {main['humidity']}% ")
+#             if 'main' in weather_data:
+#                 main = weather_data['main']
+#                 if 'temp' in main:
+#                     text_lines.append(f"현재기온: {main['temp']}°C")
+#                 if 'temp_min' in main and main['temp_min']:
+#                     text_lines.append(f"최저기온: {main['temp_min']}°C")
+#                 if 'temp_max' in main and main['temp_max']:
+#                     text_lines.append(f"최고기온: {main['temp_max']}°C")
+#                 if 'humidity' in main:
+#                     text_lines.append(f"습도: {main['humidity']}% ")
             
-            if 'weather' in weather_data and weather_data['weather']:
-                weather = weather_data['weather'][0]
-                if 'description' in weather:
-                    text_lines.append(f"날씨상태: {weather['description']}")
+#             if 'weather' in weather_data and weather_data['weather']:
+#                 weather = weather_data['weather'][0]
+#                 if 'description' in weather:
+#                     text_lines.append(f"날씨상태: {weather['description']}")
             
-            if 'precipitation' in weather_data:
-                precip = weather_data['precipitation']
-                if 'probability' in precip and precip['probability']:
-                    text_lines.append(f"강수확률: {precip['probability']}% ")
+#             if 'precipitation' in weather_data:
+#                 precip = weather_data['precipitation']
+#                 if 'probability' in precip and precip['probability']:
+#                     text_lines.append(f"강수확률: {precip['probability']}% ")
             
-            return '\n'.join(text_lines)
+#             return '\n'.join(text_lines)
             
-        except Exception as e:
-            return f"날씨 정보: {str(weather_data)}"
+#         except Exception as e:
+#             return f"날씨 정보: {str(weather_data)}"
 
-    def _format_warning_data(self, warning_data, region_name):
-        """특보 데이터를 간단한 텍스트로 변환"""
-        try:
-            text_lines = [f"지역: {region_name}"]
+#     def _format_warning_data(self, warning_data, region_name):
+#         """특보 데이터를 간단한 텍스트로 변환"""
+#         try:
+#             text_lines = [f"지역: {region_name}"]
             
-            if isinstance(warning_data, list) and warning_data:
-                text_lines.append(f"특보 건수: {len(warning_data)}건")
-                for i, warning in enumerate(warning_data[:3], 1):
-                    if 'title' in warning:
-                        text_lines.append(f"특보{i}: {warning['title']}")
+#             if isinstance(warning_data, list) and warning_data:
+#                 text_lines.append(f"특보 건수: {len(warning_data)}건")
+#                 for i, warning in enumerate(warning_data[:3], 1):
+#                     if 'title' in warning:
+#                         text_lines.append(f"특보{i}: {warning['title']}")
             
-            return '\n'.join(text_lines)
+#             return '\n'.join(text_lines)
             
-        except Exception as e:
-            return f"특보 정보: {str(warning_data)}"
+#         except Exception as e:
+#             return f"특보 정보: {str(warning_data)}"

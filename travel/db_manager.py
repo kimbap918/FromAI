@@ -319,7 +319,7 @@ def search_places_advanced_with_dong(
             sql += " WHERE " + " AND ".join(where)
 
         rows = conn.execute(sql, params).fetchall()
-        cols = ["name","category","address","keywords","total_visitor_reviews","total_blog_reviews","visitor_reviews","intro","naver_place_id"]
+        cols = ["name","category","address","keywords","total_visitor_reviews_count","total_blog_reviews_count","visitor_reviews","introduction","naver_place_id"]
         return [dict(zip(cols, r)) for r in rows]
     finally:
         conn.close()

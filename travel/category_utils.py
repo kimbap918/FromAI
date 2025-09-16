@@ -86,13 +86,6 @@ def normalize_category_for_ui(category):
     if any(keyword in category for keyword in cafe_keywords):
         return "카페/디저트"
 
-    # 13. 종교/전통 
-    religion_keywords = [
-        "종교", "사찰", "절", "암자", "성당", "교회", "서원", "향교", "사당"
-    ]
-    if any(keyword in category for keyword in religion_keywords):
-        return "종교/전통"    
-
     # 4. 전시/문화 
     culture_keywords = [
         "전시", "미술관", "박물관", "갤러리", "과학관", "기념관", "역사", "문화", "유적",
@@ -113,6 +106,13 @@ def normalize_category_for_ui(category):
     ]
     if any(keyword in category for keyword in entertainment_keywords):
         return "공연/엔터테인먼트"
+
+    # 13. 종교/전통 
+    religion_keywords = [
+        "종교", "사찰", "절", "암자", "성당", "교회", "서원", "향교", "사당", "불교", "천주교"
+    ]
+    if any(keyword in category for keyword in religion_keywords):
+        return "종교/전통"    
 
     # 6. 체험/액티비티 
     activity_keywords = [
