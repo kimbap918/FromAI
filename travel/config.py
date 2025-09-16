@@ -6,45 +6,23 @@
 # 설명       : 환경변수(.env)에서 API 키들을 안전하게 로드하고
 #              API 엔드포인트 URL 및 요청 설정 상수를 정의하는 전역 설정 모듈
 # ===================================================================================
-#
-# 【주요 기능】
-# - 환경변수(.env)에서 API 키들을 안전하게 로드
-# - API 엔드포인트 URL 및 요청 설정 상수 정의
-# - API 키 유효성 검증 및 연결 테스트 기능 제공
-#
-# 【관리하는 API】
-# - KAKAO_API_KEY: 카카오 API (주소→좌표 변환)
-# - KMA_API_KEY: 기상청 API (날씨 데이터)
-# - GOOGLE_API_KEY: Google Gemini API (AI 기사 생성)
-#
-# 【설정 항목】
-# - API 엔드포인트 URL들
-# - 재시도 횟수 및 타임아웃 설정
-# - 파일 인코딩 및 출력 형식 설정
-#
-# 【유틸리티 함수】
-# - validate_api_keys(): 모든 API 키 설정 여부 확인
-# - test_api_keys(): 실제 API 호출로 연결 상태 테스트
-#
-# 【보안】
-# - API 키는 환경변수로만 관리
-# - 소스코드에 하드코딩된 키 없음
-# - .env 파일은 .gitignore에 포함되어야 함
-#
-# 【사용처】
-# - weather_api.py: 날씨 관련 API 설정
-# - chatbot_app.py: AI API 설정
-# ===================================================================================
 
-# 기존 API 키들
 import os
-from dotenv import load_dotenv
+import sys
+from dotenv import load_dotenv # Re-added load_dotenv import
 
-load_dotenv()
+def resource_path(relative_path):
+    if hasattr(sys, '_MEIPASS'):
+        return os.path.join(sys._MEIPASS, relative_path)
+    return os.path.join(os.path.abspath("."), relative_path)
+
+# .env 파일에서 환경 변수 로드 (표준 라이브러리 사용)
+load_dotenv(dotenv_path=resource_path('.env'))
 
 # API 키들 (환경 변수에서 로드)
 KAKAO_API_KEY = os.getenv("KAKAO_API_KEY")
 KMA_API_KEY = os.getenv("KMA_API_KEY")
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY") # Re-added GOOGLE_API_KEY
 
 # API URL 설정
 GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent"

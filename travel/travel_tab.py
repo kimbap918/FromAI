@@ -115,7 +115,7 @@ class TravelTabWidget(QWidget):
         self.category_combo.add_checkable_items(filter_data["categories"], checked=False)
         default_categories = ["공연/엔터테인먼트", "쇼핑", "음식점", "자연/공원", "전시/문화", "종교/전통", "체험/액티비티", "카페/디저트"]
         self.category_combo.set_checked(default_categories)
-        self.review_category_combo.add_checkable_items(filter_data["review_categories"], checked=True)
+        self.review_category_combo.add_checkable_items(filter_data["review_categories"], checked=False)
         self.sort_combo.addItems(filter_data["sort_options"])
 
         # 지역 자동완성 인덱스 빌드
@@ -254,7 +254,7 @@ class TravelTabWidget(QWidget):
         if not is_resorting:
             sort_by = self.sort_combo.currentText()
             if sort_by == '인기 순':
-                places.sort(key=lambda x: (x.get('total_visitor_reviews', 0) or 0) + (x.get('total_blog_reviews', 0) or 0), reverse=True)
+                places.sort(key=lambda x: (x.get('total_visitor_reviews_count', 0) or 0) + (x.get('total_blog_reviews_count', 0) or 0), reverse=True)
             elif sort_by == '이름 순':
                 places.sort(key=lambda x: x.get('name', ''))
             elif sort_by == '주소 순':
@@ -284,8 +284,8 @@ class TravelTabWidget(QWidget):
             self.place_table_widget.setItem(i, 3, QTableWidgetItem(place.get('address','')))
             self.place_table_widget.setItem(i, 4, QTableWidgetItem(place.get('keywords','N/A')))
 
-            v = place.get('total_visitor_reviews', 0) or 0
-            b = place.get('total_blog_reviews', 0) or 0
+            v = place.get('total_visitor_reviews_count', 0) or 0
+            b = place.get('total_blog_reviews_count', 0) or 0
             try:
                 total_reviews = int(v) + int(b)
             except Exception:
@@ -298,7 +298,7 @@ class TravelTabWidget(QWidget):
             self.place_table_widget.setItem(i, 5, item_total)
 
             self.place_table_widget.setItem(i, 6, QTableWidgetItem(place.get('visitor_reviews', '')))
-            intro = QTextEdit(); intro.setReadOnly(True); intro.setText(place.get('intro', ''))
+            intro = QTextEdit(); intro.setReadOnly(True); intro.setText(place.get('introduction', ''))
             self.place_table_widget.setCellWidget(i, 7, intro)
 
             self.place_table_widget.setItem(i, 8, QTableWidgetItem("0"))
@@ -337,11 +337,9 @@ class TravelTabWidget(QWidget):
             QMessageBox.warning(self, "선택 오류", "기사를 생성할 장소를 하나 이상 선택해주세요.")
             return
 
-        self.progress_dialog = QMessageBox(self)
-        self.progress_dialog.setWindowTitle("정보 업데이트 중")
-        self.progress_dialog.setText("최신 정보 확인 중...")
-        self.progress_dialog.setStandardButtons(QMessageBox.Close)
-        self.progress_dialog.show()
+        # 팝업 창 대신 메인 텍스트 영역에 메시지 표시
+        self.result_text_edit.setText("AI 기사를 생성하고 있습니다. 잠시만 기다려주세요...")
+        QApplication.processEvents() # UI가 즉시 업데이트되도록 보장
 
         title = self.article_title_input.text().strip()
         weather_loc = self._pick_weather_query_location()
@@ -431,7 +429,7 @@ class TravelTabWidget(QWidget):
                     'address': addr_item.text() if addr_item else '',
                     'keywords': keyw_item.text() if keyw_item else 'N/A',
                     'visitor_reviews': vr_item.text() if vr_item else '',
-                    'intro': intro_w.toPlainText() if intro_w else '',
+                    'introduction': intro_w.toPlainText() if intro_w else '',
                     'naver_place_id': id_item.text() if id_item else None
                 }
                 selected_places.append(place_data)
@@ -520,25 +518,25 @@ class TravelTabWidget(QWidget):
                 'category': self.place_table_widget.item(i, 2).text() if self.place_table_widget.item(i, 2) else '',
                 'address': self.place_table_widget.item(i, 3).text() if self.place_table_widget.item(i, 3) else '',
                 'keywords': self.place_table_widget.item(i, 4).text() if self.place_table_widget.item(i, 4) else 'N/A',
-                'total_visitor_reviews': self.place_table_widget.item(i, 5).data(Qt.UserRole) if self.place_table_widget.item(i, 5) else 0,
+                'total_visitor_reviews_count': self.place_table_widget.item(i, 5).data(Qt.UserRole) if self.place_table_widget.item(i, 5) else 0,
                 'visitor_reviews': self.place_table_widget.item(i, 6).text() if self.place_table_widget.item(i, 6) else '',
-                'intro': self.place_table_widget.cellWidget(i, 7).toPlainText() if self.place_table_widget.cellWidget(i, 7) else '',
+                'introduction': self.place_table_widget.cellWidget(i, 7).toPlainText() if self.place_table_widget.cellWidget(i, 7) else '',
                 'naver_place_id': self.place_table_widget.item(i, 9).text() if self.place_table_widget.item(i, 9) else ''
             }
             # IntItem에서 리뷰 수를 가져오기 위한 추가 처리
             review_item = self.place_table_widget.item(i, 5)
             if isinstance(review_item, IntItem):
-                row_data['total_visitor_reviews'] = review_item.data(Qt.UserRole)
+                row_data['total_visitor_reviews_count'] = review_item.data(Qt.UserRole)
                 # 툴팁에서 블로그 리뷰 수 파싱 (선택적)
                 tooltip = review_item.toolTip()
                 try:
                     v_str, b_str = tooltip.split('/')
-                    row_data['total_blog_reviews'] = int(''.join(filter(str.isdigit, b_str)))
+                    row_data['total_blog_reviews_count'] = int(''.join(filter(str.isdigit, b_str)))
                 except:
-                    row_data['total_blog_reviews'] = 0
+                    row_data['total_blog_reviews_count'] = 0
             else: # Fallback
-                row_data['total_visitor_reviews'] = 0
-                row_data['total_blog_reviews'] = 0
+                row_data['total_visitor_reviews_count'] = 0
+                row_data['total_blog_reviews_count'] = 0
 
 
             if is_checked:

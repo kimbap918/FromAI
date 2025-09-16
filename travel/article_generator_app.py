@@ -75,12 +75,7 @@ class ArticleGeneratorApp(QWidget):
         
         # 기존 초기화 코드 그대로 유지
         self.chatbot = chatbot_app.TravelChatbot()
-        if getattr(sys, 'frozen', False):
-            base_path = os.path.dirname(sys.executable)
-        else:
-            base_path = os.path.dirname(os.path.abspath(__file__))
-
-        self.db_path = os.path.join(base_path, "crw_data", "naver_travel_places.db")
+        self.db_path = resource_path(os.path.join("crw_data", "naver_travel_places.db"))
         if not os.path.exists(self.db_path):
             QMessageBox.critical(self, "DB 오류",
                 f"DB 파일을 찾을 수 없습니다:\n{self.db_path}\n\nDB를 같은 폴더에 넣어주세요.")
@@ -114,7 +109,8 @@ class ArticleGeneratorApp(QWidget):
 
 
 if __name__ == '__main__':
-    sys.stdout.reconfigure(encoding='utf-8') # Add this line
+    if sys.stdout:
+        sys.stdout.reconfigure(encoding='utf-8')
     app = QApplication(sys.argv)
     ex = ArticleGeneratorApp()
     ex.show()

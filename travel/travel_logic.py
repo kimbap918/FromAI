@@ -74,8 +74,8 @@ def _to_set(value):
 def _extract_place_categories(place: dict) -> set:
     """
     장소의 UI 카테고리 집합을 계산합니다.
-    - name, category/categories, keywords 등을 합쳐 normalize_category_for_ui에 전달
-    - normalize_category_for_ui 반환값을 set로 일관 변환
+    - 1순위: DB의 category 필드를 정규화
+    - 2순위: 1순위가 '기타'일 경우 name, keywords까지 포함하여 재시도
     """
     name = str(place.get("name", "")).strip()
     raw_cat = place.get("category") or place.get("categories") or ""
@@ -86,7 +86,15 @@ def _extract_place_categories(place: dict) -> set:
     else:
         raw_cat_text = str(raw_cat)
 
-    normalized = normalize_category_for_ui(f"{name} {raw_cat_text} {keywords}".strip())
+    # 1순위: 카테고리 필드만으로 정규화
+    if raw_cat_text:
+        normalized = normalize_category_for_ui(raw_cat_text)
+        if normalized != "기타":
+            return _to_set(normalized)
+
+    # 2순위: '기타'로 분류된 경우, 이름과 키워드를 포함하여 다시 시도
+    combined_text = f"{name} {raw_cat_text} {keywords}".strip()
+    normalized = normalize_category_for_ui(combined_text)
     return _to_set(normalized)
 
 
@@ -142,57 +150,54 @@ def _place_matches_filters(place: dict, selected_ui_cats: set, selected_review_t
     return True
 
 
-class CrawlerWorker(QObject):
-    """
-    백그라운드에서 크롤링 및 DB 업데이트를 수행하는 워커
-    """
-    finished = pyqtSignal(list)  # 작업 완료 시 업데이트된 장소 목록을 전달
-    progress = pyqtSignal(str)   # 진행 상황 텍스트를 전달
-    error = pyqtSignal(str)      # 오류 발생 시 메시지를 전달
 
-    def __init__(self, db_path: str, places: list):
+
+
+class CrawlerWorker(QObject):
+    """실시간으로 장소의 '소개' 정보를 크롤링하는 워커"""
+    progress = pyqtSignal(str)
+    finished = pyqtSignal(list)
+    error = pyqtSignal(str)
+
+    def __init__(self, places_to_crawl):
         super().__init__()
-        self.db_path = db_path
-        self.places = places
+        self.places = places_to_crawl
         self.is_running = True
 
     def run(self):
-        """크롤링 및 DB 업데이트 실행"""
-        db_conn = None
-        try:
-            db_conn = db_manager.create_connection(self.db_path)
-            if not db_conn:
-                self.error.emit("DB 연결에 실패했습니다.")
+        updated_places = []
+        total = len(self.places)
+        for i, place in enumerate(self.places):
+            if not self.is_running:
+                self.progress.emit("크롤링 작업이 중단되었습니다.")
                 return
 
-            for i, place in enumerate(self.places):
-                if not self.is_running:
-                    break
-                
-                self.progress.emit(f"({i+1}/{len(self.places)}) {place['name']} 확인 중...")
-                
-                if place.get('naver_place_id'):
-                    new_intro = realtime_crawler.crawl_introduction(place['naver_place_id'])
-                    if new_intro:
-                        print(f"  [UPDATE] '{place['name']}'의 소개 정보가 업데이트되었습니다.")
-                        place['intro'] = new_intro
-                        db_manager.update_introduction(db_conn, place['naver_place_id'], new_intro)
-                        print(f"  [DB] '{place['name']}'의 업데이트된 정보가 DB에 저장될 예정입니다.")
-                    else:
-                        print(f"  [SKIP] '{place['name']}'의 실시간 정보 확인에 실패하여 기존 정보를 사용합니다.")
+            place_name = place.get("name", "알 수 없는 장소")
+            place_id = place.get("naver_place_id")
             
-            if self.is_running:
-                db_conn.commit()
-                print("[DB] 모든 변경사항이 DB에 최종적으로 저장되었습니다.")
-                self.finished.emit(self.places)
+            self.progress.emit(f"({i+1}/{total}) '{place_name}' 정보 업데이트 중...")
 
-        except Exception as e:
-            if db_conn:
-                db_conn.rollback()
-            self.error.emit(f"크롤링 중 오류 발생: {e}")
-        finally:
-            if db_conn:
-                db_conn.close()
+            if not place_id:
+                self.progress.emit(f"'{place_name}'의 네이버 장소 ID가 없어 건너뜁니다.")
+                updated_places.append(place)
+                continue
+
+            try:
+                # realtime_crawler.crawl_introduction 함수 호출 (ID는 문자열이어야 함)
+                new_intro = realtime_crawler.crawl_introduction(str(place_id))
+                if new_intro:
+                    place['introduction'] = new_intro  # 'introduction' 키로 소개 정보 업데이트
+                    self.progress.emit(f"'{place_name}' 소개 정보 업데이트 완료.")
+                else:
+                    self.progress.emit(f"'{place_name}'의 최신 소개 정보를 가져오지 못했습니다.")
+                
+                updated_places.append(place)
+
+            except Exception as e:
+                self.error.emit(f"'{place_name}' 크롤링 중 오류 발생: {e}")
+                updated_places.append(place)  # 오류 발생 시에도 목록에 포함
+        
+        self.finished.emit(updated_places)
 
     def stop(self):
         self.is_running = False
@@ -294,30 +299,64 @@ class TravelLogic(QObject):
         return sorted(dongs_set)
 
     def build_region_index(self):
-        """자동완성을 위한 전체 지역 인덱스를 생성하여 반환"""
+        """
+        자동완성을 위한 전체 지역 인덱스를 생성하여 반환.
+        장소 수 기준으로 정렬하고 광역 단체도 포함하도록 개선.
+        """
         region_index = []
         region_map = {}
-        provinces = db_manager.get_province_list(self.db_path)
-        for p in provinces:
-            try:
-                cities = db_manager.get_city_list(p, self.db_path)
-            except Exception:
-                cities = []
-            
-            for c in cities:
-                label = f"{p} > {c}"
-                region_index.append((label, p, c, None))
-                region_map[label] = (p, c, None)
+        
+        conn = db_manager.create_connection(self.db_path)
+        if not conn:
+            return [], {}
+
+        try:
+            # 모든 주소와 장소 수를 미리 계산
+            address_counts = {}
+            # 1. (도, 시, 동) 레벨 카운트
+            for addr in db_manager._iter_addresses(conn):
+                parts = addr.split()
+                if len(parts) >= 1:
+                    p = db_manager._canon_province(parts[0])
+                    key_p = (p, None, None)
+                    address_counts[key_p] = address_counts.get(key_p, 0) + 1
+                if len(parts) >= 2:
+                    c = parts[1]
+                    key_c = (p, c, None)
+                    address_counts[key_c] = address_counts.get(key_c, 0) + 1
+                if len(parts) >= 3:
+                    d = db_manager._normalize_dong_for_ui(parts[2])
+                    if d and not db_manager._is_numeric_token(d):
+                        key_d = (p, c, d)
+                        address_counts[key_d] = address_counts.get(key_d, 0) + 1
+
+            # 인덱스 데이터 생성
+            for (p, c, d), count in address_counts.items():
+                if c is None and d is None: # 광역
+                    label = p
+                    info = (p, None, None)
+                elif d is None: # 시/군
+                    label = f"{p} > {c}"
+                    info = (p, c, None)
+                else: # 읍/면/동
+                    label = f"{p} > {c} > {d}"
+                    info = (p, c, d)
                 
-                try:
-                    dongs = db_manager.get_dong_list(p, c, self.db_path)
-                    for d in dongs:
-                        dong_label = f"{p} > {c} > {d}"
-                        region_index.append((dong_label, p, c, d))
-                        region_map[dong_label] = (p, c, d)
-                except Exception:
-                    pass
-        return region_index, region_map
+                # region_index에 (라벨, 장소 수, 정보) 튜플로 추가
+                region_index.append((label, count, info))
+                region_map[label] = info
+
+            # 장소 수(count) 기준으로 내림차순 정렬
+            region_index.sort(key=lambda x: x[1], reverse=True)
+
+            # 최종 반환 형식에 맞게 변환: (라벨, p, c, d)
+            final_region_index = [(item[0], item[2][0], item[2][1], item[2][2]) for item in region_index]
+
+        finally:
+            if conn:
+                conn.close()
+        
+        return final_region_index, region_map
 
     def search_places(self, filters):
         """필터 조건에 따라 장소를 검색하고 결과를 반환"""
@@ -412,8 +451,8 @@ class TravelLogic(QObject):
             return places
         
         def get_total_reviews(place):
-            visitor_reviews = place.get('total_visitor_reviews', 0) or 0
-            blog_reviews = place.get('total_blog_reviews', 0) or 0
+            visitor_reviews = place.get('total_visitor_reviews_count', 0) or 0
+            blog_reviews = place.get('total_blog_reviews_count', 0) or 0
             try:
                 return int(visitor_reviews) + int(blog_reviews)
             except (ValueError, TypeError):
@@ -437,16 +476,26 @@ class TravelLogic(QObject):
         return sorted_places[:cut_off]
 
     def start_article_generation(self, selected_places, article_title, include_weather, weather_query_location):
-        """실시간 크롤링 및 기사 생성 프로세스를 시작"""
+        """실시간 크롤링 및 기사 생성 프로세스를 시작합니다."""
+        self.crawling_progress.emit("실시간 정보 수집 스레드를 시작합니다...")
+        
         self.crawler_thread = QThread()
-        self.crawler_worker = CrawlerWorker(self.db_path, selected_places)
+        self.crawler_worker = CrawlerWorker(selected_places)
         self.crawler_worker.moveToThread(self.crawler_thread)
 
+        # 시그널 연결
         self.crawler_thread.started.connect(self.crawler_worker.run)
-        self.crawler_worker.finished.connect(lambda places: self._on_crawling_finished(places, article_title, include_weather, weather_query_location))
-        self.crawler_worker.error.connect(self.crawling_error.emit)
         self.crawler_worker.progress.connect(self.crawling_progress.emit)
+        self.crawler_worker.error.connect(self.crawling_error.emit)
         
+        # 크롤링 완료 시 _on_crawling_finished 호출
+        self.crawler_worker.finished.connect(
+            lambda updated_places: self._on_crawling_finished(
+                updated_places, article_title, include_weather, weather_query_location
+            )
+        )
+
+        # 스레드 및 워커 자동 정리
         self.crawler_worker.finished.connect(self.crawler_thread.quit)
         self.crawler_worker.finished.connect(self.crawler_worker.deleteLater)
         self.crawler_thread.finished.connect(self.crawler_thread.deleteLater)
@@ -466,7 +515,7 @@ class TravelLogic(QObject):
                 weather_info_text = f"날씨 정보를 가져오는 데 실패했습니다: {e}"
 
         df = pd.DataFrame(updated_places)
-        columns_to_send = ['name', 'category', 'address', 'keywords', 'visitor_reviews', 'intro']
+        columns_to_send = ['name', 'category', 'address', 'keywords', 'visitor_reviews', 'introduction']
         # 존재하지 않는 컬럼이 있어도 안전하게 처리
         for col in list(columns_to_send):
             if col not in df.columns:
