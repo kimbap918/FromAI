@@ -1,6 +1,6 @@
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QGroupBox, QLineEdit, QPushButton,
-    QMessageBox, QCheckBox, QTableWidget, QTableWidgetItem, QProgressBar
+    QMessageBox, QCheckBox, QTableWidget, QTableWidgetItem, QProgressBar, QApplication
 )
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
 from PyQt5.QtGui import QFont
@@ -228,6 +228,11 @@ class TossTab(QWidget):
         self.open_toss_folder_btn.clicked.connect(self.open_toss_article_folder)
         button_layout.addWidget(self.open_toss_folder_btn)
 
+        # 종목명만 복사 버튼 추가
+        self.copy_names_btn = QPushButton("📋 종목명 복사")
+        self.copy_names_btn.clicked.connect(self.copy_stock_names)
+        button_layout.addWidget(self.copy_names_btn)
+
         layout.addLayout(button_layout)
 
         # 결과 표시 테이블
@@ -346,6 +351,40 @@ class TossTab(QWidget):
             self.article_worker.step_progress.connect(self.on_step_progress)
             self.article_worker.finished.connect(self.on_article_generation_finished)
             self.article_worker.start()
+
+    def copy_stock_names(self):
+        # 현재 조회된 데이터프레임에서 우선적으로 종목명 가져오기
+        names = []
+        try:
+            if self.last_df is not None and not self.last_df.empty and '종목명' in self.last_df.columns:
+                names = [str(x).strip() for x in self.last_df['종목명'].tolist() if str(x).strip()]
+            else:
+                # 테이블 위젯에서 '종목명' 컬럼 찾기 후 수집
+                col_idx = -1
+                for c in range(self.result_table.columnCount()):
+                    header_item = self.result_table.horizontalHeaderItem(c)
+                    if header_item and header_item.text() == '종목명':
+                        col_idx = c
+                        break
+                if col_idx >= 0:
+                    for r in range(self.result_table.rowCount()):
+                        item = self.result_table.item(r, col_idx)
+                        if item:
+                            text = item.text().strip()
+                            if text:
+                                names.append(text)
+        except Exception as e:
+            QMessageBox.warning(self, "복사 오류", f"종목명 수집 중 오류가 발생했습니다: {e}")
+            return
+
+        if not names:
+            QMessageBox.information(self, "알림", "복사할 종목명이 없습니다. 먼저 조회를 실행하세요.")
+            return
+
+        # 클립보드에 복사
+        clipboard = QApplication.clipboard()
+        clipboard.setText("\n".join(names))
+        QMessageBox.information(self, "복사 완료", f"{len(names)}개 종목명을 클립보드에 복사했습니다.")
 
     def cancel_generation(self):
         if self.article_worker and self.article_worker.isRunning():

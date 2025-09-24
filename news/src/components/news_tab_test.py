@@ -210,8 +210,9 @@ class NewsTabTest(QWidget):
             r'|(?:지난|오는)\s*(?<!\d)\d{2}년도(?:부터|까지|에는?|에도|에|엔)?'  # 지난/오는 YY년도
             r'|(?<!\d)\d{2}년도(?:부터|까지|에는?|에도|에|엔)?'  # standalone YY년도
             r'|(?<!\d)\d{2}년(?:부터|까지|에는?|에도|에|엔)?'  # 2-digit year + optional particles
-            r'|(?:지난|오는)\s*\b\d{1,2}월\b(?!\s*\d{1,2}일)(?:부터|까지|에는?|에도)?'  # 지난/오는 MM월 (standalone) + particles
-            r'|\b\d{1,2}월\b(?!\s*\d{1,2}일)(?:부터|까지|에는?|에도)?'  # standalone MM월 + particles
+            r'|(?:지난|오는)\s*\b\d{1,2}월\b(?!\s*\d{1,2}일)(?:\s*(?:초|중순|말))?(?:부터|까지|에는?|에도|에|엔|경)?'  # 지난/오는 MM월 (standalone) + 초/중순/말 + particles
+            r'|\b\d{1,2}월\b(?!\s*\d{1,2}일)(?:\s*(?:초|중순|말))?(?:부터|까지|에는?|에도|에|엔|경)?'  # standalone MM월 + 초/중순/말 + particles
+            r'|(?:지난달|이번\s*달|다음달)(?:부터|까지|에는?|에도|에|엔)?'  # relative month words
             r'|(오전|오후)\s*\d{1,2}시(?:\s*\d{1,2}분)?'  # 오전/오후 HH시 MM분
             r')'
         )
@@ -301,7 +302,10 @@ class NewsTabTest(QWidget):
         self.crawling_done = True
 
         separator = "=" * 80
-        self.original_text.setPlainText(f"{title}\n{separator}\n\n{body}")
+        # 원문에도 날짜 하이라이트 적용하여 HTML로 표시
+        original_combined = f"{title}\n{separator}\n\n{body}"
+        highlighted_original = self.highlight_dates(original_combined)
+        self.original_text.setHtml(highlighted_original)
 
         self.progress_label.setText("크롤링 완료! 엔터나 'LLM 재구성' 클릭 가능.")
         self.extract_btn.setText("🤖 LLM 재구성")
