@@ -25,7 +25,7 @@ KMA_API_KEY = os.getenv("KMA_API_KEY")
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY") # Re-added GOOGLE_API_KEY
 
 # API URL 설정
-GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent"
+GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
 KAKAO_COORD_URL = "https://dapi.kakao.com/v2/local/search/address.json"
 KMA_WEATHER_URL = "http://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getVilageFcst"
 

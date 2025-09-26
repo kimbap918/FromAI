@@ -76,7 +76,7 @@ load_dotenv()
 class WeatherArticleGenerator:
     def __init__(self):
         self.gemini_api_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
-        self.gemini_url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent"
+        self.gemini_url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
         self.active_warnings = []
         self.processed_warnings = []
         self.region_mapping = {
@@ -364,160 +364,94 @@ class WeatherArticleGenerator:
                 "hashtags": [],
             }
 
-    def _call_gemini_api(self, prompt):
-        """Gemini API 호출"""
-        try:
-            if not self.gemini_api_key:
-                raise Exception("GOOGLE_API_KEY 또는 GEMINI_API_KEY가 설정되지 않았습니다.")
-            
-            headers = {'Content-Type': 'application/json'}
-            data = {
-                "contents": [{"parts": [{"text": prompt}]}],
-                "generationConfig": {
-                    "temperature": 0.7, "topK": 40, "topP": 0.95, "maxOutputTokens": 2048,
-                }
-            }
-            url = f"{self.gemini_url}?key={self.gemini_api_key}"
-            print("Gemini API 호출 중...")
-            response = requests.post(url, headers=headers, json=data, timeout=30)
-            
-            if response.status_code == 200:
-                result = response.json()
-                if 'candidates' in result and result['candidates']:
-                    content = result['candidates'][0]['content']['parts'][0]['text']
-                    print("기사 생성 완료")
-                    return content.strip()
-                else:
-                    print(f"경고: API 응답에 유효한 'candidates'가 없습니다. 응답: {result}")
-                    return f"기사 생성 실패: API가 유효한 응답을 반환하지 않았습니다. (응답: {result})"
-            else:
-                error_msg = f"API 호출 실패: {response.status_code}"
-                try:
-                    error_detail = response.json()
-                    error_msg += f" - {error_detail}"
-                except:
-                    error_msg += f" - {response.text}"
-                raise Exception(error_msg)
-                
-        except Exception as e:
-            print(f"Gemini API 오류: {e}")
+    def _call_gemini_api(self, prompt, retries=2):
+        """Gemini API 호출 (안정화 버전)"""
+        if not self.gemini_api_key:
+            print("❌ API 키가 없습니다.")
             return None
 
-#     # --- Fallback and Formatting Methods ---
+        url = f"{self.gemini_url}?key={self.gemini_api_key}"
+        headers = {"Content-Type": "application/json"}
+        data = {
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {
+                "temperature": 0.5, "topK": 40, "topP": 0.95, "maxOutputTokens": 4096,
+            },
+        }
 
-#     def _fallback_weather_article(self, weather_data, region_name):
-#         """프롬프트 모듈이 없을 때 사용하는 기본 날씨 기사"""
-#         try:
-#             weather_text = self._format_weather_data(weather_data, region_name)
-            
-#             simple_prompt = f'''다음 날씨 정보로 간단한 날씨 기사를 작성해주세요:
+        for attempt in range(retries + 1):
+            try:
+                print(f"Gemini API 호출 중... (시도 {attempt+1})")
+                response = requests.post(url, headers=headers, json=data, timeout=30)
+                result = response.json()
 
-# {weather_text}
+                if response.status_code == 200 and "candidates" in result:
+                    candidate = result["candidates"][0]
+                    content = candidate.get("content", {})
+                    parts = content.get("parts", [])
+                    if parts and "text" in parts[0]:
+                        print("✅ 기사 생성 완료")
+                        return parts[0]["text"].strip()
+                    else:
+                        print(f"⚠️ parts 없음 → 응답: {result}")
+                        return None
+                else:
+                    print(f"❌ API 오류 {response.status_code}: {result}")
+                    return None
 
-# 형식:
-# 제목1: ...
-# 제목2: ...
-# 제목3: ...
+            except Exception as e:
+                print(f"예외 발생: {e}")
 
-# [본문]
+        # 모든 시도가 실패했을 때
+        return None
 
-# #해시태그1 #해시태그2 #해시태그3 #해시태그4 #해시태그5 #해시태그6 #해시태그7 #해시태그8
-# '''
-#             response = self._call_gemini_api(simple_prompt)
-#             if response:
-#                 parsed = self._parse_response(response)
-#                 title = parsed.get("title") or f"{region_name} 날씨"
-#                 return {
-#                     'title': title,
-#                     'titles': parsed.get("titles") or [title],
-#                     'content': parsed.get("content", ""),
-#                     'type': 'weather'
-#                 }
-#             return None
-            
-#         except Exception as e:
-#             print(f"폴백 날씨 기사 생성 오류: {e}")
-#             return None
 
-#     def _fallback_warning_article(self, warning_data, region_name):
-#         """프롬프트 모듈이 없을 때 사용하는 기본 특보 기사"""
-#         try:
-#             warning_text = self._format_warning_data(warning_data, region_name)
-            
-#             simple_prompt = f'''다음 기상특보 정보로 간단한 특보 기사를 작성해주세요:
+    def _parse_response(self, response_text: str):
+        """AI 응답 텍스트에서 제목, 본문, 해시태그를 분리"""
+        try:
+            if not response_text or not isinstance(response_text, str):
+                return {"title": "", "titles": [], "content": "", "hashtags": []}
 
-# {warning_text}
+            import re
+            lines = [line.strip() for line in response_text.splitlines() if line.strip()]
 
-# 형식:
-# 제목1: [기상특보] ...
-# 제목2: [기상특보] ...
-# 제목3: [기상특보] ...
+            # 해시태그 분리
+            hashtag_lines = [line for line in lines if line.startswith('#')]
+            non_hashtag_lines = [line for line in lines if not line.startswith('#')]
 
-# [본문]
+            # 제목 추출 (앞부분의 짧은 줄)
+            titles = []
+            for i, line in enumerate(non_hashtag_lines):
+                if len(line) < 100 and i < 3:  # 제목 후보
+                    titles.append(line)
+                else:
+                    break
 
-# #기상특보 #특보종류 #지역명 #기상청 #날씨경보 #특보전망 #기상현상 #날씨특보
-# '''
-#             response = self._call_gemini_api(simple_prompt)
-#             if response:
-#                 parsed = self._parse_response(response)
-#                 title = parsed.get("title")
-#                 if title and not title.startswith('[기상특보]'):
-#                     title = f"[기상특보] {title}"
-#                 return {
-#                     'title': title or f"[기상특보] {region_name} 기상특보",
-#                     'titles': parsed.get("titles") or [title or f"[기상특보] {region_name} 기상특보"],
-#                     'content': parsed.get("content", ""),
-#                     'type': 'warning'
-#                 }
-#             return None
-            
-#         except Exception as e:
-#             print(f"폴백 특보 기사 생성 오류: {e}")
-#             return None
+            # 본문 = 나머지
+            body_lines = non_hashtag_lines[len(titles):]
+            body = "\n".join(body_lines)
 
-#     def _format_weather_data(self, weather_data, region_name):
-#         """날씨 데이터를 간단한 텍스트로 변환"""
-#         try:
-#             text_lines = [f"지역: {region_name}"]
-            
-#             if 'main' in weather_data:
-#                 main = weather_data['main']
-#                 if 'temp' in main:
-#                     text_lines.append(f"현재기온: {main['temp']}°C")
-#                 if 'temp_min' in main and main['temp_min']:
-#                     text_lines.append(f"최저기온: {main['temp_min']}°C")
-#                 if 'temp_max' in main and main['temp_max']:
-#                     text_lines.append(f"최고기온: {main['temp_max']}°C")
-#                 if 'humidity' in main:
-#                     text_lines.append(f"습도: {main['humidity']}% ")
-            
-#             if 'weather' in weather_data and weather_data['weather']:
-#                 weather = weather_data['weather'][0]
-#                 if 'description' in weather:
-#                     text_lines.append(f"날씨상태: {weather['description']}")
-            
-#             if 'precipitation' in weather_data:
-#                 precip = weather_data['precipitation']
-#                 if 'probability' in precip and precip['probability']:
-#                     text_lines.append(f"강수확률: {precip['probability']}% ")
-            
-#             return '\n'.join(text_lines)
-            
-#         except Exception as e:
-#             return f"날씨 정보: {str(weather_data)}"
+            # 해시태그 파싱
+            hashtags = []
+            if hashtag_lines:
+                full_hashtag_str = " ".join(hashtag_lines)
+                hashtags = [tag.strip() for tag in full_hashtag_str.split("#") if tag.strip()]
 
-#     def _format_warning_data(self, warning_data, region_name):
-#         """특보 데이터를 간단한 텍스트로 변환"""
-#         try:
-#             text_lines = [f"지역: {region_name}"]
-            
-#             if isinstance(warning_data, list) and warning_data:
-#                 text_lines.append(f"특보 건수: {len(warning_data)}건")
-#                 for i, warning in enumerate(warning_data[:3], 1):
-#                     if 'title' in warning:
-#                         text_lines.append(f"특보{i}: {warning['title']}")
-            
-#             return '\n'.join(text_lines)
-            
-#         except Exception as e:
-#             return f"특보 정보: {str(warning_data)}"
+            # "제목1:" 같은 접두사 제거
+            cleaned_titles = [re.sub(r"^\s*제목\d:\s*", "", t).strip() for t in titles]
+
+            return {
+                "title": cleaned_titles[0] if cleaned_titles else "제목 없음",
+                "titles": cleaned_titles,
+                "content": body,
+                "hashtags": hashtags,
+            }
+
+        except Exception as e:
+            print(f"응답 파싱 오류: {e}")
+            return {
+                "title": "제목 파싱 오류",
+                "titles": [],
+                "content": response_text or "(기사 생성 실패)",
+                "hashtags": [],
+            }

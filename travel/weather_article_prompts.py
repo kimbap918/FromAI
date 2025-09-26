@@ -158,7 +158,7 @@ def format_warning_data_for_prompt(region, warning_type, warning_level, warning_
 
 
 # ==================================
-# 클래스 (기존 코드 스타일 호환용)
+# 클래스 
 # ==================================
 
 class GeminiWeatherPrompts:
