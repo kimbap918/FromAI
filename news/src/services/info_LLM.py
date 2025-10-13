@@ -4,6 +4,7 @@ import sys
 from PIL import Image
 from dotenv import load_dotenv
 from news.src.utils.common_utils import get_today_kst_str, build_stock_prompt
+from news.src.utils.exchange_utils import build_fx_prompt
 
 # ------------------------------------------------------------------
 # 작성자 : 곽은규
@@ -185,7 +186,7 @@ def generate_info_news(keyword: str, image_path: str, is_stock: bool):
 
 
     model = genai.GenerativeModel(
-        model_name='gemini-2.5-flash-lite',
+        model_name='gemini-2.5-flash',
         system_instruction=system_prompt
     )
 
@@ -252,6 +253,22 @@ def generate_info_news_from_text(keyword: str, info_dict: dict, domain: str = "g
             f"이 데이터를 바탕으로 기사 형식으로 분석해 주세요.\n"
             f"[환율 정보]\n{info_str}"
         )
+        # 다중 통화(종합) 여부 판단: 통화목록 키가 있고 2개 이상일 때
+        include_aggregate_tag = False
+        try:
+            if isinstance(info_dict, dict) and "통화목록" in info_dict:
+                lst = info_dict.get("통화목록") or []
+                include_aggregate_tag = isinstance(lst, (list, tuple)) and len(lst) > 1
+        except Exception:
+            include_aggregate_tag = False
+        fx_prompt = build_fx_prompt(today_kst, include_aggregate_tag=include_aggregate_tag)
+        system_prompt = system_prompt + "\n" + fx_prompt
+        print("[DEBUG] FX 프롬프트 주입 완료 (exchange_utils): 길이=", len(fx_prompt), ", include_aggregate_tag=", include_aggregate_tag)
+        try:
+            print("\n[FX 프롬프트 미리보기]\n" + fx_prompt + "\n")
+        except Exception:
+            pass
+
     elif domain == "coin":
         user_message = (
             f"아래는 '{keyword}'의 암호화폐(코인) 정보입니다. "

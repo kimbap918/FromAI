@@ -289,6 +289,11 @@ def create_template(keyword: str, is_foreign: bool, now_kst_dt: datetime = None)
         else:
             print(f"[DEBUG] 국내주식 최종 → 장중 기준:", time_status_str)
             return f"{time_status_str} 기준, 네이버페이 증권에 따르면"
+
+ 
+
+ 
+
 # ------------------------------------------------------------------
 # 작성자 : 최준혁
 # 작성일 : 2025-07-25
