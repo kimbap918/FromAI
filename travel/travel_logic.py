@@ -445,6 +445,11 @@ class TravelLogic(QObject):
         places = self._apply_review_count_filter(places, review_range)
         return places
 
+    def search_places_by_name(self, name):
+        """장소 이름으로 장소를 검색하고 결과를 반환"""
+        places = db_manager.search_places_by_name(self.db_path, name)
+        return places
+
     def _apply_review_count_filter(self, places, review_range="상위 50%"):
         """리뷰 수 기준으로 필터를 적용"""
         if not places or review_range == "전체":

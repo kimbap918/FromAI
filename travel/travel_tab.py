@@ -140,6 +140,7 @@ class TravelTabWidget(QWidget):
 
         # 버튼 클릭
         self.search_button.clicked.connect(self.search_places)
+        self.place_search_button.clicked.connect(self.search_places_by_name)
         self.reset_button.clicked.connect(self.reset_filters)
         self.generate_button.clicked.connect(self.generate_article)
         self.random_button.clicked.connect(self.random_select_and_generate)
@@ -245,6 +246,31 @@ class TravelTabWidget(QWidget):
 
         self.search_button.setText("필터 적용")
         self.search_button.setEnabled(True)
+
+    def search_places_by_name(self):
+        search_term = self.place_search_input.text().strip()
+        if not search_term:
+            QMessageBox.information(self, "검색어 오류", "검색어를 입력해주세요.")
+            return
+
+        self.place_search_button.setText("검색 중...")
+        self.place_search_button.setEnabled(False)
+        QApplication.processEvents()
+
+        places = self.logic.search_places_by_name(search_term)
+
+        if not places:
+            QMessageBox.information(self, "검색 결과", "조건에 맞는 장소를 찾을 수 없습니다.")
+            self.place_table_widget.setRowCount(0)
+        else:
+            if len(places) > 1000:
+                QMessageBox.information(self, "결과 제한", f"검색 결과가 {len(places):,}개로 많아 상위 1,000개만 표시합니다.")
+                places = places[:1000]
+            self._populate_table(places)
+
+        self.place_search_button.setText("장소명 검색")
+        self.place_search_button.setEnabled(True)
+
 
     def _populate_table(self, places):
         # If called from _move_checked_to_top, the list is already sorted.

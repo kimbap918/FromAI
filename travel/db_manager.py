@@ -324,6 +324,23 @@ def search_places_advanced_with_dong(
     finally:
         conn.close()
 
+def search_places_by_name(db_path: str, search_term: str) -> List[Dict]:
+    """
+    장소 이름으로 장소를 검색합니다.
+    """
+    conn = create_connection(db_path)
+    if not conn:
+        return []
+    try:
+        sql = "SELECT name, category, address, keywords, total_visitor_reviews_count, total_blog_reviews_count, visitor_reviews, introduction, naver_place_id FROM places WHERE name LIKE ?"
+        params = [f"%{search_term}%"]
+        rows = conn.execute(sql, params).fetchall()
+        cols = ["name", "category", "address", "keywords", "total_visitor_reviews_count", "total_blog_reviews_count", "visitor_reviews", "introduction", "naver_place_id"]
+        return [dict(zip(cols, r)) for r in rows]
+    finally:
+        if conn:
+            conn.close()
+
 # ---------------------------
 # [앱 실행 단계] 기사/통계용 매핑
 # ---------------------------

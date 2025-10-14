@@ -65,6 +65,8 @@ from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGroupBox,
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer
 from datetime import datetime
 
+from ui_components import CheckableComboBox
+
 # 기존 모듈 import
 try:
     from weather_api import WeatherAPI
@@ -161,12 +163,12 @@ class ArticleGenerationThread(QThread):
     article_generated = pyqtSignal(dict)
     error_occurred = pyqtSignal(str)
     
-    def __init__(self, ai_generator, data, data_type, region_name):
+    def __init__(self, ai_generator, data, data_type, region_names):
         super().__init__()
         self.ai_generator = ai_generator # 외부에서 생성된 인스턴스 사용
         self.data = data
         self.data_type = data_type
-        self.region_name = region_name
+        self.region_names = region_names
     
     def run(self):
         if not AI_AVAILABLE:
@@ -174,9 +176,11 @@ class ArticleGenerationThread(QThread):
             return
         try:
             if self.data_type == 'weather':
-                article = self.ai_generator.generate_weather_article(self.data, self.region_name)
+                article = self.ai_generator.generate_weather_article(self.data, self.region_names)
             else:  # 'warning'
-                article = self.ai_generator.generate_warning_article(self.data, self.region_name)
+                # Assuming region_names is not a list for warnings, or we take the first.
+                region_name = self.region_names[0] if isinstance(self.region_names, list) and self.region_names else self.region_names
+                article = self.ai_generator.generate_warning_article(self.data, region_name)
             
             if article:
                 self.article_generated.emit(article)
@@ -193,7 +197,8 @@ class SimpleWeatherTabWidget(QWidget):
         self.parent_app = parent
         self._last_weather = None
         self._last_warnings = []
-        self._last_city = None
+        self._last_cities = []
+        self._weather_results = []
 
         if WEATHER_AVAILABLE:
             self.weather_api = WeatherAPI()
@@ -236,28 +241,17 @@ class SimpleWeatherTabWidget(QWidget):
         
         # 지역 검색 - GroupBox 제거
         search_layout = QHBoxLayout()
-        self.weather_search_input = QLineEdit()
-        self.weather_search_input.setPlaceholderText("지역명을 입력하세요 (예: 서울, 부산, 강남구)")
-        self.weather_search_input.returnPressed.connect(self.search_weather)
-        
+        self.city_combo = CheckableComboBox("도시 선택")
+        cities = ["서울", "부산", "대구", "인천", "광주", "대전", "울산", "제주", "경기도", "강원도", "충청북도", "충청남도", "전라북도", "전라남도", "경상북도", "경상남도", "세종"]
+        self.city_combo.add_checkable_items(cities, checked=False)
+
         self.weather_search_btn = QPushButton("날씨 검색")
         self.weather_search_btn.clicked.connect(self.search_weather)
         self.weather_search_btn.setStyleSheet("QPushButton { background-color: #007bff; color: white; font-weight: bold; padding: 8px 16px; }")
         
-        search_layout.addWidget(self.weather_search_input)
+        search_layout.addWidget(self.city_combo)
         search_layout.addWidget(self.weather_search_btn)
         layout.addLayout(search_layout)
-        
-        # 빠른 검색 버튼들
-        quick_layout = QHBoxLayout()
-        quick_cities = ["서울", "부산", "대구", "인천", "광주", "대전", "울산", "제주"]
-        for city in quick_cities:
-            btn = QPushButton(city)
-            btn.clicked.connect(lambda checked, c=city: self.quick_weather_search(c))
-            btn.setMaximumWidth(70)
-            btn.setStyleSheet("QPushButton { background-color: #f8f9fa; border: 1px solid #dee2e6; padding: 5px; }")
-            quick_layout.addWidget(btn)
-        layout.addLayout(quick_layout)
         
         # 날씨 정보 표시 - GroupBox 제거
         scroll_area = QScrollArea()
@@ -376,40 +370,45 @@ class SimpleWeatherTabWidget(QWidget):
     
     # 날씨 관련 메서드들
     def search_weather(self):
-        city = self.weather_search_input.text().strip()
-        city = _expand_to_canonical(city)
-        if not city:
-            QMessageBox.information(self, "안내", "지역명을 입력해주세요.")
+        cities = self.city_combo.checked_items()
+        cities = [_expand_to_canonical(city) for city in cities]
+        if not cities:
+            QMessageBox.information(self, "안내", "지역을 선택해주세요.")
             return
-        self._start_weather_thread(city)
+        self._start_weather_threads(cities)
         
-    def quick_weather_search(self, city):
-        city = _expand_to_canonical(city)
-        self.weather_search_input.setText(city)
-        self._start_weather_thread(city)
-
-    def _start_weather_thread(self, city):
-        self.weather_info_label.setText(f"'{city}' 날씨 조회 중...")
+    def _start_weather_threads(self, cities):
+        self.weather_info_label.setText(f"'{', '.join(cities)}' 날씨 조회 중...")
         self.generate_weather_article_btn.setEnabled(False)
-        self._weather_thread = WeatherThread(city, self.weather_api)
-        self._weather_thread.weather_received.connect(self._on_weather_ok)
-        self._weather_thread.error_occurred.connect(self._on_weather_err)
-        self._weather_thread.start()
-        self._last_city = city
+        self._weather_results = []
+        self._last_cities = cities
+        self._threads = []
+        for city in cities:
+            thread = WeatherThread(city, self.weather_api)
+            thread.weather_received.connect(self._on_weather_ok)
+            thread.error_occurred.connect(self._on_weather_err)
+            self._threads.append(thread)
+            thread.start()
 
     def _on_weather_ok(self, data: dict):
-        try:
-            if self.weather_api:
-                formatted = self.weather_api.format_weather_info(data, self._last_city)
-                self.weather_info_label.setText(formatted)
-            else:
-                self.weather_info_label.setText(str(data))
-        except Exception:
-            self.weather_info_label.setText(str(data))
-
-        self._last_weather = data
-        self.generate_weather_article_btn.setEnabled(True)
-        self.article_status_label.setText("날씨 정보 준비됨 - 기사 생성 가능")
+        self._weather_results.append(data)
+        if len(self._weather_results) == len(self._last_cities):
+            self.weather_info_label.setText("")
+            full_text = ""
+            for result in self._weather_results:
+                try:
+                    city_name = result.get('region_info', {}).get('user_input', '')
+                    if self.weather_api:
+                        formatted = self.weather_api.format_weather_info(result, city_name)
+                        full_text += formatted + "\n\n" + "="*40 + "\n\n"
+                    else:
+                        full_text += str(result) + "\n\n" + "="*40 + "\n\n"
+                except Exception:
+                    full_text += str(result) + "\n\n" + "="*40 + "\n\n"
+            self.weather_info_label.setText(full_text.strip())
+            self._last_weather = self._weather_results # Store all results
+            self.generate_weather_article_btn.setEnabled(True)
+            self.article_status_label.setText("날씨 정보 준비됨 - 기사 생성 가능")
 
     def _on_weather_err(self, msg: str):
         QMessageBox.warning(self, "날씨 오류", msg)
@@ -467,7 +466,7 @@ class SimpleWeatherTabWidget(QWidget):
         self.generate_weather_article_btn.setEnabled(False)
         
         self._article_thread = ArticleGenerationThread(
-            self.ai_generator, self._last_weather, 'weather', self._last_city or "해당 지역"
+            self.ai_generator, self._last_weather, 'weather', self._last_cities
         )
         self._article_thread.article_generated.connect(self._on_article_generated)
         self._article_thread.error_occurred.connect(self._on_article_error)

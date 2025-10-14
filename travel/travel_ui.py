@@ -93,12 +93,24 @@ class Ui_TravelTab:
         TravelTabWidget.region_search_input.setCompleter(TravelTabWidget.region_completer)
         TravelTabWidget.region_apply_btn = QPushButton("검색")
 
+        TravelTabWidget.place_search_input = QLineEdit()
+        TravelTabWidget.place_search_input.setPlaceholderText("장소명 검색")
+        TravelTabWidget.place_search_input.setFixedWidth(200)
+        TravelTabWidget.place_search_button = QPushButton("장소명 검색")
+
         # --- 지역 검색 줄 ---
         region_layout = QHBoxLayout()
         region_layout.addWidget(QLabel("지역 검색:"))
         region_layout.addWidget(TravelTabWidget.region_search_input)
         region_layout.addWidget(TravelTabWidget.region_apply_btn)
         region_layout.addStretch()
+
+        # --- 장소명 검색 줄 ---
+        place_search_layout = QHBoxLayout()
+        place_search_layout.addWidget(QLabel("장소명 검색:"))
+        place_search_layout.addWidget(TravelTabWidget.place_search_input)
+        place_search_layout.addWidget(TravelTabWidget.place_search_button)
+        place_search_layout.addStretch()
 
         # --- 나머지 필터 줄 ---
         filters_row_layout = QHBoxLayout()
@@ -129,6 +141,7 @@ class Ui_TravelTab:
         filters_row_layout.addStretch()
 
         filter_layout.addLayout(region_layout)
+        filter_layout.addLayout(place_search_layout)
         filter_layout.addLayout(filters_row_layout)
 
         # --- 장소 목록 ---

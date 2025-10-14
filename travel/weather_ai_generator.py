@@ -86,11 +86,12 @@ class WeatherArticleGenerator:
             "146": "전북", "165": "전남", "137": "경북", "155": "경남", "184": "제주"
         }
 
-    def _format_weather_prompt(self, weather_data, location, current_date, current_time):
+    def _format_weather_prompt(self, weather_data_str, location, current_date, current_time):
         # 프롬프트 템플릿 + 데이터 섹션 결합
         head = P.get_weather_article_prompt()
+        # format_weather_data_for_prompt now expects a pre-formatted string
         tail = P.format_weather_data_for_prompt(
-            weather_data=weather_data,
+            weather_data=weather_data_str,
             region=location,
             current_date=current_date,
             current_time=current_time,
@@ -111,25 +112,39 @@ class WeatherArticleGenerator:
         return head + "\n" + tail
 
 
-    def generate_weather_article(self, weather_data, region_name="해당 지역"):
-        """일반 날씨 기사 생성 (외부 프롬프트 사용)"""
+    def generate_weather_article(self, weather_data_list, region_names):
+        """일반 날씨 기사 생성 (외부 프롬프트 사용) - 다수 지역 지원"""
         try:
             if not PROMPTS_AVAILABLE:
-                return self._fallback_weather_article(weather_data, region_name)
-            
+                # This fallback needs to be adapted for lists as well
+                return self._fallback_weather_article(weather_data_list[0], region_names[0])
+
             current_date = datetime.now().strftime("%Y-%m-%d")
             current_time = datetime.now().strftime("%H:%M")
-            
+
+            # Create a combined string of weather information
+            combined_weather_info = ""
+            from weather_api import WeatherAPI
+            weather_api = WeatherAPI()
+            for i, weather_data in enumerate(weather_data_list):
+                region_name = region_names[i]
+                combined_weather_info += weather_api.format_weather_info(weather_data, region_name)
+                if i < len(weather_data_list) - 1:
+                    combined_weather_info += "\n\n" + "="*40 + "\n\n"
+
+            # The main region for the title
+            main_region = ", ".join(region_names)
+
             formatted_prompt = self._format_weather_prompt(
-                weather_data, region_name, current_date, current_time
+                combined_weather_info, main_region, current_date, current_time
             )
-            
-            full_prompt = formatted_prompt # WEATHER_ARTICLE_PROMPT already includes the full structure
+
+            full_prompt = formatted_prompt
             response = self._call_gemini_api(full_prompt)
-            
+
             if response:
                 parsed = self._parse_response(response)
-                title = parsed.get("title") or f"{region_name} 오늘의 날씨"
+                title = parsed.get("title") or f"{main_region} 오늘의 날씨"
                 return {
                     'title': title,
                     'titles': parsed.get("titles") or [title],
@@ -139,7 +154,7 @@ class WeatherArticleGenerator:
                 }
             else:
                 return None
-                
+
         except Exception as e:
             print(f"날씨 기사 생성 오류: {e}")
             return None
