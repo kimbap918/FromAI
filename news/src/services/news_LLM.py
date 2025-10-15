@@ -401,6 +401,7 @@ def generate_system_prompt(keyword: str, today_kst: str, published_kst: str | No
         * 직전 달 과거 → “지난달 O일”
         * 과거 연도 명시 → “지난 OOOO년”, 필요 시 “지난 OOOO년 O월 O일”
         * 미래 연도 명시 → “오는 OOOO년”, 필요 시 “오는 OOOO년 O월 O일”
+        - [오늘(KST) 기준일]의 오늘(Asia/Seoul)과 원문 기사 작성일(사이트 추출)의 날짜가 1개월 이상 차이가 나는 경우, 기사 작성 시 오늘(Asia/Seoul) 날짜를 따를 것.
 
         [Fact Ledger(내부 점검용, 출력 금지)]
         - 본문 작성 전, 원문에서 아래 항목만 **내부적으로** 추출해 기준으로 삼아라(출력하지 말 것).
