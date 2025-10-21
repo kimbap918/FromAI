@@ -70,31 +70,90 @@ def _build_prompt(
         chat_history_block=_history_to_block(chat_history),
     )
 
+# def _fix_titles(text: str, search_query: str) -> str:
+#     lines = text.splitlines()
+#     title_count = 0
+#     for i, line in enumerate(lines):
+#         s = line.strip()
+#         if not (s.startswith("제목") or (len(s) > 1 and s[0].isdigit() and s[1] in '.)')) or len(s) > 150:
+#             continue
+
+#         title_count += 1
+#         num = f"제목{title_count}"
+
+#         body = s
+#         if ":" in body: body = body.split(":", 1)[-1]
+#         elif ")" in body: body = body.split(")", 1)[-1]
+#         elif "." in body: body = body.split(".", 1)[-1]
+#         body = body.strip()
+
+#         sub = body.split(",", 1)[-1].strip() if "," in body else (body or "현장감 있는 동선")
+        
+#         if f"{search_query} 가볼 만한 곳," in body and body.strip().startswith(f"{search_query} 가볼 만한 곳,"):
+#             lines[i] = f"{num}: {body}"
+#         else:
+#             lines[i] = f"{num}: {search_query} 가볼 만한 곳, {sub}"
+            
+#     return "\n".join(lines)
+
 def _fix_titles(text: str, search_query: str) -> str:
+
+    if not text:
+        return text
+
     lines = text.splitlines()
-    title_count = 0
+    title_idx = 0
+
+    def extract_body(s: str) -> str:
+        s = s.strip()
+        # '제목', '제목1', '1)', '1.' 같은 패턴 처리
+        if ":" in s:
+            parts = s.split(":", 1)
+            # 왼쪽이 라벨 느낌이면 오른쪽만 본문으로
+            left = parts[0].strip()
+            right = parts[1].strip()
+            if left.startswith("제목") or (left[:1].isdigit() and (left[1:2] in [")", "."])):
+                return right
+        # 숫자 라벨 패턴
+        if len(s) >= 2 and s[0].isdigit() and s[1] in ").":
+            return s[2:].strip()
+        # '제목N' 패턴
+        if s.startswith("제목"):
+            # '제목' 다음에 숫자나 문자가 와도 콜론이 없으면 '제목'을 라벨로 간주하고 본문만 추출 시도
+            # 다만 콜론이 없고 '제목'만 있으면 본문 없음으로 처리
+            stripped = s[2:].strip("0123456789). ").strip()
+            return stripped if stripped else ""
+        return s
+
+    def normalize_spaces(s: str) -> str:
+        s = s.replace("\u3000", " ").replace("\u00A0", " ")
+        while "  " in s:
+            s = s.replace("  ", " ")
+        return s.strip()
+
     for i, line in enumerate(lines):
         s = line.strip()
-        if not (s.startswith("제목") or (len(s) > 1 and s[0].isdigit() and s[1] in '.)')) or len(s) > 150:
+        # 제목 후보 라인 판별
+        is_title_candidate = (
+            s.startswith("제목") or
+            (len(s) > 1 and s[0].isdigit() and s[1] in '.)')
+        )
+        if not is_title_candidate:
             continue
 
-        title_count += 1
-        num = f"제목{title_count}"
+        body = extract_body(s)
+        body = normalize_spaces(body)
 
-        body = s
-        if ":" in body: body = body.split(":", 1)[-1]
-        elif ")" in body: body = body.split(")", 1)[-1]
-        elif "." in body: body = body.split(".", 1)[-1]
-        body = body.strip()
+        if not body:
+            # 본문이 비면 제목으로 취급하지 않음
+            continue
 
-        sub = body.split(",", 1)[-1].strip() if "," in body else (body or "현장감 있는 동선")
-        
-        if f"{search_query} 가볼 만한 곳," in body and body.strip().startswith(f"{search_query} 가볼 만한 곳,"):
-            lines[i] = f"{num}: {body}"
-        else:
-            lines[i] = f"{num}: {search_query} 가볼 만한 곳, {sub}"
-            
+        title_idx += 1
+        # ✅ 자연 제목 유지: 접두사/형식 강제 X, 라벨만 통일
+        lines[i] = f"제목{title_idx}: {body}"
+
     return "\n".join(lines)
+
 
 class TravelChatbot:
     def __init__(self) -> None:
