@@ -367,6 +367,7 @@ class TravelLogic(QObject):
         sel_review_cats_raw = set(filters.get("review_categories", []))
         sel_review_cats = set(filters.get("review_categories", []))
         review_range = filters.get("review_range", "상위 50%")
+        search_name = filters.get("name")
 
         filter_by_road_name = "도로명" in sel_dong_raw
         normal_dongs = sel_dong_raw - {"도로명"}
@@ -430,6 +431,17 @@ class TravelLogic(QObject):
             print(f"검색 오류: {e}")
             places = []
 
+        if search_name:
+            search_terms = [term.strip().lower() for term in search_name.split(',')]
+            places = [
+                p for p in places 
+                if any(
+                    term in (p.get('name', '') or '').lower() or 
+                    term in (p.get('category', '') or '').lower() 
+                    for term in search_terms
+                )
+            ]
+
         # ----------------------
         # 파이썬 측 정규화 필터링
         # ----------------------
@@ -445,10 +457,6 @@ class TravelLogic(QObject):
         places = self._apply_review_count_filter(places, review_range)
         return places
 
-    def search_places_by_name(self, name):
-        """장소 이름으로 장소를 검색하고 결과를 반환"""
-        places = db_manager.search_places_by_name(self.db_path, name)
-        return places
 
     def _apply_review_count_filter(self, places, review_range="상위 50%"):
         """리뷰 수 기준으로 필터를 적용"""

@@ -106,27 +106,32 @@ class TravelTabWidget(QWidget):
         self._region_index = []
         self._region_model = QStandardItemModel(self)
         self._region_map = {}
+        self._is_updating_ui = False # UI 업데이트 중 신호 무시용 플래그
 
     def _load_initial_data(self):
         """초기 데이터 로드 및 UI 설정"""
-        # 필터 데이터 로드
-        filter_data = self.logic.get_initial_filter_data()
-        self.province_combo.add_checkable_items(filter_data["provinces"], checked=False)
-        self.category_combo.add_checkable_items(filter_data["categories"], checked=False)
-        default_categories = ["공연/엔터테인먼트", "쇼핑", "음식점", "자연/공원", "전시/문화", "종교/전통", "체험/액티비티", "카페/디저트"]
-        self.category_combo.set_checked(default_categories)
-        self.review_category_combo.add_checkable_items(filter_data["review_categories"], checked=False)
-        self.sort_combo.addItems(filter_data["sort_options"])
+        self._is_updating_ui = True
+        try:
+            # 필터 데이터 로드
+            filter_data = self.logic.get_initial_filter_data()
+            self.province_combo.add_checkable_items(filter_data["provinces"], checked=False)
+            self.category_combo.add_checkable_items(filter_data["categories"], checked=False)
+            default_categories = ["공연/엔터테인먼트", "쇼핑", "음식점", "자연/공원", "전시/문화", "종교/전통", "체험/액티비티", "카페/디저트"]
+            self.category_combo.set_checked(default_categories)
+            self.review_category_combo.add_checkable_items(filter_data["review_categories"], checked=False)
+            self.sort_combo.addItems(filter_data["sort_options"])
 
-        # 지역 자동완성 인덱스 빌드
-        self._region_index, self._region_map = self.logic.build_region_index()
-        self.region_completer.setModel(self._region_model)
-        self.on_region_search_text_changed("") # 초기 목록 채우기
+            # 지역 자동완성 인덱스 빌드
+            self._region_index, self._region_map = self.logic.build_region_index()
+            self.region_completer.setModel(self._region_model)
+            self.on_region_search_text_changed("") # 초기 목록 채우기
+        finally:
+            self._is_updating_ui = False
 
     def _connect_signals(self):
         """UI 위젯의 시그널과 슬롯(메서드)을 연결"""
-        # 필터 변경
-        self.province_combo.model().itemChanged.connect(self._rebuild_cities_from_provinces)
+        # 필터 변경 시 하위 목록만 업데이트
+        self.province_combo.model().itemChanged.connect(self._rebuild_cities)
         self.city_combo.model().itemChanged.connect(self._rebuild_dongs)
 
         # 지역 검색
@@ -139,8 +144,9 @@ class TravelTabWidget(QWidget):
             self.region_completer.activated.connect(self.on_region_completer_activated)
 
         # 버튼 클릭
-        self.search_button.clicked.connect(self.search_places)
-        self.place_search_button.clicked.connect(self.search_places_by_name)
+        self.search_button.clicked.connect(self._search_and_update_table)
+        self.place_search_input.returnPressed.connect(self._search_and_update_table)
+        self.place_search_button.clicked.connect(self._search_and_update_table)
         self.reset_button.clicked.connect(self.reset_filters)
         self.generate_button.clicked.connect(self.generate_article)
         self.random_button.clicked.connect(self.random_select_and_generate)
@@ -151,21 +157,31 @@ class TravelTabWidget(QWidget):
         self.logic.article_generated.connect(self._on_article_finished)
         self.logic.article_error.connect(self._on_article_error)
 
-    # --- UI 업데이트 및 이벤트 핸들러 ---
 
-    def _rebuild_cities_from_provinces(self):
-        sel_provs = self.province_combo.checked_items()
-        cities = self.logic.get_cities_for_provinces(sel_provs)
-        self.city_combo.clear_items()
-        self.city_combo.add_checkable_items(cities, checked=False)
-        self.dong_combo.clear_items()
+
+    def _rebuild_cities(self):
+        if self._is_updating_ui: return
+        self._is_updating_ui = True
+        try:
+            sel_provs = self.province_combo.checked_items()
+            cities = self.logic.get_cities_for_provinces(sel_provs)
+            self.city_combo.clear_items()
+            self.city_combo.add_checkable_items(cities, checked=False)
+            self.dong_combo.clear_items()
+        finally:
+            self._is_updating_ui = False
 
     def _rebuild_dongs(self):
-        sel_provs = self.province_combo.checked_items()
-        sel_cities = self.city_combo.checked_items()
-        dongs = self.logic.get_dongs_for_cities(sel_provs, sel_cities)
-        self.dong_combo.clear_items()
-        self.dong_combo.add_checkable_items(dongs, checked=False)
+        if self._is_updating_ui: return
+        self._is_updating_ui = True
+        try:
+            sel_provs = self.province_combo.checked_items()
+            sel_cities = self.city_combo.checked_items()
+            dongs = self.logic.get_dongs_for_cities(sel_provs, sel_cities)
+            self.dong_combo.clear_items()
+            self.dong_combo.add_checkable_items(dongs, checked=False)
+        finally:
+            self._is_updating_ui = False
 
     def on_region_search_text_changed(self, text: str):
         if getattr(self, "_region_settling", False): return
@@ -184,29 +200,38 @@ class TravelTabWidget(QWidget):
                 if count >= 300: break
 
     def _apply_region_text_and_update(self, text: str) -> bool:
-        # ... (이하 기존 on_region_apply_clicked 로직과 유사하게 UI 직접 제어) ...
-        # 이 부분은 UI 상태를 직접 제어해야 하므로 컨트롤러에 남아있는 것이 자연스러움
         info = self._region_map.get(text)
         if not info:
-            # ... (기존의 info 찾는 로직) ...
-            pass # 간단히 생략
-        
-        if not info: return False
+            return False
 
-        prov, city, dong = info
-        self.province_combo.set_checked([prov])
-        self._rebuild_cities_from_provinces()
-        self.city_combo.set_checked([city])
-        self._rebuild_dongs()
-        if dong: self.dong_combo.set_checked([dong])
-
+        self._is_updating_ui = True
         try:
-            self._region_settling = True
+            prov, city, dong = info
+            
+            # 시/도 설정 및 시/군/구 목록 업데이트
+            self.province_combo.set_checked([prov])
+            sel_provs = self.province_combo.checked_items()
+            cities = self.logic.get_cities_for_provinces(sel_provs)
+            self.city_combo.clear_items()
+            self.city_combo.add_checkable_items(cities, checked=False)
+
+            # 시/군/구 설정 및 읍/면/동 목록 업데이트
+            self.city_combo.set_checked([city])
+            sel_cities = self.city_combo.checked_items()
+            dongs = self.logic.get_dongs_for_cities(sel_provs, sel_cities)
+            self.dong_combo.clear_items()
+            self.dong_combo.add_checkable_items(dongs, checked=False)
+
+            # 읍/면/동 설정
+            if dong: self.dong_combo.set_checked([dong])
+
+            # 지역 검색창 텍스트 업데이트
             display_text = f"{prov} > {city}"
             if dong: display_text += f" > {dong}"
             self.region_search_input.setText(display_text)
         finally:
-            self._region_settling = False
+            self._is_updating_ui = False
+        
         return True
 
     def on_region_apply_clicked(self):
@@ -214,13 +239,17 @@ class TravelTabWidget(QWidget):
         if not self._apply_region_text_and_update(text):
             QMessageBox.information(self, "알림", "지역을 인식하지 못했어요. 예: '강원 > 강릉시'")
             return
-        self.search_places()
+        self._search_and_update_table()
 
     def on_region_completer_activated(self, picked: str):
         if self._apply_region_text_and_update(picked):
-            pass
+            self._search_and_update_table()
 
-    def search_places(self):
+    def _search_and_update_table(self):
+        """모든 필터 값을 취합하여 검색을 수행하고 테이블을 업데이트하는 통합 함수"""
+        if self._is_updating_ui:
+            return
+            
         self.search_button.setText("검색 중...")
         self.search_button.setEnabled(False)
         QApplication.processEvents()
@@ -231,11 +260,14 @@ class TravelTabWidget(QWidget):
             "dongs": self.dong_combo.checked_items(),
             "categories": self.category_combo.checked_items(),
             "review_categories": self.review_category_combo.checked_items(),
-            "review_range": self.review_range_combo.currentText()
+            "review_range": self.review_range_combo.currentText(),
+            "name": self.place_search_input.text().strip()
         }
+        
         places = self.logic.search_places(filters)
 
-        if not places:
+        # 검색 결과가 없을 때만 메시지 박스 표시 (초기 로드 제외)
+        if not places and any(filters.values()):
             QMessageBox.information(self, "검색 결과", "조건에 맞는 장소를 찾을 수 없습니다.")
             self.place_table_widget.setRowCount(0)
         else:
@@ -247,29 +279,12 @@ class TravelTabWidget(QWidget):
         self.search_button.setText("필터 적용")
         self.search_button.setEnabled(True)
 
+    # search_places와 search_places_by_name은 이제 _search_and_update_table을 호출
+    def search_places(self):
+        self._search_and_update_table()
+
     def search_places_by_name(self):
-        search_term = self.place_search_input.text().strip()
-        if not search_term:
-            QMessageBox.information(self, "검색어 오류", "검색어를 입력해주세요.")
-            return
-
-        self.place_search_button.setText("검색 중...")
-        self.place_search_button.setEnabled(False)
-        QApplication.processEvents()
-
-        places = self.logic.search_places_by_name(search_term)
-
-        if not places:
-            QMessageBox.information(self, "검색 결과", "조건에 맞는 장소를 찾을 수 없습니다.")
-            self.place_table_widget.setRowCount(0)
-        else:
-            if len(places) > 1000:
-                QMessageBox.information(self, "결과 제한", f"검색 결과가 {len(places):,}개로 많아 상위 1,000개만 표시합니다.")
-                places = places[:1000]
-            self._populate_table(places)
-
-        self.place_search_button.setText("장소명 검색")
-        self.place_search_button.setEnabled(True)
+        self._search_and_update_table()
 
 
     def _populate_table(self, places):
