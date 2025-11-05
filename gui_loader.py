@@ -11,6 +11,7 @@ from PyQt5.QtCore import Qt
 from news.src.components.news_tab import NewsTab
 from news.src.components.news_tab_test import NewsTabTest
 from news.src.components.stock_tab import StockTab
+from news.src.components.weekly_stock_tab import WeeklyStockTab
 from news.src.components.hwan_tab import HwanTab
 from news.src.components.toss_tab import TossTab
 from news.src.components.settings_dialog import SettingsDialog
@@ -88,8 +89,9 @@ class MainWindow(QMainWindow):
         tab_widget = QTabWidget()
         tab_widget.addTab(NewsTab(), "📰 뉴스 재구성")
         tab_widget.addTab(NewsTabTest(), "🧪 뉴스 LLM 재구성")
-        tab_widget.addTab(HwanTab(), "💱 환율 차트")
+        tab_widget.addTab(HwanTab(), "💱 환율 차트(실험 중)")
         tab_widget.addTab(StockTab(), "📈 주식 차트")
+        tab_widget.addTab(WeeklyStockTab(), "📅 주간 주식 시황(실험 중)")
         tab_widget.addTab(TossTab(), "📈 토스 인기 종목")
         layout.addWidget(tab_widget)
 

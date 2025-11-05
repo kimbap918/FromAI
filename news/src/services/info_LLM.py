@@ -5,6 +5,11 @@ from PIL import Image
 from dotenv import load_dotenv
 from news.src.utils.common_utils import get_today_kst_str, build_stock_prompt
 from news.src.utils.exchange_utils import build_fx_prompt
+from news.src.utils.weekly_stock_utils import (
+    get_five_trading_days_ohlc,
+    format_weekly_ohlc_for_prompt,
+    build_weekly_stock_prompt,
+)
 
 # ------------------------------------------------------------------
 # 작성자 : 곽은규
@@ -158,6 +163,12 @@ def build_system_prompt(keyword, today_kst, is_stock=False):
     :return: 최종 시스템 프롬프트 문자열
     """
     prompt = BASE_SYSTEM_PROMPT.format(keyword=keyword, today_kst=today_kst)
+    # Debug: 기본 시스템 프롬프트가 제대로 생성되는지 길이와 앞부분을 출력
+    try:
+        print("[DEBUG] BASE_SYSTEM_PROMPT 길이:", len(prompt))
+        print("[DEBUG] BASE_SYSTEM_PROMPT 미리보기:\n" + (prompt[:1000] if len(prompt) > 1000 else prompt))
+    except Exception:
+        pass
     if is_stock:
         stock_prompt = build_stock_prompt(today_kst)
         prompt += "\n" + stock_prompt
@@ -214,7 +225,20 @@ def generate_info_news_from_text(keyword: str, info_dict: dict, domain: str = "g
     :return: LLM이 생성한 기사 텍스트
     """
     today_kst = get_today_kst_str()
-    system_prompt = build_system_prompt(keyword, today_kst, is_stock = domain in ["stock", "toss"])
+    # 주간 도메인에서는 명확히 BASE_SYSTEM_PROMPT + weekly_prompt 형태만 사용하도록 강제
+    if domain == "week":
+        # BASE_SYSTEM_PROMPT에 .format을 적용해 기본 시스템 메시지를 생성
+        system_prompt = BASE_SYSTEM_PROMPT.format(keyword=keyword, today_kst=today_kst)
+    else:
+        # 일반 주식/토스 도메인은 기존 로직(주식 전용 규칙 포함) 사용
+        system_prompt = build_system_prompt(keyword, today_kst, is_stock = domain in ["stock", "toss"])
+
+    # Debug: 최종 system_prompt가 모델에 전달되기 전 길이 및 미리보기 출력
+    try:
+        print("[DEBUG] 최종 system_prompt 길이:", len(system_prompt))
+        print("[DEBUG] 최종 system_prompt 미리보기:\n" + (system_prompt[:1000] if len(system_prompt) > 1000 else system_prompt))
+    except Exception:
+        pass
 
     def _format_dict_for_prompt(data_dict):
         lines = []
@@ -246,6 +270,29 @@ def generate_info_news_from_text(keyword: str, info_dict: dict, domain: str = "g
                 f"이 데이터를 바탕으로 기사 형식으로 분석해 주세요.\n"
                 f"[주식 정보]\n{info_str}"
             )
+    elif domain == "week":
+        # 주간 기사 전용: 기본 주식 정보 포맷 + 주간 OHLC와 전용 규칙 주입
+        user_message = (
+            f"아래는 '{keyword}'의 주식 시세 및 재무정보입니다. "
+            f"이 데이터는 모두 '{keyword}'(회사)의 실제 시세 및 재무정보입니다. "
+            f"이 데이터를 바탕으로 기사 형식으로 분석해 주세요.\n"
+            f"[주식 정보]\n{info_str}"
+        )
+        try:
+            weekly_rows = get_five_trading_days_ohlc(keyword)
+        except Exception:
+            weekly_rows = None
+        if weekly_rows:
+            weekly_text = format_weekly_ohlc_for_prompt(weekly_rows)
+            user_message = user_message + "\n" + "[주간 OHLC (최근 5거래일)]\n" + weekly_text
+        weekly_prompt = build_weekly_stock_prompt()
+        system_prompt = system_prompt + "\n" + weekly_prompt
+        # Debug: 주간 도메인일 때 weekly prompt가 실제로 시스템 프롬프트에 포함되었는지 확인
+        try:
+            print("[DEBUG] Weekly prompt 길이:", len(weekly_prompt))
+            print("[DEBUG] Weekly prompt 미리보기:\n" + (weekly_prompt[:1000] if len(weekly_prompt) > 1000 else weekly_prompt))
+        except Exception:
+            pass
     elif domain == "fx":
         user_message = (
             f"아래는 '{keyword}'의 환율 정보입니다. "

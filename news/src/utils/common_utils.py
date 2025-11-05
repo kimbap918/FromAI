@@ -327,7 +327,7 @@ def capture_and_generate_news(keyword: str, domain: str = "stock", progress_call
             step_callback(current_step, total_steps)
             
     info_dict = {} # LLM에 전달할 정보를 담을 딕셔너리
-    is_stock = (domain == "stock")
+    is_stock = (domain in ["stock", "week"]) 
 
     # 기사와 이미지를 저장하는 내부 함수
     def save_news_and_image(news, image_path=None):
@@ -364,7 +364,7 @@ def capture_and_generate_news(keyword: str, domain: str = "stock", progress_call
             pass
 
     # 도메인이 'stock' 또는 'toss'인 경우
-    if domain in ["stock", "toss"]:
+    if domain in ["stock", "toss", "week"]:
         stock_code = get_stock_info_from_search(keyword)
         report_step() # 1. 정보 조회 완료
 
@@ -411,7 +411,7 @@ def capture_and_generate_news(keyword: str, domain: str = "stock", progress_call
                 stock_code, progress_callback=progress_callback, debug=debug,
                 custom_save_dir=toss_save_dir, is_running_callback=is_running_callback
             )
-        else: # 일반 'stock' 탭의 경우
+        else: # 일반 'stock' / 'week' 탭의 경우
             if progress_callback: progress_callback(f"{keyword} 국내주식 정보 조회 중...")
             image_path, is_stock, chart_text, invest_info_text, chart_info, invest_info, summary_info_text = capture_wrap_company_area(
                 stock_code, progress_callback=progress_callback, debug=debug, 
