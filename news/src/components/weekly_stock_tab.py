@@ -8,7 +8,7 @@ import platform
 import os
 from datetime import datetime
 
-from news.src.utils.common_utils import capture_and_generate_news
+from news.src.utils.common_utils import capture_and_generate_news, get_today_kst_date_str
 from news.src.utils.domestic_utils import check_investment_restricted, finance
 from news.src.utils.data_manager import data_manager
 
@@ -96,12 +96,18 @@ class WeeklyWorker(QThread):
                     def is_running_callback():
                         return self.is_running
 
+                    # 주간 전용 저장 폴더를 생성하여 capture_and_generate_news에 전달합니다.
+                    today_str = get_today_kst_date_str()
+                    weekly_save_dir = os.path.join(os.getcwd(), "주간 기사", f"기사{today_str}")
+                    os.makedirs(weekly_save_dir, exist_ok=True)
+
                     news = capture_and_generate_news(
                         keyword,
                         progress_callback=progress_callback,
                         is_running_callback=is_running_callback,
                         step_callback=step_callback,
-                        domain="week"  # 주간 전용 도메인
+                        domain="week",  # 주간 전용 도메인
+                        custom_save_dir=weekly_save_dir
                     )
 
                     if not self.is_running:
@@ -150,7 +156,7 @@ class WeeklyStockTab(QWidget):
     def init_ui(self):
         layout = QVBoxLayout()
 
-        title_label = QLabel("📅 주간 테스트 (5거래일 OHLC 기사)")
+        title_label = QLabel("📅 주간 주식 시황 (5거래일 OHLC 기사)")
         title_label.setFont(QFont("Arial", 16, QFont.Bold))
         title_label.setAlignment(Qt.AlignCenter)
         layout.addWidget(title_label)
@@ -225,7 +231,7 @@ class WeeklyStockTab(QWidget):
 
     def open_article_folder(self):
         today = datetime.now().strftime('%Y%m%d')
-        folder_path = os.path.join("생성된 기사", f"기사{today}")
+        folder_path = os.path.join("주간 기사", f"기사{today}")
         if os.path.exists(folder_path):
             if platform.system() == "Windows":
                 os.startfile(folder_path)

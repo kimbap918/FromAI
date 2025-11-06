@@ -279,9 +279,34 @@ def generate_info_news_from_text(keyword: str, info_dict: dict, domain: str = "g
             f"[주식 정보]\n{info_str}"
         )
         try:
-            weekly_rows = get_five_trading_days_ohlc(keyword)
+            # 우선 info_dict에 symbol이 있는지 확인하여 우선 사용
+            weekly_rows = None
+            if isinstance(info_dict, dict) and info_dict.get('symbol'):
+                sym = info_dict.get('symbol')
+                try:
+                    print(f"[DEBUG] weekly OHLC 시도: symbol 사용 -> {sym}")
+                    weekly_rows = get_five_trading_days_ohlc(sym)
+                except Exception:
+                    weekly_rows = None
+
+            # symbol로 실패하거나 없으면 기본 키워드로 시도
+            if not weekly_rows:
+                try:
+                    weekly_rows = get_five_trading_days_ohlc(keyword)
+                except Exception:
+                    weekly_rows = None
+
         except Exception:
             weekly_rows = None
+        # 해외 종목의 경우 추가 재시도: info_dict의 영문명/이름으로 재시도
+        if not weekly_rows and isinstance(info_dict, dict):
+            try:
+                alt_name = info_dict.get('name') or info_dict.get('Name') or info_dict.get('keyword')
+                if alt_name and alt_name != keyword:
+                    print(f"[DEBUG] weekly OHLC 재시도: 대체 이름 사용 -> {alt_name}")
+                    weekly_rows = get_five_trading_days_ohlc(alt_name)
+            except Exception:
+                weekly_rows = None
         if weekly_rows:
             weekly_text = format_weekly_ohlc_for_prompt(weekly_rows)
             user_message = user_message + "\n" + "[주간 OHLC (최근 5거래일)]\n" + weekly_text
