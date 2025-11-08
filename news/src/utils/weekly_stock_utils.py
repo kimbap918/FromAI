@@ -23,12 +23,41 @@ def get_five_trading_days_ohlc(keyword: str) -> Optional[List[Dict[str, str]]]:
     (항목 수는 1~5일 등 유동적입니다.)
     """
     try:
-        # 먼저 국내 종목 코드 조회 시도
-        code = finance(keyword)
+        # 국내 종목 코드 조회 시도 (domestic_utils.py의 finance 함수와 유사한 로직)
         is_foreign = False
-        if not code:
-            # 국내 종목이 아니면 해외 종목으로 시도
-            is_foreign = True
+        code = None
+        
+        try:
+            # 1. 정확한 이름으로 시도 (공백과 대소문자 무시)
+            df_krx = fdr.StockListing('KRX')
+            
+            # 2. 공백과 대소문자 무시하고 정확히 일치하는 경우
+            matching_stocks = df_krx[df_krx['Name'].str.replace(' ', '').str.lower() == keyword.replace(' ', '').lower()]
+            
+            # 3. 정확히 일치하는 것이 없으면, 이름에 포함된 경우 검색 (대소문자 무시)
+            if matching_stocks.empty:
+                matching_stocks = df_krx[df_krx['Name'].str.lower().str.contains(keyword.lower(), na=False)]
+            
+            # 4. 종목코드로 검색 시도 (6자리 숫자인 경우)
+            if matching_stocks.empty and keyword.isdigit() and len(keyword) == 6:
+                matching_stocks = df_krx[df_krx['Code'] == keyword]
+                
+            # 5. 종목코드로 검색 (앞에 'A'가 붙은 경우)
+            if matching_stocks.empty and len(keyword) == 7 and keyword[0].upper() == 'A' and keyword[1:].isdigit():
+                matching_stocks = df_krx[df_krx['Code'] == keyword[1:]]
+            
+            # 일치하는 종목이 있으면 첫 번째 종목의 'Code'를 사용
+            if not matching_stocks.empty:
+                code = matching_stocks.iloc[0]['Code']
+                print(f"DEBUG: Found domestic stock: {matching_stocks.iloc[0]['Name']} ({code})")
+            else:
+                # 국내 종목이 아니면 해외 종목으로 간주
+                is_foreign = True
+                print(f"DEBUG: No matching domestic stock found for '{keyword}'. Trying foreign stocks...")
+                
+        except Exception as e:
+            print(f"ERROR: Error searching for domestic stock: {str(e)}")
+            is_foreign = True  # 오류 발생 시 해외 종목으로 간주
 
         today = _dt.date.today()
         # 주말이면 직전 금요일로 맞춤
