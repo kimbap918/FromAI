@@ -11,6 +11,70 @@ from news.src.utils.weekly_stock_utils import (
     build_weekly_stock_prompt,
 )
 
+# ==========================
+# [Billing Helpers] 요금 계산
+# ==========================
+GEMINI_FLASH_PRICE = {
+    "standard": {"in": 0.30, "out": 2.50},  # USD / 1M tokens
+    "batch":    {"in": 0.15, "out": 1.25},
+}
+
+def _safe_get(obj, name, default=0):
+    """usage_metadata가 객체/딕셔너리 어떤 형태든 안전하게 꺼내기"""
+    if obj is None:
+        return default
+    if hasattr(obj, name):
+        val = getattr(obj, name)
+        return default if val is None else val
+    if isinstance(obj, dict):
+        val = obj.get(name, default)
+        return default if val is None else val
+    return default
+
+def print_token_usage_and_cost(usage, pricing_tier: str = "standard"):
+    """
+    항상 '공급자 기준'(provider_total)으로 과금 계산:
+      billed_out = total_token_count - prompt_token_count
+    참고를 위해 text-only(candidates+thoughts)도 함께 출력하되, 비용 계산엔 사용하지 않음.
+    """
+    price_in  = GEMINI_FLASH_PRICE[pricing_tier]["in"]
+    price_out = GEMINI_FLASH_PRICE[pricing_tier]["out"]
+
+    prompt     = _safe_get(usage, "prompt_token_count", 0)
+    candidates = _safe_get(usage, "candidates_token_count", 0)
+    thoughts   = _safe_get(usage, "thoughts_token_count", 0)
+    total      = _safe_get(usage, "total_token_count", prompt + candidates + thoughts)
+
+    # 두 기준 동시 계산 (비용은 provider_total만 사용)
+    billed_out_provider = max(total - prompt, 0)            # ← 과금 계산에 사용
+    billed_out_textonly = max(candidates + thoughts, 0)     # 참고용
+
+    in_cost  = prompt             / 1_000_000 * price_in
+    out_cost = billed_out_provider / 1_000_000 * price_out
+
+    print("\n=== 토큰 사용량 ===")
+    print(f"입력 토큰: {prompt}")
+    print(f"답변 토큰: {candidates}")
+    print(f"추론 토큰: {thoughts}")
+    print(f"전체 토큰(모델 보고): {total}")
+    print(f"- 공급자 기준(= total - 입력): {billed_out_provider}  <-- 과금 기준")
+    print(f"- 텍스트 기준(= 답변 + 추론):  {billed_out_textonly}  (참고용)")
+
+    print("\n=== 비용 추정 (Gemini 2.5 Flash / {tier}) ===".format(
+        tier="Batch" if pricing_tier == "batch" else "Standard"))
+    print(f"입력 비용: ${in_cost:.6f}")
+    print(f"출력 비용: ${out_cost:.6f}  <-- 공급자 기준")
+    print(f"총  비용: ${in_cost + out_cost:.6f}")
+
+    # 원자료도 함께 남겨 이슈 추적
+    try:
+        raw = getattr(usage, "__dict__", None) or dict(usage)
+        print("\n[DEBUG] usage raw:", raw)
+    except Exception:
+        pass
+
+
+
 # ------------------------------------------------------------------
 # 작성자 : 곽은규
 # 기능 : 다양한 실행 환경(.py, PyInstaller)에서 .env 파일 로드
@@ -77,7 +141,9 @@ BASE_SYSTEM_PROMPT = (
     [System Message]
     사용자가 키워드, 텍스트 정보, 그리고 이미지를 제공합니다.
     제공된 모든 정보를 종합적으로 분석하여 기사 문체로 작성합니다.
-    **최종 출력은 [제목], [해시태그], [본문]의 세 섹션으로 명확히 구분하여 반드시 작성할 것.** [Role]
+    **최종 출력은 [제목], [해시태그], [본문]의 세 섹션으로 명확히 구분하여 반드시 작성할 것.** 
+    
+    [Role]
     - 당신은 데이터(키워드, 텍스트, 이미지)를 분석하여 독자가 이해하기 쉬운 기사를 작성하는 전문 기자입니다.
     - 당신의 최우선 역할은 '전문 기자'로서, 데이터 속에서 정확히 독자에게 전달하는 것입니다. 이것이 모든 작업의 핵심 목표입니다.
     - 특정 주제(예: 주식)에 대한 **[Special Rules for ...], [Style], [키워드 정보(user message)]** 태그가 별도로 제공됩니다.
@@ -96,7 +162,7 @@ BASE_SYSTEM_PROMPT = (
         - 차트에서 보이는 추세(상승, 하락, 횡보)를 분석합니다.
 
     4. 본문 작성 (종합 분석 기반)
-        - **텍스트 정보와 이미지 분석 결과를 종합하여** 객관적인 시황 정보를 전달하는 기사 형식으로 작성합니다.
+        - **텍스트 정보와 이미지 분석 결과를 종합하여** 객관적인 시황 정보를 전달하는 기사 형식으로 작성합니다. (600자 이상)
         - **핵심 요약으로 시작**: 기사 첫 문단에 현재 시점의 가장 중요한 정보를 요약하여 제시하세요.
         - **데이터 기반 서사 구축**:
             당신은 데이터의 관계를 파악하여 이야기를 만드는 전문 기자입니다.
@@ -146,7 +212,7 @@ BASE_SYSTEM_PROMPT = (
         #(해시태그1) #(해시태그2) #(해시태그3) ...
 
         [본문]
-        (여기에 생성한 본문 내용)
+        (여기에 생성한 본문 내용, 600자 이상)
 """
 )
 
@@ -181,13 +247,17 @@ def build_system_prompt(keyword, today_kst, is_stock=False):
 # 기능 : 이미지와 키워드를 입력받아 정보성 기사 생성 (Vision 모델 사용)
 # 현재 상태: 미사용 함수 
 # ------------------------------------------------------------------
-def generate_info_news(keyword: str, image_path: str, is_stock: bool):
+def generate_info_news(keyword: str, image_path: str, is_stock: bool,
+                       pricing_tier: str = "standard",
+                       thinking_budget_tokens: int | None = None):
     """
     **현재 사용하지 않는 함수입니다.**
     주어진 이미지(차트 등)를 Gemini Vision 모델로 분석하여 정보성 기사를 생성
     :param keyword: 기사 생성에 사용할 키워드 (예: 주식명)
     :param image_path: 분석할 이미지 파일 경로
     :param is_stock: 주식 관련 이미지인지 여부 (프롬프트 분기용)
+    :param pricing_tier: "standard" 또는 "batch"
+    :param thinking_budget_tokens: 추론 토큰 예산 (0=끄기, 예: 256=켜기)
     :return: LLM이 생성한 기사 텍스트, 오류 발생 시 None
     """
     today_kst = get_today_kst_str()
@@ -195,10 +265,15 @@ def generate_info_news(keyword: str, image_path: str, is_stock: bool):
 
     user_message = f"아래 이미지는 '{keyword}' 관련 이미지 입니다. 이미지의 내용을 면밀히 분석해 기사 형식으로 작성하세요."
 
+    gen_config = None
+    if thinking_budget_tokens is not None:
+        # SDK별 차이를 흡수하기 위해 가장 호환성 높은 키를 시도
+        gen_config = {"thinking": {"budgetTokens": thinking_budget_tokens}}
 
     model = genai.GenerativeModel(
         model_name='gemini-2.5-flash',
-        system_instruction=system_prompt
+        system_instruction=system_prompt,
+        generation_config=gen_config
     )
 
     try:
@@ -207,7 +282,13 @@ def generate_info_news(keyword: str, image_path: str, is_stock: bool):
             user_message,
             img
         ])
-        return response.text  # .
+        # 토큰/비용 출력
+        usage = getattr(response, 'usage_metadata', None)
+        if usage:
+            print_token_usage_and_cost(usage, pricing_tier=pricing_tier)
+
+        # 생성된 응답 반환
+        return response.text
     except Exception as e:
         print(f"Gemini Vision API 호출 중 오류 발생: {e}")
         return None
@@ -216,12 +297,16 @@ def generate_info_news(keyword: str, image_path: str, is_stock: bool):
 # 작성자 : 곽은규
 # 기능 : 텍스트 데이터(딕셔너리)와 키워드를 입력받아 정보성 기사 생성
 # ------------------------------------------------------------------
-def generate_info_news_from_text(keyword: str, info_dict: dict, domain: str = "generic"):
+def generate_info_news_from_text(keyword: str, info_dict: dict, domain: str = "generic",
+                                 pricing_tier: str = "standard",
+                                 thinking_budget_tokens: int | None = None):
     """
     정제된 텍스트 데이터(딕셔너리)를 기반으로 Gemini 모델을 사용하여 정보성 기사를 생성
     :param keyword: 기사 생성에 사용할 키워드
     :param info_dict: 기사 내용으로 사용할 정제된 데이터 딕셔너리
-    :param domain: 데이터의 종류 (예: 'stock', 'fx', 'coin')
+    :param domain: 데이터의 종류 (예: 'stock', 'fx', 'coin', 'week')
+    :param pricing_tier: "standard" 또는 "batch" (요금 단가)
+    :param thinking_budget_tokens: 추론 토큰 예산 (0=끄기, 예: 256=켜기)
     :return: LLM이 생성한 기사 텍스트
     """
     today_kst = get_today_kst_str()
@@ -241,15 +326,30 @@ def generate_info_news_from_text(keyword: str, info_dict: dict, domain: str = "g
         pass
 
     def _format_dict_for_prompt(data_dict):
-        lines = []
-        for key, value in data_dict.items():
-            if isinstance(value, dict):
-                lines.append(f"{key}:")
-                for sub_key, sub_value in value.items():
-                    lines.append(f"  {sub_key}: {sub_value}")
+        def _is_time_label(k: str) -> bool:
+            try:
+                return isinstance(k, str) and len(k) in (4,5) and ":" in k and int(k.split(":")[0]) in range(0,24)
+            except Exception:
+                return False
+
+        def _walk(obj, indent=0):
+            lines = []
+            if isinstance(obj, dict):
+                items = list(obj.items())
+                # 시간 라벨 형식이면 키로 정렬
+                if all(_is_time_label(k) for k, _ in items):
+                    items.sort(key=lambda kv: kv[0])
+                for k, v in items:
+                    if isinstance(v, dict):
+                        lines.append(" " * indent + f"{k}:")
+                        lines.extend(_walk(v, indent + 2))
+                    else:
+                        lines.append(" " * indent + f"{k}: {v}")
             else:
-                lines.append(f"{key}: {value}")
-        return "\n".join(lines)
+                lines.append(" " * indent + str(obj))
+            return lines
+
+        return "\n".join(_walk(data_dict, 0))
 
     info_str = _format_dict_for_prompt(info_dict)
 
@@ -357,11 +457,24 @@ def generate_info_news_from_text(keyword: str, info_dict: dict, domain: str = "g
 
     print("\n[키워드 정보(user message)]\n" + user_message + "\n")
 
+    gen_config = None
+    if thinking_budget_tokens is not None:
+        gen_config = {"thinking": {"budgetTokens": thinking_budget_tokens}}
+
     model = genai.GenerativeModel(
         model_name='gemini-2.5-flash',
-        system_instruction=system_prompt
+        system_instruction=system_prompt,
+        generation_config=gen_config
     )
 
     response = model.generate_content(user_message)
     print("[LLM 응답 결과]\n" + response.text + "\n")
-    return response.text  
+    
+    # 토큰/비용 출력 (필드가 없으면 보정)
+    usage = getattr(response, 'usage_metadata', None)
+    if usage:
+        print_token_usage_and_cost(usage, pricing_tier=pricing_tier)
+    else:
+        print("\n(참고) usage_metadata가 제공되지 않았습니다. SDK/버전을 확인하세요.")
+    
+    return response.text

@@ -27,7 +27,12 @@ except ImportError:
         return datetime.now(TZ).strftime('%Y%m%d')
 
 from PIL import Image
-from news.src.utils.domestic_utils import finance
+from news.src.utils.domestic_utils import (
+    finance,
+    capture_wrap_company_area,
+    get_prev_trading_day_ohlc,
+    get_intraday_hourly_data,
+)
 from news.src.utils.data_manager import data_manager
 
 # ------------------------------------------------------------------
@@ -299,7 +304,7 @@ def create_template(keyword: str, is_foreign: bool, now_kst_dt: datetime = None)
 # 작성일 : 2025-07-25
 # 기능 : 차트를 캡처하고 LLM을 통해 뉴스를 생성하는 함수
 # ------------------------------------------------------------------
-def capture_and_generate_news(keyword: str, domain: str = "stock", progress_callback=None, is_running_callback=None, step_callback=None, debug=False, open_after_save=True, custom_save_dir: Optional[str] = None):
+def capture_and_generate_news(keyword: str, domain: str = "stock", progress_callback=None, is_running_callback=None, step_callback=None, debug=True, open_after_save=True, custom_save_dir: Optional[str] = None):
     """
     주식 정보 조회, 차트 이미지 캡처, LLM을 통한 기사 생성을 총괄하는 메인 함수.
     :param keyword: 검색할 종목명
@@ -314,7 +319,6 @@ def capture_and_generate_news(keyword: str, domain: str = "stock", progress_call
     """
     from news.src.services.info_LLM import generate_info_news_from_text
     from news.src.utils.foreign_utils import capture_naver_foreign_stock_chart
-    from news.src.utils.domestic_utils import capture_wrap_company_area
 
     total_steps = 3 # 전체 프로세스 단계 수: 1.정보조회, 2.이미지캡처, 3.기사생성
     current_step = 0
@@ -424,12 +428,38 @@ def capture_and_generate_news(keyword: str, domain: str = "stock", progress_call
             return None
             
         info_dict = {**chart_info, **invest_info} # 차트와 투자자 정보를 합쳐 LLM에 전달
-        
+
+        # 🔹 국내 주식 보강 데이터 주입 (오전/오후 분기)
+        try:
+            now_kst = datetime.now(TZ)
+
+            # 09:00 ~ 11:59 사이: 이전 거래일 OHLC 주입
+            if 9 <= now_kst.hour < 12:
+                prev_ohlc = get_prev_trading_day_ohlc(stock_code, debug=debug)
+                if prev_ohlc:
+                    info_dict["이전거래일정보"] = prev_ohlc
+                    if debug:
+                        print(f"[DEBUG] 이전거래일정보 추가: {prev_ohlc}")
+
+            # 12:00 이후: 금일 1시간 단위 시세 주입
+            else:
+                intraday_data = get_intraday_hourly_data(stock_code, now_kst, debug=debug)
+                if intraday_data:
+                    info_dict["시간대별시세"] = intraday_data
+                    if debug:
+                        print(f"[DEBUG] 시간대별시세 추가: {intraday_data}")
+
+        except Exception as e:
+            if debug:
+                print(f"[DEBUG] 국내 주식 보강 데이터 주입 실패 - code={stock_code}, error={e}")
+
         # 신규상장 종목 여부 정보 추가
         is_newly_listed_stock = data_manager.is_newly_listed(keyword)
         info_dict["신규상장여부"] = is_newly_listed_stock
 
-        if debug: print("[DEBUG] 국내 주식 정보:\n", info_dict)
+        if debug:
+            print("[DEBUG] 국내 주식 info_dict keys:", list(info_dict.keys()))
+            print("[DEBUG] 국내 주식 정보:\n", info_dict)
         if progress_callback: progress_callback("LLM 기사 생성 중...")
         news = generate_info_news_from_text(keyword, info_dict, domain) # LLM 기사 생성
         report_step() # 3. 기사 생성 완료
@@ -561,9 +591,11 @@ def build_stock_prompt(today_kst):
         f"   - 시간 암시어(장중/이후/뒤/한때/다음/오늘 등)·추세 표현(확대/축소/급등/급락 등) 금지.\n"
         f"   - N/A 값은 생략, 범위·수준 등 드러난 사실만 사용(추론 금지).\n"
         f"   - 의미 부여는 ‘비교’로만 하며, 시가총액·순위, 업종 등락률 대비, PER vs 업종 PER, 외국인 소진율 중 최소 2개 이상을 반드시 포함한다(추측·전망 금지).\n"
-        f"   - 신규상장 값이 True 일 경우, '지난 종가'=공모가로 간주해 서술.\n"
+        f"   - 신규상장 값이 True 일 경우, '지난 종가' -> '공모가' 로 치환해 서술.\n"
         f"   - 감정·권유·주관 어휘 금지: 투자자들, 관심, 주목, 기대, 풀이, 분석 등.\n"
-        f"   - 해외주식인 경우 정규장 서술 뒤 시간 외 거래를 별도 문장으로 덧붙임.\n\n"
+        f"   - 해외주식인 경우 정규장 서술 뒤 시간 외 거래를 별도 문장으로 덧붙임.\n"
+        f"   - [주식 정보]탭에서 '시간대별시세'가 주어질 경우, 각 시간대 별 데이터를 활용하되, **'시간대마지막가'를 사용해 본문의 끝에 시간대별 흐름 중심으로 자연스럽게 요약 서술한다.** 과거 시제를 사용하며 '마감/마무리/종료/끝났다/마쳤다' 등 마감 어휘는 사용하지 않는다(국내 정규장 일일 마감은 15:30이며, 15시를 마감처럼 서술 금지).\n"
+        f"   - [주식 정보]탭에서 '이전거래일정보'가 주어질 경우 해당 데이터를 활용하여 본문의 끝에 서술한다.\n\n"
         f"4. 거래대금은 반드시 **억 단위, 천만 단위로 환산**하여 정확히 표기할 것\n"
         f"   - 예시: \"135,325백만\" → \"1,353억 2,500만 원\" / \"15,320백만\" → \"153억 2,000만 원\" / \"3,210백만\" → \"32억 1,000만 원\" / \"850백만\" → \"8억 5,000만 원\"\n\n"
     )

@@ -6,7 +6,7 @@ import os
 import time
 import io
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 from PIL import Image
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
@@ -15,6 +15,8 @@ from news.src.utils.driver_utils import initialize_driver
 import FinanceDataReader as fdr
 import pandas as pd
 from bs4 import BeautifulSoup
+import requests
+import ast
 try:
     import pyperclip
     HAS_PYPERCLIP = True
@@ -22,6 +24,208 @@ except ImportError:
     HAS_PYPERCLIP = False
 
 
+# ------------------------------------------------------------------
+# 작성자 : 최준혁 
+# 작성일 : 2025-11-17
+# 기능 : 네이버 분봉 데이터 조회 헬퍼
+# ------------------------------------------------------------------
+def _fetch_naver_minute_df(stock_code: str, count: int = 400, debug: bool = False) -> pd.DataFrame:
+    """
+    네이버 finance 비공식 API(siseJson.naver)를 사용해 분 단위 가격 데이터를 조회.
+    - count: 최근 몇 개 분 데이터를 가져올지 (400이면 약 6~7시간 분량)
+    - 반환: DatetimeIndex를 가진 DataFrame (컬럼: Open, High, Low, Close, Volume, 외국인소진율)
+    """
+    try:
+        url = (
+            "https://api.finance.naver.com/siseJson.naver?"
+            f"symbol={stock_code}&requestType=0&count={count}&timeframe=minute"
+        )
+        print("=================url 데이터 확인====================", url)
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0 Safari/537.36",
+            "Referer": "https://finance.naver.com/",
+        }
+        res = requests.get(url, headers=headers, timeout=10)
+        text = res.text.strip()
+        if not text:
+            if debug:
+                print(f"[DEBUG] 네이버 분봉 응답이 비어 있음 - code={stock_code}")
+            return pd.DataFrame()
+
+        # 일부 응답은 'null' 토큰을 포함하므로 파싱 전 치환
+        safe_text = text.replace('null', 'None')
+        try:
+            data = ast.literal_eval(safe_text)
+        except Exception as e:
+            if debug:
+                print(f"[DEBUG] literal_eval 실패, 원문 길이={len(text)} 에러={e}")
+            return pd.DataFrame()
+        if not data or len(data) <= 1:
+            if debug:
+                print(f"[DEBUG] 네이버 분봉 데이터 부족 - code={stock_code}")
+            return pd.DataFrame()
+
+        df = pd.DataFrame(
+            data[1:], 
+            columns=["Date", "Open", "High", "Low", "Close", "Volume", "외국인소진율"]
+        )
+
+        for col in ["Open", "High", "Low", "Close", "Volume"]:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+
+        df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
+        df = df.dropna(subset=["Date"]).set_index("Date").sort_index()
+        return df
+
+    except Exception as e:
+        if debug:
+            print(f"[DEBUG] 네이버 분봉 데이터 조회 실패 - code={stock_code}, error={e}")
+        return pd.DataFrame()
+
+
+# ------------------------------------------------------------------
+# 작성자 : 최준혁 
+# 작성일 : 2025-11-17
+# 기능 : 이전 거래일 OHLC 정보 조회 (FinanceDataReader)
+# ------------------------------------------------------------------
+def get_prev_trading_day_ohlc(stock_code: str, lookback_days: int = 15, debug: bool = False) -> dict:
+    """
+    FinanceDataReader를 이용해 최근 N일간의 일별 시세를 조회하고,
+    직전 거래일(마지막 행 바로 전)의 OHLC/거래량 정보를 반환.
+    """
+    try:
+        today = datetime.today().date()
+        start = today - timedelta(days=lookback_days * 2)
+
+        df = fdr.DataReader(stock_code, start.strftime("%Y-%m-%d"), today.strftime("%Y-%m-%d"))
+        if df is None or df.empty:
+            if debug:
+                print(f"[DEBUG] 이전 거래일 OHLC 조회 실패 - 빈 데이터, code={stock_code}")
+            return {}
+
+        if len(df) >= 2:
+            row = df.iloc[-2]
+            date_idx = df.index[-2]
+        else:
+            row = df.iloc[-1]
+            date_idx = df.index[-1]
+
+        date_str = date_idx.strftime("%Y-%m-%d")
+
+        def fmt(v):
+            try:
+                return f"{int(v):,}"
+            except Exception:
+                return None
+
+        result = {
+            "날짜": date_str,
+            "시가": fmt(row.get("Open")),
+            "고가": fmt(row.get("High")),
+            "저가": fmt(row.get("Low")),
+            "종가": fmt(row.get("Close")),
+        }
+
+        if "Volume" in row:
+            vol = fmt(row.get("Volume"))
+            if vol is not None:
+                result["거래량"] = vol
+
+        result = {k: v for k, v in result.items() if v is not None}
+        return result
+
+    except Exception as e:
+        if debug:
+            print(f"[DEBUG] 이전 거래일 OHLC 조회 중 예외 - code={stock_code}, error={e}")
+        return {}
+
+
+# ------------------------------------------------------------------
+# 작성자 : 최준혁
+# 작성일 : 2025-11-17
+# 기능 : 금일 분봉을 1시간 단위로 집계하여 시간대별 시세 생성
+# ------------------------------------------------------------------
+def get_intraday_hourly_data(stock_code: str, now_dt: datetime, debug: bool = False) -> dict:
+    """
+    네이버 분봉 데이터를 사용해 금일(now_dt 기준 날짜)의 1시간 단위 OHLC/거래량을 집계.
+    - now_dt: Asia/Seoul 시간대를 가진 datetime
+    - 반환 예: {"09:00": {"시가": "...", ...}, ...}
+    """
+    try:
+        df = _fetch_naver_minute_df(stock_code, count=1200, debug=debug)
+        if df.empty:
+            if debug:
+                print(f"[DEBUG] 시간대별시세 - 분봉 데이터 없음, code={stock_code}")
+            return {}
+
+        naive_now = now_dt.replace(tzinfo=None)
+        target_date = naive_now.date()
+
+        df_today = df[df.index.date == target_date]
+        # 진행 중인 현재 시간대 제외: 현재 시각의 정각 미만까지만 사용
+        current_hour_start = naive_now.replace(minute=0, second=0, microsecond=0)
+        df_today = df_today[df_today.index < current_hour_start]
+        if debug:
+            try:
+                print(f"[DEBUG] 시간대별시세 - 전체분봉 범위: {df.index.min()} ~ {df.index.max()} ({len(df)}건)")
+                if not df_today.empty:
+                    print(f"[DEBUG] 시간대별시세 - 금일분봉 범위: {df_today.index.min()} ~ {df_today.index.max()} ({len(df_today)}건), 기준시각: {current_hour_start}")
+                else:
+                    print(f"[DEBUG] 시간대별시세 - 금일분봉 없음 (target_date={target_date}), 기준시각: {current_hour_start}")
+            except Exception:
+                pass
+
+        # 09:00 이전(예: 08:30) 분봉은 제외
+        pre_cnt = len(df_today)
+        df_today = df_today[df_today.index.hour >= 9]
+        if debug and pre_cnt != len(df_today):
+            try:
+                print(f"[DEBUG] 시간대별시세 - 09시 이전 분봉 제외: {pre_cnt - len(df_today)}건 제거")
+            except Exception:
+                pass
+
+        # 일부 분봉 응답은 O/H/L가 null이고 Close만 제공됨 → Close 기준으로 OHLC 산출
+        hourly_price = df_today["Close"].resample("1h").agg(["first", "max", "min", "last"])  # 가격 집계
+        hourly_vol = df_today["Volume"].resample("1h").sum()  # 거래량 집계
+        hourly = pd.concat([hourly_price, hourly_vol], axis=1)
+        hourly.columns = ["Open", "High", "Low", "Close", "Volume"]
+        hourly = hourly.dropna(subset=["Open", "High", "Low", "Close"])  # 가격 필수
+
+        if hourly.empty:
+            if debug:
+                print(f"[DEBUG] 시간대별시세 - 1시간 집계 결과 없음 (df_today={len(df_today)}건, Close기반 집계)")
+            return {}
+
+        result = {}
+        for idx, row in hourly.iterrows():
+            label = idx.strftime("%H:%M")
+            try:
+                result[label] = {
+                    "시간대시작가": f"{int(row['Open']):,}",
+                    "시간대최고가": f"{int(row['High']):,}",
+                    "시간대최저가": f"{int(row['Low']):,}",
+                    "시간대마지막가": f"{int(row['Close']):,}",
+                    "시간대거래량": f"{int(row['Volume']):,}",
+                }
+            except Exception:
+                if debug:
+                    print(f"[DEBUG] 시간대별시세 - 포맷 실패, index={idx}, row={row}")
+                continue
+
+        # 장마감(>= 15:30) 이후 조회 시, 마지막 시간 라벨을 15:30으로 표기
+        try:
+            market_closed = (naive_now.hour > 15) or (naive_now.hour == 15 and naive_now.minute >= 30)
+            if market_closed and "15:00" in result:
+                result["15:30"] = result.pop("15:00")
+        except Exception:
+            pass
+
+        return result
+
+    except Exception as e:
+        if debug:
+            print(f"[DEBUG] 시간대별시세 집계 실패 - code={stock_code}, error={e}")
+        return {}
 # ------------------------------------------------------------------
 # 작성자 : 곽은규
 # 작성일 : 2025-07-22

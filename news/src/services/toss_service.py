@@ -141,25 +141,58 @@ def get_toss_stock_data(debug=False, start_rank=1, end_rank=None, abs_min=None, 
 # ------------------------------------------------------------------
 def filter_toss_data(df, min_pct=None, max_pct=None, min_price=None, up_check=False, down_check=False, limit=None):
     df_filtered = df.copy()
+    # 등락률 컬럼 숫자화 (비교 안전성 확보)
+    if "등락률(%)" in df_filtered.columns:
+        df_filtered["등락률(%)"] = pd.to_numeric(df_filtered["등락률(%)"], errors="coerce")
+
+    # 방향 마스크
+    if up_check and not down_check:
+        dir_mask = (df_filtered["등락"] == "UP")
+    elif down_check and not up_check:
+        dir_mask = (df_filtered["등락"] == "DOWN")
+    else:
+        # 체크 없거나 둘 다 체크 시 양/음 모두 허용
+        dir_mask = pd.Series([True] * len(df_filtered), index=df_filtered.index)
+
+    # 등락률 마스크
+    pct = df_filtered["등락률(%)"] if "등락률(%)" in df_filtered else pd.Series([None] * len(df_filtered), index=df_filtered.index)
+    pct_mask = pd.Series([True] * len(df_filtered), index=df_filtered.index)
 
     if min_pct is not None and max_pct is not None:
-        if down_check and not up_check:  # 하락만
-            df_filtered = df_filtered[(df_filtered["등락률(%)"] <= -min_pct) & (df_filtered["등락률(%)"] >= -max_pct)]
-        elif up_check and not down_check:  # 상승만
-            df_filtered = df_filtered[(df_filtered["등락률(%)"] >= min_pct) & (df_filtered["등락률(%)"] <= max_pct)]
-        else:  # 체크 없으면 상승만
-            df_filtered = df_filtered[(df_filtered["등락률(%)"] >= min_pct) & (df_filtered["등락률(%)"] <= max_pct)]
+        if up_check and not down_check:
+            pct_mask = (pct >= min_pct) & (pct <= max_pct)
+        elif down_check and not up_check:
+            pct_mask = (pct <= -min_pct) & (pct >= -max_pct)
+        else:
+            # 양/음 모두 포함: 절댓값 범위로 판단
+            pct_mask = pct.abs().between(min_pct, max_pct)
+    elif min_pct is not None:
+        if up_check and not down_check:
+            pct_mask = (pct >= min_pct)
+        elif down_check and not up_check:
+            pct_mask = (pct <= -min_pct)
+        else:
+            pct_mask = (pct.abs() >= min_pct)
+    elif max_pct is not None:
+        if up_check and not down_check:
+            pct_mask = (pct <= max_pct)
+        elif down_check and not up_check:
+            pct_mask = (pct >= -max_pct)
+        else:
+            pct_mask = (pct.abs() <= max_pct)
+
+    # 방향 + 등락률 동시 적용
+    df_filtered = df_filtered[dir_mask & pct_mask]
+
+    # 가격 필터
     if min_price is not None:
-        df_filtered = df_filtered[df_filtered["현재가KRW_숫자"] >= min_price]  # 🔹 숫자 컬럼으로 비교
+        df_filtered = df_filtered[df_filtered["현재가KRW_숫자"] >= min_price]
 
-    if up_check and not down_check:
-        df_filtered = df_filtered[df_filtered["등락"] == "UP"]
-    elif down_check and not up_check:
-        df_filtered = df_filtered[df_filtered["등락"] == "DOWN"]
-
+    # 개수 제한
     if limit:
         df_filtered = df_filtered.head(limit)
 
+    # UI에는 숫자 보조 컬럼 제거
     return df_filtered.drop(columns=["현재가KRW_숫자"])  # UI에는 숫자 컬럼 제거
 
 
