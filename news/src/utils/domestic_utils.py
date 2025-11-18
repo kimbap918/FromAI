@@ -198,13 +198,15 @@ def get_intraday_hourly_data(stock_code: str, now_dt: datetime, debug: bool = Fa
 
         result = {}
         for idx, row in hourly.iterrows():
-            label = idx.strftime("%H:%M")
+            label = f"{idx.hour}시"
             try:
+                first_trade = f"{int(row['Open']):,}"
+                last_trade = f"{int(row['Close']):,}"
                 result[label] = {
-                    "시간대시작가": f"{int(row['Open']):,}",
-                    "시간대최고가": f"{int(row['High']):,}",
-                    "시간대최저가": f"{int(row['Low']):,}",
-                    "시간대마지막가": f"{int(row['Close']):,}",
+                    "첫 체결가": first_trade,
+                    "시간대 고가": f"{int(row['High']):,}",
+                    "시간대 저가": f"{int(row['Low']):,}",
+                    "마지막 체결가": last_trade,
                     "시간대거래량": f"{int(row['Volume']):,}",
                 }
             except Exception:
@@ -215,8 +217,8 @@ def get_intraday_hourly_data(stock_code: str, now_dt: datetime, debug: bool = Fa
         # 장마감(>= 15:30) 이후 조회 시, 마지막 시간 라벨을 15:30으로 표기
         try:
             market_closed = (naive_now.hour > 15) or (naive_now.hour == 15 and naive_now.minute >= 30)
-            if market_closed and "15:00" in result:
-                result["15:30"] = result.pop("15:00")
+            if market_closed and "15시" in result:
+                result["15시 ~ 15시 30분"] = result.pop("15시")
         except Exception:
             pass
 
