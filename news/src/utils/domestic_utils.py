@@ -185,10 +185,8 @@ def get_intraday_hourly_data(stock_code: str, now_dt: datetime, debug: bool = Fa
                 pass
 
         # 일부 분봉 응답은 O/H/L가 null이고 Close만 제공됨 → Close 기준으로 OHLC 산출
-        hourly_price = df_today["Close"].resample("1h").agg(["first", "max", "min", "last"])  # 가격 집계
-        hourly_vol = df_today["Volume"].resample("1h").sum()  # 거래량 집계
-        hourly = pd.concat([hourly_price, hourly_vol], axis=1)
-        hourly.columns = ["Open", "High", "Low", "Close", "Volume"]
+        hourly = df_today["Close"].resample("1h").agg(["first", "max", "min", "last"])  # 가격 집계
+        hourly.columns = ["Open", "High", "Low", "Close"]
         hourly = hourly.dropna(subset=["Open", "High", "Low", "Close"])  # 가격 필수
 
         if hourly.empty:
@@ -207,7 +205,6 @@ def get_intraday_hourly_data(stock_code: str, now_dt: datetime, debug: bool = Fa
                     "시간대 고가": f"{int(row['High']):,}",
                     "시간대 저가": f"{int(row['Low']):,}",
                     "마지막 체결가": last_trade,
-                    "시간대거래량": f"{int(row['Volume']):,}",
                 }
             except Exception:
                 if debug:
