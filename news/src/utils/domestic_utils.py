@@ -103,14 +103,25 @@ def get_prev_trading_day_ohlc(stock_code: str, lookback_days: int = 15, debug: b
                 print(f"[DEBUG] 이전 거래일 OHLC 조회 실패 - 빈 데이터, code={stock_code}")
             return {}
 
-        if len(df) >= 2:
-            row = df.iloc[-2]
-            date_idx = df.index[-2]
-        else:
-            row = df.iloc[-1]
-            date_idx = df.index[-1]
+        # 전일은 "오늘 날짜보다 엄격히 이전"인 마지막 행으로 선택
+        try:
+            df_prev = df[df.index.date < today]
+        except Exception:
+            df_prev = df
 
-        date_str = date_idx.strftime("%Y-%m-%d")
+        if df_prev is None or df_prev.empty:
+            if debug:
+                try:
+                    last_idx = df.index[-1] if df is not None and not df.empty else None
+                    print(f"[DEBUG] 전일 선택용 데이터 없음 - today={today}, last_idx={last_idx}, rows={len(df) if df is not None else 0}")
+                except Exception:
+                    pass
+            return {}
+
+        row = df_prev.iloc[-1]
+        date_idx = df_prev.index[-1]
+
+        date_str = f"{date_idx.year}년 {date_idx.month}월 {date_idx.day}일"
 
         def fmt(v):
             try:
