@@ -2,7 +2,7 @@
 
 PressAI의 **Image Repository** 내에 새롭게 통합 요청할 `filter & upscale` 기능에 대한 기술 및 가이드입니다. 본 문서는 Python(PyQt6 + Pillow) 코드를 기반으로 작성되었습니다.
 
----
+<br>
 
 ## 1. 프로그램의 역할 (Role)
 
@@ -12,7 +12,7 @@ PressAI의 **Image Repository** 내에 새롭게 통합 요청할 `filter & upsc
     
 - **핵심 역할:** 저해상도 이미지의 품질 저하 없는 확대(Upscaling) 및 대량 이미지의 일괄 변환(Batch Processing) 
 
----
+<br>
 
 ## 2. 주요 기능 (Key Features)
 
@@ -36,7 +36,10 @@ PressAI의 **Image Repository** 내에 새롭게 통합 요청할 `filter & upsc
         
     - **자동 파일명 생성:** 원본 파일 덮어쓰기 방지를 위한 `_edit`, `_1` 등의 접미사 자동 처리.
         
-이 프로그램은 크게 **이미지 로드 → 옵션 조절(미리보기) → 실행(저장)**의 흐름을 가집니다. 
+이 프로그램은 크게 **이미지 로드 → 옵션 조절(미리보기) → 실행(저장)** 의 흐름을 가집니다. 
+
+<br>
+
 
 #### **1. 이미지 불러오기 (Import)**
 
@@ -48,7 +51,7 @@ PressAI의 **Image Repository** 내에 새롭게 통합 요청할 `filter & upsc
 | **B. 드래그&드롭** | 윈도우로 파일(들)을 드래그          | 1. **`dragEnterEvent()`**: 확장자 검사 (`is_image_file`) 후 허용 여부 결정<br><br>  <br><br>2. **`dropEvent()`**: 드롭된 파일 경로 리스트(`paths`) 확보                                                      |
 | **C. 분기 처리**  | (드롭 후 자동 실행)             | • **파일이 1개일 때:** `load_image(path)` → **편집 모드** 진입<br><br>  <br><br>• **파일이 여러 개일 때:** `batch_process(paths)` → **즉시 일괄 변환** 시작                                                      |
 
----
+<br>
 
 #### **2. 옵션 조절 및 실시간 미리보기 (Previewing)**
 
@@ -63,7 +66,7 @@ PressAI의 **Image Repository** 내에 새롭게 통합 요청할 `filter & upsc
 
 > **개발팀 참고:** 사용자는 미리보기에서 "AI 업스케일링"의 품질을 확인할 수 없습니다. 미리보기는 속도를 위해 일반 확대만 보여주며, 실제 AI 적용은 '다운로드' 시에만 이루어집니다.
 
----
+<br>
 
 #### **3. 단일 이미지 저장 (Single Process & Save)**
 
@@ -74,7 +77,7 @@ PressAI의 **Image Repository** 내에 새롭게 통합 요청할 `filter & upsc
 |**폴더 지정**|(저장 전) 폴더 미지정 시|`choose_download_folder()` → `QFileDialog`로 경로 획득 및 `self.download_dir` 저장|
 |**다운로드**|'다운로드 (단일)' 버튼 클릭|1. **`save_image()`** 호출<br><br>  <br><br>2. `progress_busy()`: UI 프리징 방지용 '처리 중' 표시<br><br>  <br><br>3. **`build_processed_image()`**: **실제 변환 엔진 가동** (아래 설명)<br><br>  <br><br>4. `_unique_save_path()`: 파일명 중복 체크 (예: `image_1.png`)<br><br>  <br><br>5. `img.save()`: 최종 파일 쓰기<br><br>  <br><br>6. `QMessageBox`: 완료 알림|
 
----
+<br>
 
 #### **4. 일괄 처리 (Batch Processing)**
 
@@ -85,7 +88,8 @@ UI 조작 없이, 드래그 앤 드롭만으로 여러 장을 설정된 옵션�
 |**실행 트리거**|여러 파일을 드롭함|`dropEvent()`에서 파일 개수 > 1 확인 후 **`batch_process(paths)`** 진입|
 |**루프 실행**|(자동 진행)|1. `progress_bar` 범위 설정 (0 ~ 전체 개수)<br><br>  <br><br>2. `for path in paths`: 루프 시작<br><br>  <br><br>3. 각 이미지 로드 (`Image.open`)<br><br>  <br><br>4. **`build_processed_image()`**: 변환 엔진 호출<br><br>  <br><br>5. 결과 저장 및 프로그레스바 `setValue()` 업데이트<br><br>  <br><br>6. 완료 후 결과 리포트(성공/실패 개수) 출력|
 
----
+<br>
+
 
 #### **5. 핵심 변환 엔진 (The Core Engine)**
 
@@ -106,7 +110,8 @@ UI 조작 없이, 드래그 앤 드롭만으로 여러 장을 설정된 옵션�
     4. **Return:** 최종 가공된 `Image` 객체 반환.
         
 
----
+<br>
+
 
 ## 3. NCNN 프로그램 내용 (Waifu2x Integration)
 
@@ -133,7 +138,8 @@ UI 조작 없이, 드래그 앤 드롭만으로 여러 장을 설정된 옵션�
     - **Windows 호환:** 실행 시 콘솔 창(검은 창)이 뜨지 않도록 `STARTUPINFO` 및 `CREATE_NO_WINDOW` 플래그 처리가 되어 있음.
         
 
----
+<br>
+
 
 ## 4. 코드별 핵심 기능 분석 (Core Functions)
 
@@ -187,6 +193,8 @@ def batch_process(self, paths):
     # 4. _unique_save_path()를 통해 파일명 중복 방지 (원본_edit.png)
     # 5. 진행률(ProgressBar) 업데이트 및 결과 리포트
 ```
+
+<br>
 
 ## 5. 참고
 
