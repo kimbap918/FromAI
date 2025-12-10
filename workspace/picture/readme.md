@@ -3,7 +3,7 @@
 PressAI의 **Image Repository** 내에 새롭게 통합 요청할 `filter & upscale` 기능에 대한 기술 및 가이드입니다. 본 문서는 Python(PyQt6 + Pillow) 코드를 기반으로 작성되었습니다.
 
 
-![](https://i.imgur.com/5D0wpWF.png)
+![](https://i.imgur.com/CqwHsbr.png)
 
 <br>
 
@@ -23,13 +23,13 @@ PressAI의 **Image Repository** 내에 새롭게 통합 요청할 `filter & upsc
 
 - **이미지 처리 (Image Processing)**
     
-    - **AI 업스케일링:** `waifu2x-ncnn-vulkan` 바이너리를 래핑하여 실행. 노이즈 제거(Denoise) 강도 조절 및 1.5배/2배 확대 지원.
+    - **AI 업스케일링:** `waifu2x-ncnn-vulkan` 바이너리를 래핑하여 실행. 노이즈 제거(Denoise) 강도 조절 및 1.5배/2배/3배/4배 확대 지원.
         
     - **기본 필터링:** Pillow 라이브러리를 활용한 6종 필터(흑백, 세피아, 밝게, 고대비, 채도, 블러) 및 강도(0~100%) 조절.
         
     - **리사이징:** 가로 픽셀 기준 정해진 규격(400px ~ 1280px)으로 비율 유지 리사이징 (Lanczos 알고리즘).
         
-    - **포맷 변환:** JPEG, PNG, WebP, JFIF 등 다양한 포맷으로 내보내기 지원.
+    - **포맷 변환:** JPEG, JPG, PNG, WebP, JFIF 등 다양한 포맷으로 내보내기 지원.
         
 - **워크플로우 (Workflow)**
     
@@ -63,7 +63,7 @@ PressAI의 **Image Repository** 내에 새롭게 통합 요청할 `filter & upsc
 | **단계**      | **사용자 행동 (User Action)** | **코드 실행 흐름 (Code Execution)**                                                                                                                                                                                                                                       |
 | ----------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **사이즈 변경**  | 400px ~ 1280px 버튼 클릭     | `on_size_changed()` → `state.size_width` 갱신 → `update_preview()`                                                                                                                                                                                                    |
-| **업스케일 설정** | 1.5배 / 2배, 강도 조절         | `on_upscale_changed()` / `on_upscale_strength_changed()` → `update_preview()`                                                                                                                                                                                       |
+| **업스케일 설정** | 1.5배 / 2배 / 3배 / 4배, 강도 조절         | `on_upscale_changed()` / `on_upscale_strength_changed()` → `update_preview()`                                                                                                                                                                                       |
 | **필터/강도**   | 필터 선택 or 슬라이더 조절         | `on_filter_changed()` / `on_intensity_changed()` → `update_preview()`                                                                                                                                                                                               |
 | **화면 갱신**   | (내부 로직)                  | **`update_preview()`** 핵심 로직:<br><br>  <br><br>1. 원본 이미지(`state.original`) 복사<br><br>  <br><br>2. **중요:** 미리보기 속도를 위해 **NCNN(AI) 대신 Pillow(일반) 리사이즈 사용**<br><br>  <br><br>3. `apply_filter()` 적용<br><br>  <br><br>4. `pil_to_qimage()` 변환 후 라벨(`preview_label`)에 표시 |
 
