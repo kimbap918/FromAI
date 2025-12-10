@@ -1,0 +1,29 @@
+[
+  {
+    "name": "프리셋 1",
+    "settings": {
+      "size_width": null,
+      "upscale": 1.0,
+      "upscale_strength": 1,
+      "filter_name": "없음",
+      "intensity": 1.0,
+      "output_format": "원본 유지"
+    }
+  },
+  {
+    "name": "프리셋 2",
+    "settings": null
+  },
+  {
+    "name": "프리셋 3",
+    "settings": null
+  },
+  {
+    "name": "프리셋 4",
+    "settings": null
+  },
+  {
+    "name": "프리셋 5",
+    "settings": null
+  }
+]

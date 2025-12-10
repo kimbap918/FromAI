@@ -2,6 +2,7 @@ import sys
 import os
 import subprocess
 import tempfile
+import json
 from dataclasses import dataclass
 from typing import Optional
 
@@ -11,7 +12,7 @@ from PIL import Image, ImageEnhance, ImageFilter
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QPushButton, QLabel, QFileDialog,
     QVBoxLayout, QHBoxLayout, QSlider, QGroupBox, QButtonGroup, QMessageBox,
-    QStyle, QProgressBar
+    QStyle, QProgressBar, QInputDialog
 )
 from PyQt6.QtGui import QPixmap, QImage, QIcon, QPainter
 from PyQt6.QtCore import Qt
@@ -29,6 +30,10 @@ def resource_path(relative_path: str) -> str:
         base_path = os.path.dirname(os.path.abspath(__file__))
     return os.path.join(base_path, relative_path)
 
+
+# 실행 파일 기준 설정 저장 위치
+CONFIG_DIR = os.path.dirname(os.path.abspath(sys.argv[0]))
+PRESET_FILE = os.path.join(CONFIG_DIR, "presets.json")
 
 # waifu2x-ncnn-vulkan.exe 경로 (빌드 후에도 동작)
 WAIFU2X_PATH = resource_path(os.path.join("waifu2x-ncnn-vulkan", "waifu2x-ncnn-vulkan.exe"))
@@ -61,6 +66,24 @@ class ImageState:
     output_format: str = "원본 유지"
 
 
+class PresetButton(QPushButton):
+    """
+    좌클릭: 프리셋 불러오기
+    우클릭: 현재 설정 저장 + 이름 변경
+    """
+    def __init__(self, index: int, owner: "MainWindow"):
+        super().__init__()
+        self.index = index
+        self.owner = owner
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.RightButton:
+            self.owner.on_preset_right_clicked(self.index)
+        elif event.button() == Qt.MouseButton.LeftButton:
+            self.owner.on_preset_left_clicked(self.index)
+        super().mousePressEvent(event)
+
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -75,7 +98,13 @@ class MainWindow(QMainWindow):
         self.current_image_path: Optional[str] = None
         self.download_dir: Optional[str] = None
 
+        # 프리셋 관련
+        self.preset_buttons = []
+        self.presets = []  # [{ "name": str, "settings": dict | None }, ... ]
+
         self._build_ui()
+        self.load_presets()
+        self.refresh_preset_buttons()
 
     # ---------------- UI 구성 ----------------
     def _build_ui(self):
@@ -191,6 +220,21 @@ class MainWindow(QMainWindow):
         self.format_button_group.buttonClicked.connect(self.on_format_changed)
         controls_layout.addWidget(format_group_box)
 
+        # ----------- 설정 프리셋 버튼 5개 -----------
+        preset_group_box = QGroupBox("설정 프리셋 (좌클릭: 불러오기 / 우클릭: 저장·이름변경)")
+        preset_layout = QHBoxLayout()
+        preset_group_box.setLayout(preset_layout)
+
+        for i in range(5):
+            btn = PresetButton(i, self)
+            btn.setText(f"프리셋 {i+1}")
+            btn.setToolTip("좌클릭: 프리셋 불러오기 / 우클릭: 현재 설정 저장 및 이름 변경")
+            self.preset_buttons.append(btn)
+            preset_layout.addWidget(btn)
+
+        controls_layout.addWidget(preset_group_box)
+        # ----------------------------------------
+
         controls_layout.addStretch()
 
         # 진행 상태 표시용 프로그레스바
@@ -201,12 +245,25 @@ class MainWindow(QMainWindow):
         self.progress_bar.setFormat("대기 중")
         controls_layout.addWidget(self.progress_bar)
 
-        # 오른쪽: 미리보기
+        # 오른쪽: 미리보기 + 라이선스
+        right_layout = QVBoxLayout()
+        main_layout.addLayout(right_layout, 1)
+
         self.preview_label = QLabel("이미지를 불러오세요.\n(여러 장을 드래그하면 일괄 처리)")
         self.preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         # 투명 배경이 잘 보이도록 배경색 설정
         self.preview_label.setStyleSheet("background-color: #f0f0f0;")
-        main_layout.addWidget(self.preview_label, 1)
+        right_layout.addWidget(self.preview_label, 1)
+
+        # waifu2x 라이선스 표시 (오른쪽 아래 작게)
+        self.license_label = QLabel(
+            'This software uses "waifu2x-ncnn-vulkan" (MIT License)'
+        )
+        self.license_label.setAlignment(
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+        )
+        self.license_label.setStyleSheet("color: gray; font-size: 9px;")
+        right_layout.addWidget(self.license_label, 0)
 
     def _create_button_group(self, title, options, callback):
         group_box = QGroupBox(title)
@@ -224,6 +281,161 @@ class MainWindow(QMainWindow):
             layout.addWidget(btn)
         button_group.buttonClicked.connect(lambda _: callback())
         return {"group_box": group_box, "button_group": button_group, "options": options}
+
+    # ---------------- 프리셋 로드/세이브 ----------------
+    def load_presets(self):
+        """presets.json 에서 프리셋 불러오기 (없으면 기본값 생성)."""
+        self.presets = []
+        if os.path.exists(PRESET_FILE):
+            try:
+                with open(PRESET_FILE, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                if isinstance(data, list):
+                    for i in range(5):
+                        if i < len(data) and isinstance(data[i], dict):
+                            name = data[i].get("name", f"프리셋 {i+1}")
+                            settings = data[i].get("settings")
+                            self.presets.append({"name": name, "settings": settings})
+                        else:
+                            self.presets.append({"name": f"프리셋 {i+1}", "settings": None})
+                    return
+            except Exception as e:
+                print(f"[Preset] 로드 실패: {e}")
+
+        # 파일 없거나 실패 시 기본값
+        self.presets = [{"name": f"프리셋 {i+1}", "settings": None} for i in range(5)]
+
+    def save_presets(self):
+        """현재 self.presets를 presets.json에 저장."""
+        try:
+            with open(PRESET_FILE, "w", encoding="utf-8") as f:
+                json.dump(self.presets, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            print(f"[Preset] 저장 실패: {e}")
+
+    def refresh_preset_buttons(self):
+        """버튼 텍스트를 self.presets 기준으로 갱신."""
+        for i, btn in enumerate(self.preset_buttons):
+            if i < len(self.presets):
+                name = self.presets[i].get("name", f"프리셋 {i+1}")
+            else:
+                name = f"프리셋 {i+1}"
+            btn.setText(name)
+
+    # ---------------- 프리셋 버튼 동작 ----------------
+    def on_preset_left_clicked(self, index: int):
+        """좌클릭: 프리셋 불러오기."""
+        if index >= len(self.presets):
+            return
+        preset = self.presets[index]
+        settings = preset.get("settings")
+        if not settings:
+            QMessageBox.information(
+                self,
+                "프리셋 없음",
+                "저장된 설정이 없습니다.\n우클릭으로 현재 설정을 이 프리셋에 저장할 수 있습니다.",
+            )
+            return
+        self.apply_preset(settings)
+
+    def on_preset_right_clicked(self, index: int):
+        """우클릭: 현재 설정 저장 + 이름 변경."""
+        if index >= len(self.presets):
+            return
+        if not self.state:
+            return
+
+        # 이름 입력
+        current_name = self.presets[index].get("name", f"프리셋 {index+1}")
+        name, ok = QInputDialog.getText(
+            self,
+            "프리셋 저장",
+            "프리셋 이름을 입력하세요:",
+            text=current_name,
+        )
+        if not ok or not name.strip():
+            return
+
+        # 현재 상태 저장
+        settings = {
+            "size_width": self.state.size_width,
+            "upscale": self.state.upscale,
+            "upscale_strength": self.state.upscale_strength,
+            "filter_name": self.state.filter_name,
+            "intensity": self.state.intensity,
+            "output_format": self.state.output_format,
+        }
+        self.presets[index] = {"name": name.strip(), "settings": settings}
+        self.refresh_preset_buttons()
+        self.save_presets()
+
+        QMessageBox.information(
+            self,
+            "프리셋 저장",
+            f"현재 설정을 '{name}' 프리셋에 저장했습니다.\n(좌클릭으로 불러올 수 있습니다.)",
+        )
+
+    def apply_preset(self, settings: dict):
+        """딕셔너리로 저장된 설정을 상태 + UI에 반영."""
+        # 상태 복원
+        self.state.size_width = settings.get("size_width")
+        self.state.upscale = settings.get("upscale", 1.0)
+        self.state.upscale_strength = settings.get("upscale_strength", 1)
+        self.state.filter_name = settings.get("filter_name", "없음")
+        self.state.intensity = settings.get("intensity", 1.0)
+        self.state.output_format = settings.get("output_format", "원본 유지")
+
+        # 크기 버튼 복원
+        sw = self.state.size_width
+        size_idx = 0
+        for i, (_, val) in enumerate(self.size_group["options"]):
+            if val == sw:
+                size_idx = i
+                break
+        self.size_group["button_group"].button(size_idx).setChecked(True)
+
+        # 업스케일 배율 버튼 복원
+        up = self.state.upscale
+        up_idx = 0
+        for i, (_, val) in enumerate(self.upscale_group["options"]):
+            if val == up:
+                up_idx = i
+                break
+        self.upscale_group["button_group"].button(up_idx).setChecked(True)
+
+        # 업스케일 강도 복원
+        st = self.state.upscale_strength
+        st_idx = 0
+        for i, (_, val) in enumerate(self.upscale_strength_group["options"]):
+            if val == st:
+                st_idx = i
+                break
+        self.upscale_strength_group["button_group"].button(st_idx).setChecked(True)
+
+        # 필터 복원
+        try:
+            f_idx = FILTER_OPTIONS.index(self.state.filter_name)
+        except ValueError:
+            f_idx = 0
+            self.state.filter_name = FILTER_OPTIONS[0]
+        self.filter_button_group.button(f_idx).setChecked(True)
+
+        # 강도 슬라이더 복원
+        v = int(self.state.intensity * 100)
+        v = max(0, min(100, v))
+        self.slider_intensity.setValue(v)
+        self.lbl_intensity_value.setText(f"{v}%")
+
+        # 파일 형식 복원
+        try:
+            fmt_idx = FORMAT_OPTIONS.index(self.state.output_format)
+        except ValueError:
+            fmt_idx = 0
+            self.state.output_format = FORMAT_OPTIONS[0]
+        self.format_button_group.button(fmt_idx).setChecked(True)
+
+        # 미리보기 갱신
+        self.update_preview()
 
     # ---------------- 진행 상태 헬퍼 ----------------
     def progress_busy(self, text: str):
@@ -296,7 +508,7 @@ class MainWindow(QMainWindow):
                 img = Image.open(file_path)
                 self.state.original_format = img.format or "PNG"
 
-            # [수정] 무조건 RGB 변환 금지. 투명도(RGBA)가 아니면 변환.
+            # 무조건 RGB 변환 금지. RGBA도 유지.
             if img.mode not in ["RGB", "RGBA"]:
                 img = img.convert("RGBA")
 
@@ -318,7 +530,7 @@ class MainWindow(QMainWindow):
             self,
             "이미지 선택",
             "",
-            "Images (*.png *.jpg *.jpeg *.webp *.jfif *.bmp *.gif *.tif *.tiff *.avif *.heic *.svg);;All Files (*)",  # [SVG] 필터에 svg 추가
+            "Images (*.png *.jpg *.jpeg *.webp *.jfif *.bmp *.gif *.tif *.tiff *.avif *.heic *.svg);;All Files (*)",
         )
         if not file_path:
             return
@@ -387,7 +599,7 @@ class MainWindow(QMainWindow):
 
             if fmt == "원본 유지":
                 if is_svg:
-                    save_format = "PNG"   # [SVG] SVG는 PNG로 저장
+                    save_format = "PNG"   # SVG는 PNG로 저장
                     out_ext = "png"
                 else:
                     out_ext = orig_ext.lstrip(".") or "png"
@@ -403,16 +615,16 @@ class MainWindow(QMainWindow):
                     out_ext = "webp"
 
                 elif fmt_upper == "JFIF":
-                    save_format = "JPEG"   # 내부 포맷은 JPEG
+                    save_format = "JPEG"
                     out_ext = "jfif"
 
                 elif fmt_upper == "JPEG":
                     save_format = "JPEG"
-                    out_ext = "jpeg"       # 확장자 .jpeg
+                    out_ext = "jpeg"
 
                 elif fmt_upper == "JPG":
                     save_format = "JPEG"
-                    out_ext = "jpg"        # 확장자 .jpg
+                    out_ext = "jpg"
 
                 elif fmt_upper == "PNG":
                     save_format = "PNG"
@@ -422,16 +634,14 @@ class MainWindow(QMainWindow):
                     save_format = fmt_upper
                     out_ext = save_format.lower()
 
-
             target_path = self._unique_save_path(self.download_dir, orig_name, out_ext)
 
-            # [수정] JPEG 등 투명 미지원 포맷은 흰색 배경 합성
+            # JPEG 등 투명 미지원 포맷은 흰색 배경 합성
             if save_format in ["JPEG", "JFIF", "BMP"] and img.mode == "RGBA":
                 bg = Image.new("RGB", img.size, (255, 255, 255))
                 bg.paste(img, mask=img.split()[3])
                 img = bg
             elif img.mode == "RGBA" and save_format not in ["PNG", "WEBP"]:
-                # 그 외 RGBA 미지원 포맷 대비
                 img = img.convert("RGB")
 
             img.save(target_path, format=save_format)
@@ -599,7 +809,7 @@ class MainWindow(QMainWindow):
 
         for idx, path in enumerate(paths):
             try:
-                # [SVG] 배치에서도 SVG 별도 처리
+                # SVG 별도 처리
                 if path.lower().endswith(".svg"):
                     img = self.load_svg_to_pil(path)
                     original_format = "SVG"
@@ -607,7 +817,6 @@ class MainWindow(QMainWindow):
                     img = Image.open(path)
                     original_format = img.format or "PNG"
 
-                # [수정] 무조건 RGB 변환 금지. RGBA 유지.
                 if img.mode not in ["RGB", "RGBA"]:
                     img = img.convert("RGBA")
 
@@ -670,13 +879,11 @@ class MainWindow(QMainWindow):
                     save_format = fmt_upper
                     out_ext = save_format.lower()
 
-
             out_path = self._unique_save_path(self.download_dir, f"{name}_edit", out_ext)
 
             try:
-                # [수정] 배치 저장 시 투명도(RGBA) 처리
+                # 배치 저장 시 투명도 처리
                 if save_format in ["JPEG", "JFIF", "BMP"] and processed.mode == "RGBA":
-                    # 흰색 배경 합성
                     bg = Image.new("RGB", processed.size, (255, 255, 255))
                     bg.paste(processed, mask=processed.split()[3])
                     processed = bg
@@ -730,7 +937,6 @@ class MainWindow(QMainWindow):
         noise_level = {0: 0, 1: 1, 2: 2}.get(strength, 1)
 
         # waifu2x에서 사용할 기저 배율: 2배 또는 4배
-        # (원하면 scale>=3이면 4배, 그 외엔 2배로 고정)
         if scale <= 2.0:
             waifu_scale = 2
         else:
@@ -747,7 +953,7 @@ class MainWindow(QMainWindow):
                 "-i", in_path,
                 "-o", mid_path,
                 "-n", str(noise_level),
-                "-s", str(waifu_scale),  # 2 또는 4
+                "-s", str(waifu_scale),
                 "-f", "png",
             ]
 
@@ -790,13 +996,11 @@ class MainWindow(QMainWindow):
 
             return up_img
 
-
     # ---------------- 필터 ----------------
     def apply_filter(self, img: Image.Image, name: str, intensity: float) -> Image.Image:
         if name == "없음" or intensity <= 0:
             return img
 
-        # [수정] 필터 적용 시 투명도 보존 로직 추가
         alpha = None
         if img.mode == "RGBA":
             alpha = img.split()[3]
@@ -804,7 +1008,6 @@ class MainWindow(QMainWindow):
         else:
             base_img = img.convert("RGB")
 
-        # 필터 연산은 RGB 상태에서 수행
         if name == "흑백":
             gray = base_img.convert("L").convert("RGB")
             filtered = Image.blend(base_img, gray, intensity)
@@ -841,7 +1044,6 @@ class MainWindow(QMainWindow):
         else:
             filtered = base_img
 
-        # [수정] 투명도(Alpha) 복원
         if alpha:
             filtered.putalpha(alpha)
 
