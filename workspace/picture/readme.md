@@ -118,7 +118,7 @@ UI 조작 없이, 드래그 앤 드롭만으로 여러 장을 설정된 옵션�
 
 ## 3. NCNN 프로그램 내용 (Waifu2x Integration)
 
-이 모듈의 핵심인 고해상도 복원 기능은 Python 내부 라이브러리가 아닌, 외부 **C++ 바이너리(NCNN)**를 호출하여 수행됩니다.
+이 모듈의 핵심인 고해상도 복원 기능은 Python 내부 라이브러리가 아닌, 외부 **C++ 바이너리(NCNN)** 를 호출하여 수행됩니다.
 
 - **기술 스택:** `waifu2x-ncnn-vulkan` (Tencent의 NCNN 프레임워크 기반, Vulkan API 사용)
     
