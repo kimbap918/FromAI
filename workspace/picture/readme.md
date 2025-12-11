@@ -2,6 +2,9 @@
 
 PressAI의 **Image Repository** 내에 새롭게 통합 요청할 `filter & upscale` 기능에 대한 기술 및 가이드입니다. 본 문서는 Python(PyQt6 + Pillow) 코드를 기반으로 작성되었습니다.
 
+<br>
+
+Google Drive : https://drive.google.com/file/d/1v-pThOJqVrfXUjsTklRKgZL4K9K-O-wg/view?usp=sharing
 
 ![](https://i.imgur.com/44DEOwu.png)
 
