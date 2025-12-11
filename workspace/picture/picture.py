@@ -1,18 +1,24 @@
 import sys
 import os
+import io
+import re
 import subprocess
 import tempfile
 import json
+import ssl
+import certifi
 from dataclasses import dataclass
 from typing import Optional
 
 from PIL import Image, ImageEnhance, ImageFilter
+from urllib.request import urlopen, Request
+
 
 # ----------------- [SVG] 추가된 모듈 -----------------
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QPushButton, QLabel, QFileDialog,
     QVBoxLayout, QHBoxLayout, QSlider, QGroupBox, QButtonGroup, QMessageBox,
-    QStyle, QProgressBar, QInputDialog
+    QStyle, QProgressBar, QInputDialog, QLineEdit
 )
 from PyQt6.QtGui import QPixmap, QImage, QIcon, QPainter
 from PyQt6.QtCore import Qt
@@ -87,7 +93,7 @@ class PresetButton(QPushButton):
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("사진 ncnn 업스케일 & 필터 도구 v1.0.0 by 최준혁")
+        self.setWindowTitle("사진 ncnn 업스케일 & 필터 도구 v1.1.0 by 최준혁")
         self.setAcceptDrops(True)  # 드래그 앤 드롭 허용
 
         icon_path = resource_path("pic.png")
@@ -233,6 +239,24 @@ class MainWindow(QMainWindow):
             preset_layout.addWidget(btn)
 
         controls_layout.addWidget(preset_group_box)
+        # ----------------------------------------
+
+        # ----------- 이미지 URL 입력 영역 -----------
+        url_group_box = QGroupBox("이미지 주소")
+        url_layout = QHBoxLayout()
+        url_group_box.setLayout(url_layout)
+
+        self.url_input = QLineEdit()
+        self.url_input.setPlaceholderText("https:// 로 시작하는 이미지 주소를 입력하거나, 웹에서 이미지를 드래그해 넣으세요")
+        self.url_input.returnPressed.connect(self.on_url_load_clicked)
+
+        self.btn_load_url = QPushButton("불러오기")
+        self.btn_load_url.clicked.connect(self.on_url_load_clicked)
+
+        url_layout.addWidget(self.url_input)
+        url_layout.addWidget(self.btn_load_url)
+
+        controls_layout.addWidget(url_group_box)
         # ----------------------------------------
 
         controls_layout.addStretch()
@@ -536,6 +560,115 @@ class MainWindow(QMainWindow):
             return
         self.load_image(file_path)
 
+
+    # ---------------- URL 로딩 유틸 ----------------
+    def on_url_load_clicked(self):
+        """URL 입력창에서 엔터 / 버튼 클릭 시 호출."""
+        url = (self.url_input.text() if hasattr(self, "url_input") else "").strip()
+        if not url:
+            QMessageBox.information(self, "안내", "이미지 주소를 입력해 주세요.")
+            return
+        self.load_image_from_url(url)
+
+    def normalize_url(self, url: str) -> str:
+        """// 로 시작하는 스킴 없는 URL 등을 보정."""
+        url = url.strip()
+        if url.startswith("//"):
+            url = "https:" + url
+        return url
+
+    def is_image_url(self, url: str) -> bool:
+        """
+        '이미지일 가능성이 높은' HTTP(S) URL 판별.
+        확장자로 대략 거르고, html 등은 제외.
+        """
+        url = url.strip()
+        if not (url.startswith("http://") or url.startswith("https://")):
+            return False
+        base = url.split("?", 1)[0].lower()
+        bad_exts = (".html", ".htm", ".php", ".asp", ".aspx")
+        if any(base.endswith(ext) for ext in bad_exts):
+            return False
+        # 확장자가 없어도 일단 시도하고 싶으면 아래 줄을 True로 바꿔도 됩니다.
+        return True
+
+    def extract_image_url_from_text(self, text: str) -> Optional[str]:
+        """
+        드래그&드롭 시 MIME text 안에 들어있는 URL에서 이미지 URL 하나 추출.
+        """
+        if not text:
+            return None
+        m = re.search(r"https?://[^\s\"'>]+", text)
+        if not m:
+            return None
+        candidate = self.normalize_url(m.group(0))
+        if self.is_image_url(candidate):
+            return candidate
+        return None
+
+    def load_image_from_url(self, url: str):
+        """
+        HTTP(S) 이미지 주소로부터 이미지를 다운로드해서 현재 이미지로 로드.
+        SVG는 임시 파일로 저장 후 기존 load_image() 재사용.
+        """
+        url = self.normalize_url(url)
+        if not (url.startswith("http://") or url.startswith("https://")):
+            QMessageBox.warning(
+                self,
+                "잘못된 주소",
+                "http:// 또는 https:// 로 시작하는 올바른 이미지 주소를 입력해 주세요.",
+            )
+            return
+
+        try:
+            req = Request(url, headers={"User-Agent": "Mozilla/5.0"})
+
+            # 🔐 certifi로 CA 번들을 명시해서 SSL 컨텍스트 생성
+            context = ssl.create_default_context(cafile=certifi.where())
+
+            with urlopen(req, context=context, timeout=10) as resp:
+                data = resp.read()
+        except Exception as e:
+            QMessageBox.warning(
+                self,
+                "이미지 다운로드 실패",
+                f"이미지를 가져오지 못했습니다.\n\nURL: {url}\n에러: {e}",
+            )
+            return
+
+        try:
+            base = url.split("?", 1)[0].lower()
+            if base.endswith(".svg"):
+                # [SVG]는 임시 파일로 저장해서 기존 로직 사용
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".svg") as tmp:
+                    tmp.write(data)
+                    tmp_path = tmp.name
+                self.load_image(tmp_path)
+                # 원본 정보는 URL로 유지
+                self.current_image_path = url
+            else:
+                img = Image.open(io.BytesIO(data))
+                if img.mode not in ["RGB", "RGBA"]:
+                    img = img.convert("RGBA")
+
+                self.state.original_format = img.format or "PNG"
+                self.state.original = img
+                self.current_image_path = url
+                self.btn_save.setEnabled(True)
+                self.update_preview()
+        except Exception as e:
+            QMessageBox.warning(
+                self,
+                "이미지 열기 실패",
+                f"이미지를 열 수 없습니다.\n\nURL: {url}\n에러: {e}",
+            )
+            return
+
+        # URL 입력창에는 정리된 주소를 남겨 둠
+        if hasattr(self, "url_input"):
+            self.url_input.setText(url)
+
+
     # ---------------- [SVG] SVG 로딩 함수 ----------------
     def load_svg_to_pil(self, path: str) -> Image.Image:
         """
@@ -653,6 +786,18 @@ class MainWindow(QMainWindow):
 
     @staticmethod
     def _unique_save_path(folder: str, base_name: str, ext: str) -> str:
+        # 1) URL에서 온 이름이면 ? 뒤 쿼리스트링 / # 뒤 fragment 제거
+        base_name = base_name.split("?")[0].split("#")[0]
+
+        # 2) Windows 에서 사용할 수 없는 문자 치환
+        #    \ / : * ? " < > |  →  _
+        base_name = re.sub(r'[\\/:*?"<>|]', "_", base_name)
+
+        # 3) 파일명 앞뒤 공백/점 제거, 완전 비면 기본값
+        base_name = base_name.strip(" .")
+        if not base_name:
+            base_name = "output"
+
         candidate = os.path.join(folder, f"{base_name}.{ext}")
         if not os.path.exists(candidate):
             return candidate
@@ -662,7 +807,7 @@ class MainWindow(QMainWindow):
             if not os.path.exists(candidate):
                 return candidate
             idx += 1
-
+            
     # ---------------- 공통 처리 파이프라인 ----------------
     def build_processed_image(self, base_img: Image.Image) -> Image.Image:
         img = base_img
@@ -761,35 +906,74 @@ class MainWindow(QMainWindow):
 
     # ---------------- 드래그 & 드롭 ----------------
     def dragEnterEvent(self, event):
-        if event.mimeData().hasUrls():
-            for url in event.mimeData().urls():
+        md = event.mimeData()
+
+        # 1) 파일/URL 리스트
+        if md.hasUrls():
+            for url in md.urls():
+                # 로컬 파일 이미지
                 if url.isLocalFile() and self.is_image_file(url.toLocalFile()):
                     event.acceptProposedAction()
                     return
+                # 인터넷 이미지 URL
+                s = url.toString()
+                if self.is_image_url(s):
+                    event.acceptProposedAction()
+                    return
+
+        # 2) 일부 브라우저는 URL을 text로만 넘김
+        if md.hasText():
+            text = md.text()
+            if self.extract_image_url_from_text(text):
+                event.acceptProposedAction()
+                return
+
         event.ignore()
 
     def dropEvent(self, event):
-        if not event.mimeData().hasUrls():
-            event.ignore()
-            return
+        md = event.mimeData()
 
         paths = []
-        for url in event.mimeData().urls():
-            if url.isLocalFile():
-                path = url.toLocalFile()
-                if self.is_image_file(path):
-                    paths.append(path)
+        image_url = None
 
-        if not paths:
-            event.ignore()
+        if md.hasUrls():
+            for url in md.urls():
+                if url.isLocalFile():
+                    path = url.toLocalFile()
+                    if self.is_image_file(path):
+                        paths.append(path)
+                else:
+                    s = url.toString()
+                    if self.is_image_url(s) and image_url is None:
+                        image_url = s
+
+        # 브라우저에 따라 URL이 text로만 오는 경우 처리
+        if not paths and image_url is None and md.hasText():
+            text = md.text()
+            candidate = self.extract_image_url_from_text(text)
+            if candidate:
+                image_url = candidate
+
+        # 1) 로컬 이미지 여러 장 → 기존 배치 처리 그대로 사용
+        if paths:
+            if len(paths) == 1:
+                self.load_image(paths[0])
+            else:
+                self.batch_process(paths)
+            event.acceptProposedAction()
             return
 
-        if len(paths) == 1:
-            self.load_image(paths[0])
-        else:
-            self.batch_process(paths)
+        # 2) 인터넷 이미지 주소 하나만 드롭된 경우
+        if image_url:
+            image_url = self.normalize_url(image_url)
+            if hasattr(self, "url_input"):
+                self.url_input.setText(image_url)  # 주소 자동 채우기
+            self.load_image_from_url(image_url)     # 바로 처리까지 실행
+            event.acceptProposedAction()
+            return
 
-        event.acceptProposedAction()
+        event.ignore()
+
 
     # ---------------- 배치 처리 ----------------
     def batch_process(self, paths):
