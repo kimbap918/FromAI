@@ -1,37 +1,36 @@
 
 전체 과정은 [키워드 선정 → 기사 소싱 → 데이터 추출 → 광고 필터링 → 콘텐츠 생성]의 5단계로 진행
 
-
-```Mermaid
+``` mermaid
 graph TD
-    %% 스타일 정의
-    classDef input fill:#e1f5fe,stroke:#01579b,stroke-width:2px;
-    classDef process fill:#f3e5f5,stroke:#4a148c,stroke-width:2px;
-    classDef decision fill:#fff9c4,stroke:#fbc02d,stroke-width:2px;
-    classDef output fill:#e8f5e9,stroke:#1b5e20,stroke-width:2px;
-    classDef stop fill:#ffebee,stroke:#b71c1c,stroke-width:2px;
+  %% 스타일 정의
+  classDef input fill:#e1f5fe,stroke:#01579b,stroke-width:2px;
+  classDef process fill:#f3e5f5,stroke:#4a148c,stroke-width:2px;
+  classDef decision fill:#fff9c4,stroke:#fbc02d,stroke-width:2px;
+  classDef output fill:#e8f5e9,stroke:#1b5e20,stroke-width:2px;
+  classDef stop fill:#ffebee,stroke:#b71c1c,stroke-width:2px;
 
-    %% 1단계: 기획
-    Start["User: 키워드 선정 및<br>구글 시트 입력"] :::input --> Select["기사 선정 및 클러스터링"] :::process
-    
-    %% 2단계: 필터링 조건
-    Select --> CheckTime{매체별 유효 기간<br>만족 여부} :::decision
-    CheckTime -- No --> Drop1[제외] :::stop
-    CheckTime -- Yes --> CheckBan{금지 키워드<br>투표/순위/브랜드평판} :::decision
-    
-    CheckBan -- Yes --> Drop2[제외] :::stop
-    CheckBan -- No --> Extract["원문 URL 추출 및 정규화"] :::process
+  %% 1단계: 기획
+  Start["User: 키워드 선정 및 구글 시트 입력"]:::input --> Select["기사 선정 및 클러스터링"]:::process
 
-    %% 3단계: AI 광고 판별
-    Extract --> AI_Check{AI 광고 판별<br>ad_news: yes/no} :::decision
-    
-    AI_Check -- "Yes (광고)" --> Skip["Skip<br>해당 키워드 건너뜀"] :::stop
-    AI_Check -- "No (정상)" --> Gen["기사 재구성 및 생성"] :::output
+  %% 2단계: 필터링 조건
+  Select --> CheckTime{매체별 유효 기간 만족 여부}:::decision
+  CheckTime -->|No| Drop1["제외"]:::stop
+  CheckTime -->|Yes| CheckBan{금지 키워드: 투표/순위/브랜드평판}:::decision
 
-    %% 4단계: 완료
-    Gen --> End((최종 완료)) :::output
+  CheckBan -->|Yes| Drop2["제외"]:::stop
+  CheckBan -->|No| Extract["원문 URL 추출 및 정규화"]:::process
+
+  %% 3단계: AI 광고 판별
+  Extract --> AI_Check{AI 광고 판별: ad_news yes/no}:::decision
+  AI_Check -->|Yes| Skip["Skip: 해당 키워드 건너뜀"]:::stop
+  AI_Check -->|No| Gen["기사 재구성 및 생성"]:::output
+
+  %% 4단계: 완료
+  Gen --> End((최종 완료)):::output
 
 ```
+
 
 
 ## Phase 1. 기획 및 소싱 (Planning & Sourcing)
@@ -246,7 +245,7 @@ B3) 특정 대상의 명칭/정체성이 불필요할 정도로 반복·강조�
 
 ### 2. 성능 지표 (Metrics)
 
-광고 필터링의 핵심 목표인 **"정상 기사 보존(비광고 보존)"**에 최적화된 성능을 보임
+현재까지는 목표한 정상 기사 보존 에 적합한 성능을 보임
 - **Precision (정밀도):** **88.9%**
     - 모델이 "광고"라고 지목한 것 중 실제 광고인 비율 ($8/9$)
 - **Specificity (특이도):** **93.75%** 
