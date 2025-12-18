@@ -40,20 +40,25 @@ presentnYear,unityGrupNm,unityGrupCode,smerNm,repreCmpny,sumCmpnyCo,invstmntLmtt
 
 ```
 
+<br>
 
 
 ## 2. 총수 뉴스의 범위
 - 총수의 이름, 기업명이 포함된 뉴스라 할지라도 실제로 총수의 행보와 관련이 없는 경우가 많음(총수가 등장하지 않는 MOU, 신제품 소식 등)
 - 게시할 뉴스에 총수가 직접 등장하는지, 총수가 아닌 가족들의 행보가 등장하는 뉴스가 총수家의 취지에 맞는지 확인이 필요
 
+<br>
+
 ### 1. 총수의 가족이 주가 되는 뉴스
 ![](https://i.imgur.com/VcZSNsJ.png)
 ![](https://i.imgur.com/NjO87Ri.png)
 
+<br>
+
 ### 2. 총수가 등장하지만, 다른 인물이 부각되는 뉴스
 ![](https://i.imgur.com/wD1DvCU.png)
 
-
+<br>
 
 ### 3. 여러 총수가 등장할 때, 해당 총수가 포함되어 있는 경우
 ![](https://i.imgur.com/JlwMsbP.png)
