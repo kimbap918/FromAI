@@ -42,6 +42,10 @@ presentnYear,unityGrupNm,unityGrupCode,smerNm,repreCmpny,sumCmpnyCo,invstmntLmtt
 
 <br>
 
+- 이들 중 현재 네이버, 위키 등에서 프로필 추적이 불가능한 대상 30명을 제외, 51명의 총수에 대한 프로필 확보
+![](https://i.imgur.com/P4VUlxr.png)
+
+<br>
 
 ## 2. 총수 뉴스의 범위
 - 총수의 이름, 기업명이 포함된 뉴스라 할지라도 실제로 총수의 행보와 관련이 없는 경우가 많음(총수가 등장하지 않는 MOU, 신제품 소식 등)
