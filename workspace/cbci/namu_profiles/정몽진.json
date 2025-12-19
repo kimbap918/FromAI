@@ -1,0 +1,50 @@
+{
+  "source": "namu.wiki",
+  "source_url": "https://namu.wiki/w/%EC%A0%95%EB%AA%BD%EC%A7%84",
+  "resolved_title": "정몽진",
+  "attempted_titles": [
+    "정몽진"
+  ],
+  "position": "KCC그룹 제2대 회장",
+  "name_ko": "정몽진",
+  "name_hanja": "鄭夢進",
+  "name_en": "Chung Mong-jin",
+  "profile_image": "https://i.namu.wiki/i/DfC_b1-BndKws-sD-UVIpmWBzg3q7LzkNpaaSRyIwLLKaSwNZA8L9TYitvkjRYXZoLycoJEfzL5HN6adgdMjzQtCCn939T1aIxmMjUkN5xQN7YwK0_aZMNDPehZR1L-eg3enPKrSSaMVdAt7SXZkFQ.webp",
+  "birth_date": "1960년 8월 5일",
+  "family": {
+    "parents": {
+      "father": {
+        "name": "정상영",
+        "url": "https://namu.wiki/w/%EC%A0%95%EC%83%81%EC%98%81"
+      },
+      "mother": {
+        "name": "",
+        "url": ""
+      }
+    },
+    "siblings": {
+      "형": [],
+      "누나": [],
+      "오빠": [],
+      "언니": [],
+      "동생": [
+        {
+          "name": "정몽익",
+          "url": "https://namu.wiki/w/%EC%A0%95%EB%AA%BD%EC%9D%B5"
+        },
+        {
+          "name": "정몽열",
+          "url": "https://namu.wiki/w/%EC%A0%95%EB%AA%BD%EC%97%B4"
+        }
+      ],
+      "미분류": []
+    },
+    "spouse": [],
+    "children": [],
+    "flatten": {
+      "부": "정상영",
+      "동생1": "정몽익",
+      "동생2": "정몽열"
+    }
+  }
+}

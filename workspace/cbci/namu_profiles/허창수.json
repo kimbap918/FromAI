@@ -1,0 +1,60 @@
+{
+  "source": "namu.wiki",
+  "source_url": "https://namu.wiki/w/%ED%97%88%EC%B0%BD%EC%88%98",
+  "resolved_title": "허창수",
+  "attempted_titles": [
+    "허창수"
+  ],
+  "position": "GS그룹 총수",
+  "name_ko": "허창수",
+  "name_hanja": "許昌秀",
+  "name_en": "Huh Chang-soo",
+  "profile_image": "https://i.namu.wiki/i/eNbWnEmPPFkuk6IOJ9WF29cy6x-PXzPMcsVSjkxO13ME1W_djmplgluDrrUvld6rGOHRzXC2aMyqOo3ZjLOlB-d_lz6f2zPkLxOfFMqikpe4Yj3YRkCCPClZodK2LHHe5NVq7RaUTey3s6XJM2Nh1A.webp",
+  "birth_date": "1948년 10월 16일",
+  "family": {
+    "parents": {
+      "father": {
+        "name": "허준구",
+        "url": "https://namu.wiki/w/%ED%97%88%EC%A4%80%EA%B5%AC"
+      },
+      "mother": {
+        "name": "",
+        "url": ""
+      }
+    },
+    "siblings": {
+      "형": [],
+      "누나": [],
+      "오빠": [],
+      "언니": [],
+      "동생": [
+        {
+          "name": "허정수",
+          "url": "https://namu.wiki/w/%ED%97%88%EC%A0%95%EC%88%98"
+        },
+        {
+          "name": "허진수",
+          "url": "https://namu.wiki/w/%ED%97%88%EC%A7%84%EC%88%98"
+        },
+        {
+          "name": "허명수",
+          "url": "https://namu.wiki/w/%ED%97%88%EB%AA%85%EC%88%98"
+        },
+        {
+          "name": "허태수",
+          "url": "https://namu.wiki/w/%ED%97%88%ED%83%9C%EC%88%98"
+        }
+      ],
+      "미분류": []
+    },
+    "spouse": [],
+    "children": [],
+    "flatten": {
+      "부": "허준구",
+      "동생1": "허정수",
+      "동생2": "허진수",
+      "동생3": "허명수",
+      "동생4": "허태수"
+    }
+  }
+}

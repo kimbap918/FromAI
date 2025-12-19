@@ -1,0 +1,51 @@
+{
+  "source": "namu.wiki",
+  "source_url": "https://namu.wiki/w/%EC%A1%B0%EB%8F%99%EA%B8%B8",
+  "resolved_title": "조동길",
+  "attempted_titles": [
+    "조동길"
+  ],
+  "position": "한솔그룹 초대 회장",
+  "name_ko": "조동길",
+  "name_hanja": "趙東吉",
+  "name_en": "Cho Dong-gil",
+  "profile_image": "https://i.namu.wiki/i/MEpl0bD9MjTdYFKNtrHte53DlPRvYrmMH7-EUUVXVN-GDcumJ0tjJQZI_umBq1LtOj-WtDxyr0e-KH7yvcCZ3AzxwH_0DFdmrBT5FbeonTS9vvce4pY6KxOXdMRmLxEiKm4Jqm6ZPaTdnxxGmExDHg.webp",
+  "birth_date": "1955년 11월 30일",
+  "family": {
+    "parents": {
+      "father": {
+        "name": "조운해",
+        "url": "https://namu.wiki/w/%EC%A1%B0%EC%9A%B4%ED%95%B4"
+      },
+      "mother": {
+        "name": "이인희",
+        "url": "https://namu.wiki/w/%EC%9D%B4%EC%9D%B8%ED%9D%AC"
+      }
+    },
+    "siblings": {
+      "형": [
+        {
+          "name": "조동혁",
+          "url": "https://namu.wiki/w/%EC%A1%B0%EB%8F%99%ED%98%81(%EA%B8%B0%EC%97%85%EC%9D%B8)"
+        },
+        {
+          "name": "조동만",
+          "url": "https://namu.wiki/w/%EC%A1%B0%EB%8F%99%EB%A7%8C"
+        }
+      ],
+      "누나": [],
+      "오빠": [],
+      "언니": [],
+      "동생": [],
+      "미분류": []
+    },
+    "spouse": [],
+    "children": [],
+    "flatten": {
+      "부": "조운해",
+      "모": "이인희",
+      "형1": "조동혁",
+      "형2": "조동만"
+    }
+  }
+}

@@ -1,0 +1,72 @@
+{
+  "source": "namu.wiki",
+  "source_url": "https://namu.wiki/w/%EC%B5%9C%ED%83%9C%EC%9B%90",
+  "resolved_title": "최태원",
+  "attempted_titles": [
+    "최태원"
+  ],
+  "position": "SK 제3대 회장",
+  "name_ko": "최태원",
+  "name_hanja": "崔泰源",
+  "name_en": "Chey Tae-won",
+  "profile_image": "https://i.namu.wiki/i/jY-_NbB226stG6ohvt9Uedk86OIuHY7MBKLCWL8MwRNNuuJy_Fwardv2c6tesb92SAQi0MwQz4WZPEgIM0zsGd3mD720L6l_UfT6h8eHXQw8XC_mSdCxMNv0cQYPrBjrBW0MuOkw5pXrp3cUKcSjBg.webp",
+  "birth_date": "1960년 12월 3일",
+  "family": {
+    "parents": {
+      "father": {
+        "name": "최종현",
+        "url": "https://namu.wiki/w/%EC%B5%9C%EC%A2%85%ED%98%84"
+      },
+      "mother": {
+        "name": "",
+        "url": ""
+      }
+    },
+    "siblings": {
+      "형": [],
+      "누나": [],
+      "오빠": [],
+      "언니": [],
+      "동생": [
+        {
+          "name": "최재원",
+          "url": "https://namu.wiki/w/%EC%B5%9C%EC%9E%AC%EC%9B%90(%EA%B8%B0%EC%97%85%EC%9D%B8)"
+        },
+        {
+          "name": "최기원",
+          "url": "https://namu.wiki/w/%EC%B5%9C%EA%B8%B0%EC%9B%90"
+        }
+      ],
+      "미분류": []
+    },
+    "spouse": [
+      {
+        "name": "노소영",
+        "url": "https://namu.wiki/w/%EB%85%B8%EC%86%8C%EC%98%81"
+      }
+    ],
+    "children": [
+      {
+        "name": "최윤정",
+        "url": "https://namu.wiki/w/%EC%B5%9C%EC%9C%A4%EC%A0%95(1989)"
+      },
+      {
+        "name": "최민정",
+        "url": "https://namu.wiki/w/%EC%B5%9C%EB%AF%BC%EC%A0%95(1991)"
+      },
+      {
+        "name": "최인근",
+        "url": "https://namu.wiki/w/%EC%B5%9C%EC%9D%B8%EA%B7%BC"
+      }
+    ],
+    "flatten": {
+      "부": "최종현",
+      "동생1": "최재원",
+      "동생2": "최기원",
+      "배우자1": "노소영",
+      "자녀1": "최윤정",
+      "자녀2": "최민정",
+      "자녀3": "최인근"
+    }
+  }
+}

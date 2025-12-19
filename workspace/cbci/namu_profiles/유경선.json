@@ -1,0 +1,40 @@
+{
+  "source": "namu.wiki",
+  "source_url": "https://namu.wiki/w/%EC%9C%A0%EA%B2%BD%EC%84%A0(%EA%B8%B0%EC%97%85%EC%9D%B8)",
+  "resolved_title": "유경선(기업인)",
+  "attempted_titles": [
+    "유경선",
+    "유경선(기업인)"
+  ],
+  "position": "유진그룹 제2대 회장",
+  "name_ko": "유경선",
+  "name_hanja": "",
+  "name_en": "Yoo Kyung-Seon",
+  "profile_image": "https://i.namu.wiki/i/IQQZtp5qxPG4LEbUg9L_Pu8i52NhKf9f20nSTo9g-E2aXTVEDlcWJL5NGnxZGKruJ7Un1DAHRwFlCPhVRmPvG-PNMx-tjOHLoonjfsW6OOWRQSt3GqYTVxgaQjpDNxni39ST_ZQFRozwThETrqwe7Q.webp",
+  "birth_date": "1955년 8월 3일",
+  "family": {
+    "parents": {
+      "father": {
+        "name": "유재필",
+        "url": "https://namu.wiki/w/%EC%9C%A0%EC%9E%AC%ED%95%84(%EA%B8%B0%EC%97%85%EC%9D%B8)"
+      },
+      "mother": {
+        "name": "",
+        "url": ""
+      }
+    },
+    "siblings": {
+      "형": [],
+      "누나": [],
+      "오빠": [],
+      "언니": [],
+      "동생": [],
+      "미분류": []
+    },
+    "spouse": [],
+    "children": [],
+    "flatten": {
+      "부": "유재필"
+    }
+  }
+}

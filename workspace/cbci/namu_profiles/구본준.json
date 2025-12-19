@@ -1,0 +1,56 @@
+{
+  "source": "namu.wiki",
+  "source_url": "https://namu.wiki/w/%EA%B5%AC%EB%B3%B8%EC%A4%80",
+  "resolved_title": "구본준",
+  "attempted_titles": [
+    "구본준"
+  ],
+  "position": "LX 초대 회장",
+  "name_ko": "구본준",
+  "name_hanja": "具本俊",
+  "name_en": "Koo Bon-jun",
+  "profile_image": "https://i.namu.wiki/i/r8TfzqTgRoYIQiN0gKpLgdl8dyvzOPiG8ywzbcvppEQ_qHgLuC__N-4cNrpg9nwKmIcuE10mTIcF4d7DUlpF-AvCPzkvbcOyy10hk2bR82H65OsyPshkEiS43GNoKZAMocEc2sMnfExHoCPnEVFTBA.webp",
+  "birth_date": "1951년 12월 24일",
+  "family": {
+    "parents": {
+      "father": {
+        "name": "구자경",
+        "url": "https://namu.wiki/w/%EA%B5%AC%EC%9E%90%EA%B2%BD"
+      },
+      "mother": {
+        "name": "",
+        "url": ""
+      }
+    },
+    "siblings": {
+      "형": [
+        {
+          "name": "구본무",
+          "url": "https://namu.wiki/w/%EA%B5%AC%EB%B3%B8%EB%AC%B4"
+        },
+        {
+          "name": "구본능",
+          "url": "https://namu.wiki/w/%EA%B5%AC%EB%B3%B8%EB%8A%A5"
+        }
+      ],
+      "누나": [],
+      "오빠": [],
+      "언니": [],
+      "동생": [
+        {
+          "name": "구본식",
+          "url": "https://namu.wiki/w/%EA%B5%AC%EB%B3%B8%EC%8B%9D(%EA%B8%B0%EC%97%85%EC%9D%B8)"
+        }
+      ],
+      "미분류": []
+    },
+    "spouse": [],
+    "children": [],
+    "flatten": {
+      "부": "구자경",
+      "형1": "구본무",
+      "형2": "구본능",
+      "동생1": "구본식"
+    }
+  }
+}

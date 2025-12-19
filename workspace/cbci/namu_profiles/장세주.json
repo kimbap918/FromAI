@@ -1,0 +1,71 @@
+{
+  "source": "namu.wiki",
+  "source_url": "https://namu.wiki/w/%EC%9E%A5%EC%84%B8%EC%A3%BC",
+  "resolved_title": "장세주",
+  "attempted_titles": [
+    "장세주"
+  ],
+  "position": "동국제강그룹 제4대 회장",
+  "name_ko": "장세주",
+  "name_hanja": "張世宙",
+  "name_en": "",
+  "profile_image": "https://i.namu.wiki/i/H-zsmnECWt_tuA6HkZul0f8LrXcGQ8deuC0x-kKOQzeOecyzGwfMfkfcAUxy5AJ_jRyK2-Nbvkoifz3o75Iam21OuMGNAEdhHRkHqd3MoMIm4Zq52WzXG55ooQFz0em2Yim75E7naGIRMOk5L91uow.webp",
+  "birth_date": "",
+  "family": {
+    "parents": {
+      "father": {
+        "name": "장상태",
+        "url": "https://namu.wiki/w/%EC%9E%A5%EC%83%81%ED%83%9C"
+      },
+      "mother": {
+        "name": "",
+        "url": ""
+      }
+    },
+    "siblings": {
+      "형": [],
+      "누나": [],
+      "오빠": [],
+      "언니": [],
+      "동생": [
+        {
+          "name": "장영빈",
+          "url": "https://namu.wiki/w/%EC%9E%A5%EC%98%81%EB%B9%88"
+        },
+        {
+          "name": "장문경",
+          "url": "https://namu.wiki/w/%EC%9E%A5%EB%AC%B8%EA%B2%BD"
+        },
+        {
+          "name": "장윤희",
+          "url": "https://namu.wiki/w/%EC%9E%A5%EC%9C%A4%ED%9D%AC"
+        },
+        {
+          "name": "장세욱",
+          "url": "https://namu.wiki/w/%EC%9E%A5%EC%84%B8%EC%9A%B1"
+        }
+      ],
+      "미분류": []
+    },
+    "spouse": [],
+    "children": [
+      {
+        "name": "장선익",
+        "url": "https://namu.wiki/w/%EC%9E%A5%EC%84%A0%EC%9D%B5"
+      },
+      {
+        "name": "장승익",
+        "url": "https://namu.wiki/w/%EC%9E%A5%EC%8A%B9%EC%9D%B5"
+      }
+    ],
+    "flatten": {
+      "부": "장상태",
+      "동생1": "장영빈",
+      "동생2": "장문경",
+      "동생3": "장윤희",
+      "동생4": "장세욱",
+      "자녀1": "장선익",
+      "자녀2": "장승익"
+    }
+  }
+}

@@ -1,0 +1,68 @@
+{
+  "source": "namu.wiki",
+  "source_url": "https://namu.wiki/w/%EA%B5%AC%EC%9E%90%EC%9D%80",
+  "resolved_title": "구자은",
+  "attempted_titles": [
+    "구자은"
+  ],
+  "position": "LS그룹 제3대 회장",
+  "name_ko": "구자은",
+  "name_hanja": "具滋殷",
+  "name_en": "",
+  "profile_image": "https://i.namu.wiki/i/c1v2rKhp5PSWdk8BrKTUgRQhv2sMVEecNbleuBHQM_i9GfNPqkSZThdaLF3q4ENkmKSsY-boc_VVe7ypXAszkaEJfDRdfzgnvFGMKydgt3tBV3kgZUB19JDDQLRdnqypDWGMXM0HJHdJn3kXdkS1vg.webp",
+  "birth_date": "1964년 10월 18일",
+  "family": {
+    "parents": {
+      "father": {
+        "name": "구두회",
+        "url": "https://namu.wiki/w/%EA%B5%AC%EB%91%90%ED%9A%8C"
+      },
+      "mother": {
+        "name": "",
+        "url": ""
+      }
+    },
+    "siblings": {
+      "형": [],
+      "누나": [
+        {
+          "name": "구은정",
+          "url": "https://namu.wiki/w/%EA%B5%AC%EC%9D%80%EC%A0%95"
+        }
+      ],
+      "오빠": [],
+      "언니": [],
+      "동생": [
+        {
+          "name": "구지희",
+          "url": "https://namu.wiki/w/%EA%B5%AC%EC%A7%80%ED%9D%AC"
+        }
+      ],
+      "미분류": []
+    },
+    "spouse": [
+      {
+        "name": "장인영",
+        "url": "https://namu.wiki/w/%EC%9E%A5%EC%9D%B8%EC%98%81"
+      }
+    ],
+    "children": [
+      {
+        "name": "구원경",
+        "url": "https://namu.wiki/w/%EA%B5%AC%EC%9B%90%EA%B2%BD"
+      },
+      {
+        "name": "구민기",
+        "url": "https://namu.wiki/w/%EA%B5%AC%EB%AF%BC%EA%B8%B0"
+      }
+    ],
+    "flatten": {
+      "부": "구두회",
+      "누나1": "구은정",
+      "동생1": "구지희",
+      "배우자1": "장인영",
+      "자녀1": "구원경",
+      "자녀2": "구민기"
+    }
+  }
+}

@@ -1,0 +1,39 @@
+{
+  "source": "namu.wiki",
+  "source_url": "https://namu.wiki/w/%EC%A0%95%EB%AA%BD%EA%B7%9C",
+  "resolved_title": "정몽규",
+  "attempted_titles": [
+    "정몽규"
+  ],
+  "position": "HDC 초대 회장",
+  "name_ko": "정몽규",
+  "name_hanja": "鄭夢奎",
+  "name_en": "Chung Mong-gyu",
+  "profile_image": "https://i.namu.wiki/i/zDQFcBfOR2PW_ZBEpCG3sNUBaitPuWJcQ7yjlHxMvgNKGUj9-nWkf9DoTs4LsreOBqW7ZyD6IWZYtRfZMfhpcZ-_GheQkZKTJv6JA2IAN0J3AXFq8f45vJCcwqSSbI9rPoE9G32q9mJFLiUikycnMg.webp",
+  "birth_date": "1962년 1월 14일",
+  "family": {
+    "parents": {
+      "father": {
+        "name": "정세영",
+        "url": "https://namu.wiki/w/%EC%A0%95%EC%84%B8%EC%98%81"
+      },
+      "mother": {
+        "name": "",
+        "url": ""
+      }
+    },
+    "siblings": {
+      "형": [],
+      "누나": [],
+      "오빠": [],
+      "언니": [],
+      "동생": [],
+      "미분류": []
+    },
+    "spouse": [],
+    "children": [],
+    "flatten": {
+      "부": "정세영"
+    }
+  }
+}

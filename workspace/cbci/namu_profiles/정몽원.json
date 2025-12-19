@@ -1,0 +1,39 @@
+{
+  "source": "namu.wiki",
+  "source_url": "https://namu.wiki/w/%EC%A0%95%EB%AA%BD%EC%9B%90",
+  "resolved_title": "정몽원",
+  "attempted_titles": [
+    "정몽원"
+  ],
+  "position": "HL그룹 제2대 회장",
+  "name_ko": "정몽원",
+  "name_hanja": "鄭夢元",
+  "name_en": "Chung Mong-won",
+  "profile_image": "https://i.namu.wiki/i/kwehYxyRILWBLlZ4p_-WVwNE1ZgOMcwg-BCUyIspJ5VexEMviEmUE71WXLdp3ygn4_SOiCxfSEH7vYJlcVn49s7x2gDEokEKzD8CVezTKWLfa-gRL-xr6wUG-NQWU6AMLYCjYn5g-PzAcHA5V-ai1A.webp",
+  "birth_date": "1955년 8월 4일",
+  "family": {
+    "parents": {
+      "father": {
+        "name": "정인영",
+        "url": "https://namu.wiki/w/%EC%A0%95%EC%9D%B8%EC%98%81(%EA%B8%B0%EC%97%85%EC%9D%B8)"
+      },
+      "mother": {
+        "name": "",
+        "url": ""
+      }
+    },
+    "siblings": {
+      "형": [],
+      "누나": [],
+      "오빠": [],
+      "언니": [],
+      "동생": [],
+      "미분류": []
+    },
+    "spouse": [],
+    "children": [],
+    "flatten": {
+      "부": "정인영"
+    }
+  }
+}

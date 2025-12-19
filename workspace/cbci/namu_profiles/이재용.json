@@ -1,0 +1,66 @@
+{
+  "source": "namu.wiki",
+  "source_url": "https://namu.wiki/w/%EC%9D%B4%EC%9E%AC%EC%9A%A9",
+  "resolved_title": "이재용",
+  "attempted_titles": [
+    "이재용"
+  ],
+  "position": "삼성 제3대 회장",
+  "name_ko": "이재용",
+  "name_hanja": "李在鎔",
+  "name_en": "Lee Jae-yong",
+  "profile_image": "https://i.namu.wiki/i/GOWqG9CYM8bcfXkvq3zXPKdOo7LFJdRXad0KTmDFWXND3YPG2XcawNZcw3ShcOhKDCcyKYlLjCr-NPmQUoxpmXSnI3sc1jipJGTGBhJftN-zv8z0r7ltc8kYae0N4HuZh3MT__hLnQLrSxRiq5nVVA.webp",
+  "birth_date": "1968년 6월 23일",
+  "family": {
+    "parents": {
+      "father": {
+        "name": "",
+        "url": ""
+      },
+      "mother": {
+        "name": "홍라희",
+        "url": "https://namu.wiki/w/%ED%99%8D%EB%9D%BC%ED%9D%AC"
+      }
+    },
+    "siblings": {
+      "형": [],
+      "누나": [],
+      "오빠": [],
+      "언니": [],
+      "동생": [
+        {
+          "name": "이부진",
+          "url": "https://namu.wiki/w/%EC%9D%B4%EB%B6%80%EC%A7%84"
+        },
+        {
+          "name": "이서현",
+          "url": "https://namu.wiki/w/%EC%9D%B4%EC%84%9C%ED%98%84"
+        },
+        {
+          "name": "이윤형",
+          "url": "https://namu.wiki/w/%EC%9D%B4%EC%9C%A4%ED%98%95"
+        }
+      ],
+      "미분류": []
+    },
+    "spouse": [],
+    "children": [
+      {
+        "name": "이지호",
+        "url": "https://namu.wiki/w/%EC%9D%B4%EC%A7%80%ED%98%B8(2000)"
+      },
+      {
+        "name": "이원주",
+        "url": "https://namu.wiki/w/%EC%9D%B4%EC%9B%90%EC%A3%BC"
+      }
+    ],
+    "flatten": {
+      "모": "홍라희",
+      "동생1": "이부진",
+      "동생2": "이서현",
+      "동생3": "이윤형",
+      "자녀1": "이지호",
+      "자녀2": "이원주"
+    }
+  }
+}

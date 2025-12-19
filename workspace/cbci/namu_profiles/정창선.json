@@ -1,0 +1,44 @@
+{
+  "source": "namu.wiki",
+  "source_url": "https://namu.wiki/w/%EC%A0%95%EC%B0%BD%EC%84%A0",
+  "resolved_title": "정창선",
+  "attempted_titles": [
+    "정창선"
+  ],
+  "position": "중흥그룹 회장",
+  "name_ko": "정창선",
+  "name_hanja": "鄭昌善",
+  "name_en": "Jung Chang-seon",
+  "profile_image": "https://i.namu.wiki/i/HqzR3zq4em7UspQ4LPNTWFnNVIRya9KKqNz6PsSGLAmc0LpSSJTNzVyr9VDBrgL_Ft2aWNdzF8hQhwt7_kawnTCoJVp9qGfwjUSRCfTPrLb7HW-rYW3_v3E4_19shKk0LMusQM2BMZ-Cbh5tH50p-w.webp",
+  "birth_date": "1943년 1월 9일",
+  "family": {
+    "parents": {
+      "father": {
+        "name": "",
+        "url": ""
+      },
+      "mother": {
+        "name": "",
+        "url": ""
+      }
+    },
+    "siblings": {
+      "형": [],
+      "누나": [],
+      "오빠": [],
+      "언니": [],
+      "동생": [],
+      "미분류": []
+    },
+    "spouse": [],
+    "children": [
+      {
+        "name": "정원주",
+        "url": "https://namu.wiki/w/%EC%A0%95%EC%9B%90%EC%A3%BC"
+      }
+    ],
+    "flatten": {
+      "자녀1": "정원주"
+    }
+  }
+}

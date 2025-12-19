@@ -1,0 +1,57 @@
+{
+  "source": "namu.wiki",
+  "source_url": "https://namu.wiki/w/%EC%A1%B0%EC%96%91%EB%9E%98",
+  "resolved_title": "조양래",
+  "attempted_titles": [
+    "조양래"
+  ],
+  "position": "한국앤컴퍼니 명예회장",
+  "name_ko": "조양래",
+  "name_hanja": "趙洋來",
+  "name_en": "",
+  "profile_image": "https://i.namu.wiki/i/R8LVvdxURHTewnNroZd9qXBEE-xHjgDdOQ3s5jih0YAXBDwWUj-W4fMEXACZSjOGp_FEWQuF8Ihs_ms--wmuyhb3ukKiIUmbMchT4wWMnCnB2F_zV53-F21GGnI-7YU3BFA5m5_i3ENn_KvpaXlA6g.webp",
+  "birth_date": "1937년 10월 19일",
+  "family": {
+    "parents": {
+      "father": {
+        "name": "조홍제",
+        "url": "https://namu.wiki/w/%EC%A1%B0%ED%99%8D%EC%A0%9C"
+      },
+      "mother": {
+        "name": "",
+        "url": ""
+      }
+    },
+    "siblings": {
+      "형": [
+        {
+          "name": "조석래",
+          "url": "https://namu.wiki/w/%EC%A1%B0%EC%84%9D%EB%9E%98"
+        }
+      ],
+      "누나": [],
+      "오빠": [],
+      "언니": [],
+      "동생": [
+        {
+          "name": "조욱래",
+          "url": "https://namu.wiki/w/%EC%A1%B0%EC%9A%B1%EB%9E%98"
+        }
+      ],
+      "미분류": []
+    },
+    "spouse": [],
+    "children": [
+      {
+        "name": "조현범",
+        "url": "https://namu.wiki/w/%EC%A1%B0%ED%98%84%EB%B2%94"
+      }
+    ],
+    "flatten": {
+      "부": "조홍제",
+      "형1": "조석래",
+      "동생1": "조욱래",
+      "자녀1": "조현범"
+    }
+  }
+}

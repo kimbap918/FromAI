@@ -1,0 +1,39 @@
+{
+  "source": "namu.wiki",
+  "source_url": "https://namu.wiki/w/%EB%B0%95%EC%A0%95%EC%9B%90",
+  "resolved_title": "박정원",
+  "attempted_titles": [
+    "박정원"
+  ],
+  "position": "두산 제10대 회장",
+  "name_ko": "박정원",
+  "name_hanja": "朴廷原",
+  "name_en": "Park Jeong-won",
+  "profile_image": "https://i.namu.wiki/i/Zm1HoZt5UKBgcfZKfdyXmkQOy_mEllw33_XLvl8CkCDQ1y50MtaU7zZMng3eOrNXz8cm-R9arK_P3OtI4xkUZcETn5uCgNgAqpb3hs-Y4-50iG5Ne69ITAX2VVSCA1PHCkvBdpGwSHtxRJ4ZT6ntmg.webp",
+  "birth_date": "1962년 3월 9일",
+  "family": {
+    "parents": {
+      "father": {
+        "name": "박용곤",
+        "url": "https://namu.wiki/w/%EB%B0%95%EC%9A%A9%EA%B3%A4"
+      },
+      "mother": {
+        "name": "",
+        "url": ""
+      }
+    },
+    "siblings": {
+      "형": [],
+      "누나": [],
+      "오빠": [],
+      "언니": [],
+      "동생": [],
+      "미분류": []
+    },
+    "spouse": [],
+    "children": [],
+    "flatten": {
+      "부": "박용곤"
+    }
+  }
+}

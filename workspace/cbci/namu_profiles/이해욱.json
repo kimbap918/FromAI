@@ -1,0 +1,39 @@
+{
+  "source": "namu.wiki",
+  "source_url": "https://namu.wiki/w/%EC%9D%B4%ED%95%B4%EC%9A%B1",
+  "resolved_title": "이해욱",
+  "attempted_titles": [
+    "이해욱"
+  ],
+  "position": "DL그룹 제4대 회장",
+  "name_ko": "이해욱",
+  "name_hanja": "李海旭",
+  "name_en": "",
+  "profile_image": "https://i.namu.wiki/i/NNaxFFBiauu9zP9CHNSGVXWY16C_v1jQpysuh26LKBslHyKbQX4IRuk0paVyjUS9vEKK9HmN1b9KPJMNLwMfAgWfeZSLzqFmeE4oBt8dJ_pVafG39wMSUj1mbDUpiolMftIcZZ5dDje4ZSf8_DeHhg.webp",
+  "birth_date": "1968년 2월 14일",
+  "family": {
+    "parents": {
+      "father": {
+        "name": "이준용",
+        "url": "https://namu.wiki/w/%EC%9D%B4%EC%A4%80%EC%9A%A9"
+      },
+      "mother": {
+        "name": "",
+        "url": ""
+      }
+    },
+    "siblings": {
+      "형": [],
+      "누나": [],
+      "오빠": [],
+      "언니": [],
+      "동생": [],
+      "미분류": []
+    },
+    "spouse": [],
+    "children": [],
+    "flatten": {
+      "부": "이준용"
+    }
+  }
+}

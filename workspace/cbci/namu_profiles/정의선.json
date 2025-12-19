@@ -1,0 +1,39 @@
+{
+  "source": "namu.wiki",
+  "source_url": "https://namu.wiki/w/%EC%A0%95%EC%9D%98%EC%84%A0",
+  "resolved_title": "정의선",
+  "attempted_titles": [
+    "정의선"
+  ],
+  "position": "현대자동차그룹 제2대 회장",
+  "name_ko": "정의선",
+  "name_hanja": "鄭義宣",
+  "name_en": "Chung Eui-sun",
+  "profile_image": "https://i.namu.wiki/i/hde2VRri1eJ4KNuS01dUxhxF86VSi0DUug7tJuyyNe0nfDMa51N3abUEU8BZ-EVfSfQRnVzSEcJB27ikBAVhbv24hZzc3pq66zqQpojyROsq94sw0XgzZ3ibfnBwUVrpAkfDrqu9G2QBE8Fu6wKgGw.webp",
+  "birth_date": "1970년 10월 18일",
+  "family": {
+    "parents": {
+      "father": {
+        "name": "정몽구",
+        "url": "https://namu.wiki/w/%EC%A0%95%EB%AA%BD%EA%B5%AC"
+      },
+      "mother": {
+        "name": "",
+        "url": ""
+      }
+    },
+    "siblings": {
+      "형": [],
+      "누나": [],
+      "오빠": [],
+      "언니": [],
+      "동생": [],
+      "미분류": []
+    },
+    "spouse": [],
+    "children": [],
+    "flatten": {
+      "부": "정몽구"
+    }
+  }
+}

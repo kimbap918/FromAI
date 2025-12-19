@@ -1,0 +1,44 @@
+{
+  "source": "namu.wiki",
+  "source_url": "https://namu.wiki/w/%EC%9C%A4%EC%84%B8%EC%98%81",
+  "resolved_title": "윤세영",
+  "attempted_titles": [
+    "윤세영"
+  ],
+  "position": "태영그룹 창업주",
+  "name_ko": "윤세영",
+  "name_hanja": "尹世榮",
+  "name_en": "Yoon Se-young",
+  "profile_image": "https://i.namu.wiki/i/MEFzpHlizC8_EGci1Z9yldUd3p5B1q5SlC0ciFUX8mvw1vgKuZ9JnWC9CfBhkUFlRliPckrIuGLbCoHq6cub8JRGA1rsl8eqKe9phxW3HlbYuJj6PrVnnIomM698RjcLaMjIsKGxB4gvC4yTk4HE-g.webp",
+  "birth_date": "1933년 5월 22일",
+  "family": {
+    "parents": {
+      "father": {
+        "name": "",
+        "url": ""
+      },
+      "mother": {
+        "name": "",
+        "url": ""
+      }
+    },
+    "siblings": {
+      "형": [],
+      "누나": [],
+      "오빠": [],
+      "언니": [],
+      "동생": [],
+      "미분류": []
+    },
+    "spouse": [],
+    "children": [
+      {
+        "name": "윤석민",
+        "url": "https://namu.wiki/w/%EC%9C%A4%EC%84%9D%EB%AF%BC(%EA%B8%B0%EC%97%85%EC%9D%B8)"
+      }
+    ],
+    "flatten": {
+      "자녀1": "윤석민"
+    }
+  }
+}

@@ -1,0 +1,52 @@
+{
+  "source": "namu.wiki",
+  "source_url": "https://namu.wiki/w/%EC%A1%B0%EC%9B%90%ED%83%9C",
+  "resolved_title": "조원태",
+  "attempted_titles": [
+    "조원태"
+  ],
+  "position": "한진그룹 제3대 회장",
+  "name_ko": "조원태",
+  "name_hanja": "趙源泰",
+  "name_en": "Cho Won-tae",
+  "profile_image": "https://i.namu.wiki/i/x5MZ0-H2rxJ7QTBR5p9Cuo-EdZciX923Y9QwumKYCqgJZe2i7kT40x9DuX8qzXS4zS1i_8qT99t_RzNBj4VZNIPbkmnO-7gdv7aZEtCcr8SeIb02iL9MQK1WfZtV1IEmcr-q0dkcKU2s9WasrYq9Fw.webp",
+  "birth_date": "1976년 1월 25일",
+  "family": {
+    "parents": {
+      "father": {
+        "name": "조양호",
+        "url": "https://namu.wiki/w/%EC%A1%B0%EC%96%91%ED%98%B8"
+      },
+      "mother": {
+        "name": "이명희",
+        "url": "https://namu.wiki/w/%EC%9D%B4%EB%AA%85%ED%9D%AC(1950)"
+      }
+    },
+    "siblings": {
+      "형": [],
+      "누나": [
+        {
+          "name": "조승연",
+          "url": "https://namu.wiki/w/%EC%A1%B0%EC%8A%B9%EC%97%B0(%EA%B8%B0%EC%97%85%EC%9D%B8)"
+        }
+      ],
+      "오빠": [],
+      "언니": [],
+      "동생": [
+        {
+          "name": "조현민",
+          "url": "https://namu.wiki/w/%EC%A1%B0%ED%98%84%EB%AF%BC(%EA%B8%B0%EC%97%85%EC%9D%B8)"
+        }
+      ],
+      "미분류": []
+    },
+    "spouse": [],
+    "children": [],
+    "flatten": {
+      "부": "조양호",
+      "모": "이명희",
+      "누나1": "조승연",
+      "동생1": "조현민"
+    }
+  }
+}

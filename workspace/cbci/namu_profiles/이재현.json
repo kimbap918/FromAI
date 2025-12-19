@@ -1,0 +1,58 @@
+{
+  "source": "namu.wiki",
+  "source_url": "https://namu.wiki/w/%EC%9D%B4%EC%9E%AC%ED%98%84(%EA%B8%B0%EC%97%85%EC%9D%B8)",
+  "resolved_title": "이재현(기업인)",
+  "attempted_titles": [
+    "이재현",
+    "이재현(기업인)"
+  ],
+  "position": "CJ 초대 총수",
+  "name_ko": "이재현",
+  "name_hanja": "李在賢",
+  "name_en": "Lee Jay-hyun",
+  "profile_image": "https://i.namu.wiki/i/wpB00KyXMSDPN9kckhQb-83J6nQ_qZzS9UmC-e3NyceLept7dVVoMrNMMC6c7ybt1eRxgQkApHvTb6bBqtF5R4o8-qqXNljQpFK4cVrJHOm2glJ6xzNiZom8qxVyHl9C38GFrOwuDtw9T6uDiGOMDQ.webp",
+  "birth_date": "1960년 3월 19일",
+  "family": {
+    "parents": {
+      "father": {
+        "name": "이맹희",
+        "url": "https://namu.wiki/w/%EC%9D%B4%EB%A7%B9%ED%9D%AC"
+      },
+      "mother": {
+        "name": "",
+        "url": ""
+      }
+    },
+    "siblings": {
+      "형": [],
+      "누나": [
+        {
+          "name": "미경 리",
+          "url": "https://namu.wiki/w/%EC%9D%B4%EB%AF%B8%EA%B2%BD(%EA%B8%B0%EC%97%85%EC%9D%B8)"
+        }
+      ],
+      "오빠": [],
+      "언니": [],
+      "동생": [
+        {
+          "name": "이재환",
+          "url": "https://namu.wiki/w/%EC%9D%B4%EC%9E%AC%ED%99%98(%EA%B8%B0%EC%97%85%EC%9D%B8)"
+        }
+      ],
+      "미분류": []
+    },
+    "spouse": [],
+    "children": [
+      {
+        "name": "이선호",
+        "url": "https://namu.wiki/w/%EC%9D%B4%EC%84%A0%ED%98%B8(1990)"
+      }
+    ],
+    "flatten": {
+      "부": "이맹희",
+      "누나1": "미경 리",
+      "동생1": "이재환",
+      "자녀1": "이선호"
+    }
+  }
+}

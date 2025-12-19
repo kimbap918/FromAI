@@ -1,0 +1,39 @@
+{
+  "source": "namu.wiki",
+  "source_url": "https://namu.wiki/w/%EC%9D%B4%EC%9B%85%EC%97%B4",
+  "resolved_title": "이웅열",
+  "attempted_titles": [
+    "이웅열"
+  ],
+  "position": "코오롱그룹 제3대 회장",
+  "name_ko": "이웅열",
+  "name_hanja": "李雄烈",
+  "name_en": "Lee Woong-yeol",
+  "profile_image": "https://i.namu.wiki/i/mZGsqCzXLilNqG-8kJTaMOLBQ5KdhfEL7rWDGcRP_-0wLklU81z71IJbapRt5asNXqa0Ltw3bDmCy1PrvVugEyu1UAgIk3xBxf1FGG6lDCOc36J0xhLuwekXp-zrlKIZhNJQa7e-gT4777MPb9oYaw.webp",
+  "birth_date": "1956년 4월 18일",
+  "family": {
+    "parents": {
+      "father": {
+        "name": "이동찬",
+        "url": "https://namu.wiki/w/%EC%9D%B4%EB%8F%99%EC%B0%AC"
+      },
+      "mother": {
+        "name": "",
+        "url": ""
+      }
+    },
+    "siblings": {
+      "형": [],
+      "누나": [],
+      "오빠": [],
+      "언니": [],
+      "동생": [],
+      "미분류": []
+    },
+    "spouse": [],
+    "children": [],
+    "flatten": {
+      "부": "이동찬"
+    }
+  }
+}

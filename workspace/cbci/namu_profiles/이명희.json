@@ -1,0 +1,85 @@
+{
+  "source": "namu.wiki",
+  "source_url": "https://namu.wiki/w/%EC%9D%B4%EB%AA%85%ED%9D%AC(%EA%B8%B0%EC%97%85%EC%9D%B8)",
+  "resolved_title": "이명희(기업인)",
+  "attempted_titles": [
+    "이명희",
+    "이명희(기업인)"
+  ],
+  "position": "신세계그룹 총괄회장",
+  "name_ko": "이명희",
+  "name_hanja": "李明熙",
+  "name_en": "Lee Myung-hee",
+  "profile_image": "https://i.namu.wiki/i/QQT6i48vgooP7BGTgAsK19VyzgHmCnfTfAKyX_VE1xTqEIq0QfhT0AumATkILjBofsi7j-5voW9qkmB4ljiqF56L30GQejPcMKoWh-FZ5cyCraqjeIfSQpcde_s4-bl6F5VbwQze6GUc52aPclSw-Q.webp",
+  "birth_date": "1943년 9월 5일",
+  "family": {
+    "parents": {
+      "father": {
+        "name": "이병철",
+        "url": "https://namu.wiki/w/%EC%9D%B4%EB%B3%91%EC%B2%A0"
+      },
+      "mother": {
+        "name": "박두을",
+        "url": "https://namu.wiki/w/%EB%B0%95%EB%91%90%EC%9D%84"
+      }
+    },
+    "siblings": {
+      "형": [],
+      "누나": [],
+      "오빠": [
+        {
+          "name": "이맹희",
+          "url": "https://namu.wiki/w/%EC%9D%B4%EB%A7%B9%ED%9D%AC"
+        },
+        {
+          "name": "이창희",
+          "url": "https://namu.wiki/w/%EC%9D%B4%EC%B0%BD%ED%9D%AC(%EA%B8%B0%EC%97%85%EC%9D%B8)"
+        },
+        {
+          "name": "이건희",
+          "url": "https://namu.wiki/w/%EC%9D%B4%EA%B1%B4%ED%9D%AC"
+        }
+      ],
+      "언니": [
+        {
+          "name": "이인희",
+          "url": "https://namu.wiki/w/%EC%9D%B4%EC%9D%B8%ED%9D%AC"
+        },
+        {
+          "name": "이숙희",
+          "url": "https://namu.wiki/w/%EC%9D%B4%EC%88%99%ED%9D%AC(1935)"
+        }
+      ],
+      "동생": [],
+      "미분류": []
+    },
+    "spouse": [
+      {
+        "name": "정재은",
+        "url": "https://namu.wiki/w/%EC%A0%95%EC%9E%AC%EC%9D%80(%EA%B8%B0%EC%97%85%EC%9D%B8)"
+      }
+    ],
+    "children": [
+      {
+        "name": "정용진",
+        "url": "https://namu.wiki/w/%EC%A0%95%EC%9A%A9%EC%A7%84"
+      },
+      {
+        "name": "정유경",
+        "url": "https://namu.wiki/w/%EC%A0%95%EC%9C%A0%EA%B2%BD(%EA%B8%B0%EC%97%85%EC%9D%B8)"
+      }
+    ],
+    "flatten": {
+      "부": "이병철",
+      "모": "박두을",
+      "오빠1": "이맹희",
+      "오빠2": "이창희",
+      "오빠3": "이건희",
+      "언니1": "이인희",
+      "언니2": "이숙희",
+      "배우자1": "정재은",
+      "자녀1": "정용진",
+      "자녀2": "정유경"
+    }
+  }
+}

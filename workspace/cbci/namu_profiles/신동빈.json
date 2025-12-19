@@ -1,0 +1,57 @@
+{
+  "source": "namu.wiki",
+  "source_url": "https://namu.wiki/w/%EC%8B%A0%EB%8F%99%EB%B9%88",
+  "resolved_title": "신동빈",
+  "attempted_titles": [
+    "신동빈"
+  ],
+  "position": "제2대 롯데 회장",
+  "name_ko": "신동빈",
+  "name_hanja": "辛東彬",
+  "name_en": "Shin Dong-bin",
+  "profile_image": "https://i.namu.wiki/i/qRiffUJauA6dVPxGgiTIuqkI3A9-U_TD8U5_uxRj2_P10gkMU0iRAoDObvaTIqrTpihgY7uThVLGo9hQujlPczTSVi2QVd1GQqOlvGfksxjU6LFr7YnSbXKR1ZWjKxlDKfo6cayeMcokmAm_1PV8Wg.webp",
+  "birth_date": "1955년 2월 14일",
+  "family": {
+    "parents": {
+      "father": {
+        "name": "신격호",
+        "url": "https://namu.wiki/w/%EC%8B%A0%EA%B2%A9%ED%98%B8"
+      },
+      "mother": {
+        "name": "",
+        "url": ""
+      }
+    },
+    "siblings": {
+      "형": [
+        {
+          "name": "신동주",
+          "url": "https://namu.wiki/w/%EC%8B%A0%EB%8F%99%EC%A3%BC"
+        }
+      ],
+      "누나": [
+        {
+          "name": "신영자",
+          "url": "https://namu.wiki/w/%EC%8B%A0%EC%98%81%EC%9E%90"
+        }
+      ],
+      "오빠": [],
+      "언니": [],
+      "동생": [],
+      "미분류": []
+    },
+    "spouse": [],
+    "children": [
+      {
+        "name": "신유열",
+        "url": "https://namu.wiki/w/%EC%8B%A0%EC%9C%A0%EC%97%B4"
+      }
+    ],
+    "flatten": {
+      "부": "신격호",
+      "형1": "신동주",
+      "누나1": "신영자",
+      "자녀1": "신유열"
+    }
+  }
+}

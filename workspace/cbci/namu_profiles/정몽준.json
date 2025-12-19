@@ -1,0 +1,88 @@
+{
+  "source": "namu.wiki",
+  "source_url": "https://namu.wiki/w/%EC%A0%95%EB%AA%BD%EC%A4%80",
+  "resolved_title": "정몽준",
+  "attempted_titles": [
+    "정몽준"
+  ],
+  "position": "HD현대 초대 총수",
+  "name_ko": "정몽준",
+  "name_hanja": "鄭夢準",
+  "name_en": "Chung Mong-joon",
+  "profile_image": "https://i.namu.wiki/i/bkNyZ6VhkuRhLlo9oOT8J8EZ-FteqjC2w9Seq_-wcGo_N4zTDa9d6jLhZtOm8RzfN0wubYa7WbBO8kVGCvuhQ-gvsOWfBC9ZMnNzjAZg3nQoZaJOpk6ROj_Y5jISBCVDCcUQahlQmiG-yTGgnmx8Vg.webp",
+  "birth_date": "1951년 11월 15일",
+  "family": {
+    "parents": {
+      "father": {
+        "name": "정주영",
+        "url": "https://namu.wiki/w/%EC%A0%95%EC%A3%BC%EC%98%81"
+      },
+      "mother": {
+        "name": "변중석",
+        "url": "https://namu.wiki/w/%EB%B3%80%EC%A4%91%EC%84%9D"
+      }
+    },
+    "siblings": {
+      "형": [
+        {
+          "name": "정몽필",
+          "url": "https://namu.wiki/w/%EC%A0%95%EB%AA%BD%ED%95%84"
+        },
+        {
+          "name": "정몽구",
+          "url": "https://namu.wiki/w/%EC%A0%95%EB%AA%BD%EA%B5%AC"
+        },
+        {
+          "name": "정몽근",
+          "url": "https://namu.wiki/w/%EC%A0%95%EB%AA%BD%EA%B7%BC"
+        },
+        {
+          "name": "정몽우",
+          "url": "https://namu.wiki/w/%EC%A0%95%EB%AA%BD%EC%9A%B0"
+        },
+        {
+          "name": "정몽헌",
+          "url": "https://namu.wiki/w/%EC%A0%95%EB%AA%BD%ED%97%8C"
+        }
+      ],
+      "누나": [],
+      "오빠": [],
+      "언니": [],
+      "동생": [
+        {
+          "name": "정몽윤",
+          "url": "https://namu.wiki/w/%EC%A0%95%EB%AA%BD%EC%9C%A4"
+        },
+        {
+          "name": "정몽일",
+          "url": "https://namu.wiki/w/%EC%A0%95%EB%AA%BD%EC%9D%BC"
+        }
+      ],
+      "미분류": []
+    },
+    "spouse": [],
+    "children": [
+      {
+        "name": "정기선",
+        "url": "https://namu.wiki/w/%EC%A0%95%EA%B8%B0%EC%84%A0"
+      },
+      {
+        "name": "정예선",
+        "url": "https://namu.wiki/w/%EC%A0%95%EC%98%88%EC%84%A0"
+      }
+    ],
+    "flatten": {
+      "부": "정주영",
+      "모": "변중석",
+      "형1": "정몽필",
+      "형2": "정몽구",
+      "형3": "정몽근",
+      "형4": "정몽우",
+      "형5": "정몽헌",
+      "동생1": "정몽윤",
+      "동생2": "정몽일",
+      "자녀1": "정기선",
+      "자녀2": "정예선"
+    }
+  }
+}

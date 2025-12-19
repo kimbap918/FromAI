@@ -1,5 +1,8 @@
 # kftc_all.py
 # pip install requests
+#
+# 변경점:
+# - ✅ EXCLUDED_GROUPS 목록에 포함된 기업집단(unityGrupNm)은 최종 저장/계열사 조회에서 제외
 
 from __future__ import annotations
 
@@ -22,15 +25,100 @@ GROUP_URLS = [
 ]
 
 # 2) 소속회사(계열사) 목록
-# 포털의 End Point는 .../appnGroupAffiList 이고, 실제 호출 URL은 보통 .../appnGroupAffiListApi 패턴이라 후보를 같이 둠.
 AFFI_URLS = [
     "https://apis.data.go.kr/1130000/appnGroupAffiList/appnGroupAffiListApi",
     "http://apis.data.go.kr/1130000/appnGroupAffiList/appnGroupAffiListApi",
-    "https://apis.data.go.kr/1130000/appnGroupAffiList/appnGroupAffiList",  # 혹시 케이스 대비
+    "https://apis.data.go.kr/1130000/appnGroupAffiList/appnGroupAffiList",
     "http://apis.data.go.kr/1130000/appnGroupAffiList/appnGroupAffiList",
 ]
 
 UA = "PressAI-KFTC/1.0"
+
+# -----------------------
+# ✅ 제외할 기업집단 목록
+# -----------------------
+EXCLUDED_GROUPS_RAW = """
+영풍
+하림
+효성
+장금상선
+SM
+에이치디씨
+호반건설
+코오롱
+케이씨씨
+DB
+넥슨
+오씨아이
+엘엑스
+세아
+넷마블
+이랜드
+교보생명보험
+다우키움
+금호석유화학
+대방건설
+태영
+삼천리
+KG
+에코프로
+HL
+동원
+아모레퍼시픽
+태광
+크래프톤
+글로벌세아
+엠디엠
+소노인터내셔널
+애경
+동국제강
+BS(舊 보성)
+삼양
+엘아이지
+중앙
+유진
+고려에이치씨
+BGF
+대광
+반도홀딩스
+대신
+오케이금융그룹
+하이트진로
+농심
+DN
+현대해상화재보험
+신영
+파라다이스
+아이에스지주
+하이브
+한솔
+삼표
+사조
+원익
+빗썸
+""".strip()
+
+
+def normalize_group_name(name: str) -> str:
+    """
+    비교 안정화:
+    - 공백 제거
+    - ASCII 영문은 대문자화
+    - 기타 문자는 그대로
+    """
+    s = (name or "").strip()
+    s = re.sub(r"\s+", "", s)
+    # 영문만 대문자 처리
+    out = []
+    for ch in s:
+        if "a" <= ch <= "z" or "A" <= ch <= "Z":
+            out.append(ch.upper())
+        else:
+            out.append(ch)
+    return "".join(out)
+
+
+EXCLUDED_GROUPS = {normalize_group_name(x) for x in EXCLUDED_GROUPS_RAW.splitlines() if x.strip()}
 
 
 # -----------------------
@@ -41,6 +129,7 @@ CORP_TOKENS = [
     "중앙회", "조합", "협회", "위원회", "공사", "공단",
     "은행", "보험", "증권", "지주", "홀딩스", "학교", "병원"
 ]
+
 
 def looks_like_person_name(s: str) -> bool:
     """총수(동일인)가 사람 이름처럼 보이는지(기업/기관명 제거용)"""
@@ -72,6 +161,7 @@ def looks_like_person_name(s: str) -> bool:
 # -----------------------
 def http_get(url: str, params: Optional[dict] = None, timeout: int = 30) -> requests.Response:
     return requests.get(url, params=params, timeout=timeout, headers={"User-Agent": UA, "Accept": "application/xml"})
+
 
 def call_openapi_any(
     urls: List[str],
@@ -130,7 +220,6 @@ def parse_meta_and_items(xml_text: str, item_tag_candidates: List[str]) -> Tuple
     if meta["resultCode"] and meta["resultCode"] != "00":
         raise RuntimeError(f"API Error: {meta['resultCode']} / {meta['resultMsg']}")
 
-    # 태그 후보로 찾기
     for tag in item_tag_candidates:
         nodes = root.findall(f".//{tag}")
         if nodes:
@@ -139,7 +228,6 @@ def parse_meta_and_items(xml_text: str, item_tag_candidates: List[str]) -> Tuple
                 rows.append({c.tag: (c.text or "").strip() for c in list(n)})
             return meta, rows
 
-    # 그래도 없으면, item 태그로 시도
     nodes = root.findall(".//item")
     if nodes:
         rows = []
@@ -197,16 +285,14 @@ def fetch_all_pages(
 # -----------------------
 # 계열사 사명 키 추정
 # -----------------------
-AFFI_NAME_KEYS = [
-    "sosokCmpnyNm", "affiCmpnyNm", "cmpnyNm", "companyNm", "cmpnyNmKor"
-]
+AFFI_NAME_KEYS = ["sosokCmpnyNm", "affiCmpnyNm", "cmpnyNm", "companyNm", "cmpnyNmKor"]
+
 
 def pick_affiliate_name(rec: dict) -> str:
     for k in AFFI_NAME_KEYS:
         v = (rec.get(k) or "").strip()
         if v:
             return v
-    # fallback: Nm로 끝나는 필드 중 내용 있는 것
     for k, v in rec.items():
         if k.lower().endswith("nm") and (v or "").strip():
             return (v or "").strip()
@@ -229,7 +315,7 @@ def main():
     ap.add_argument(
         "--presentnYear",
         default=os.getenv("PRESENTN_YEAR", "202505"),
-        help="지정년월 YYYYMM (예: 202501). 미지정 시 PRESENTN_YEAR 또는 기본 202501 사용"
+        help="지정년월 YYYYMM (예: 202501). 미지정 시 PRESENTN_YEAR 또는 기본 202505 사용"
     )
     ap.add_argument("--sleep", type=float, default=0.15, help="요청 간 딜레이(초)")
     ap.add_argument("--numOfRows", type=int, default=200, help="그룹 조회 페이지당 개수")
@@ -254,13 +340,31 @@ def main():
         debug=args.debug,
     )
 
-    # 2) 사람 총수만 필터링
+    # 2) 사람 총수만 + ✅ 제외 기업집단 제거
     groups = []
+    excluded_count = 0
+    excluded_names = []
+
     for g in groups_raw:
         smer = (g.get("smerNm") or "").strip()
+        grup_nm = (g.get("unityGrupNm") or "").strip()
+
+        # 사람 총수 필터
         if not looks_like_person_name(smer):
             continue
+
+        # ✅ 제외 목록 필터
+        if normalize_group_name(grup_nm) in EXCLUDED_GROUPS:
+            excluded_count += 1
+            excluded_names.append(grup_nm)
+            continue
+
         groups.append(g)
+
+    if excluded_count:
+        print(f"[INFO] 제외된 기업집단: {excluded_count}건")
+        if args.debug:
+            print("[INFO] 제외 목록(실제 매칭):", ", ".join(excluded_names))
 
     # groups CSV 저장(핵심 필드)
     group_fields = [
@@ -279,8 +383,9 @@ def main():
             "invstmntLmtt": g.get("invstmntLmtt", ""),
             "entrprsCl": g.get("entrprsCl", ""),
         })
+
     save_csv(args.out_groups, group_fields, groups_out)
-    print(f"[OK] 기업집단(사람 총수만) 저장: {args.out_groups}  ({len(groups_out)}건)")
+    print(f"[OK] 기업집단(사람 총수만, 제외목록 적용) 저장: {args.out_groups}  ({len(groups_out)}건)")
 
     # 3) 각 기업집단코드로 계열사 전부 조회
     affiliates_out: List[dict] = []
@@ -314,8 +419,6 @@ def main():
                     "unityGrupCode": code,
                     "ownerName": owner,
                     "affiliateName": pick_affiliate_name(a),
-                    # 원본 필드도 필요하면 아래처럼 추가 가능:
-                    # **{f"raw_{k}": v for k, v in a.items()}
                 })
 
         except Exception as e:
@@ -331,7 +434,7 @@ def main():
     # affiliates CSV 저장
     affi_fields = ["presentnYear", "unityGrupNm", "unityGrupCode", "ownerName", "affiliateName"]
     save_csv(args.out_affiliates, affi_fields, affiliates_out)
-    print(f"[OK] 계열사 저장: {args.out_affiliates}  ({len(affiliates_out)}건)")
+    print(f"[OK] 계열사 저장(제외목록 적용): {args.out_affiliates}  ({len(affiliates_out)}건)")
 
     # 에러가 있으면 별도 파일 저장
     if errors:

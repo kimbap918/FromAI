@@ -1,0 +1,46 @@
+{
+  "source": "namu.wiki",
+  "source_url": "https://namu.wiki/w/%EC%A0%95%EC%A7%80%EC%84%A0(%EA%B8%B0%EC%97%85%EC%9D%B8)",
+  "resolved_title": "정지선(기업인)",
+  "attempted_titles": [
+    "정지선",
+    "정지선(기업인)"
+  ],
+  "position": "현대백화점그룹 제2대 회장",
+  "name_ko": "정지선",
+  "name_hanja": "鄭志宣",
+  "name_en": "Chung Ji-sun",
+  "profile_image": "https://i.namu.wiki/i/9DELZWrviSML8uguTZrPsiZHCWfHdGa36VKQt5k6brNnquEFDcqNrImuBsyT42EvRBP0MwF6iK0uyHA7k8gkihC45EoCItgulZrXlpZDkRHKp3Vr0JOmEqNRETKCm3l1IxfBlZifF-NEZGIW-thAwA.webp",
+  "birth_date": "1972년 10월 20일",
+  "family": {
+    "parents": {
+      "father": {
+        "name": "정몽근",
+        "url": "https://namu.wiki/w/%EC%A0%95%EB%AA%BD%EA%B7%BC"
+      },
+      "mother": {
+        "name": "",
+        "url": ""
+      }
+    },
+    "siblings": {
+      "형": [],
+      "누나": [],
+      "오빠": [],
+      "언니": [],
+      "동생": [
+        {
+          "name": "정교선",
+          "url": "https://namu.wiki/w/%EC%A0%95%EA%B5%90%EC%84%A0"
+        }
+      ],
+      "미분류": []
+    },
+    "spouse": [],
+    "children": [],
+    "flatten": {
+      "부": "정몽근",
+      "동생1": "정교선"
+    }
+  }
+}

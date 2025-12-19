@@ -1,0 +1,73 @@
+{
+  "source": "namu.wiki",
+  "source_url": "https://namu.wiki/w/%EB%B0%95%EC%B0%AC%EA%B5%AC",
+  "resolved_title": "박찬구",
+  "attempted_titles": [
+    "박찬구"
+  ],
+  "position": "금호석유화학그룹 명예회장",
+  "name_ko": "박찬구",
+  "name_hanja": "朴贊求",
+  "name_en": "Park Chan-koo",
+  "profile_image": "https://i.namu.wiki/i/LrePoSZDYpujXrRRDZPa8ZTiRg87QepptqPXPmLCpXnzNweDWPKZOM92yH0SyRGzrEjQJ10unsMga53zqLtCmFs8R7J5YxGXCm6O3jcdeJzXX_pJ7BTyz10NRpvZgLWUcBxR0kYMqWhr2KJdBZKJrg.webp",
+  "birth_date": "1948년 8월 13일",
+  "family": {
+    "parents": {
+      "father": {
+        "name": "박인천",
+        "url": "https://namu.wiki/w/%EB%B0%95%EC%9D%B8%EC%B2%9C"
+      },
+      "mother": {
+        "name": "이순정",
+        "url": "https://namu.wiki/w/%EC%9D%B4%EC%88%9C%EC%A0%95"
+      }
+    },
+    "siblings": {
+      "형": [
+        {
+          "name": "박성용",
+          "url": "https://namu.wiki/w/%EB%B0%95%EC%84%B1%EC%9A%A9(%EA%B8%B0%EC%97%85%EC%9D%B8)"
+        },
+        {
+          "name": "박정구",
+          "url": "https://namu.wiki/w/%EB%B0%95%EC%A0%95%EA%B5%AC"
+        },
+        {
+          "name": "박삼구",
+          "url": "https://namu.wiki/w/%EB%B0%95%EC%82%BC%EA%B5%AC"
+        }
+      ],
+      "누나": [],
+      "오빠": [],
+      "언니": [],
+      "동생": [
+        {
+          "name": "박종구",
+          "url": "https://namu.wiki/w/%EB%B0%95%EC%A2%85%EA%B5%AC"
+        }
+      ],
+      "미분류": []
+    },
+    "spouse": [],
+    "children": [
+      {
+        "name": "박준경",
+        "url": "https://namu.wiki/w/%EB%B0%95%EC%A4%80%EA%B2%BD"
+      },
+      {
+        "name": "박주형",
+        "url": "https://namu.wiki/w/%EB%B0%95%EC%A3%BC%ED%98%95"
+      }
+    ],
+    "flatten": {
+      "부": "박인천",
+      "모": "이순정",
+      "형1": "박성용",
+      "형2": "박정구",
+      "형3": "박삼구",
+      "동생1": "박종구",
+      "자녀1": "박준경",
+      "자녀2": "박주형"
+    }
+  }
+}

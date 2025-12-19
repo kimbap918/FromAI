@@ -1,0 +1,61 @@
+{
+  "source": "namu.wiki",
+  "source_url": "https://namu.wiki/w/%EA%B9%80%EC%8A%B9%EC%97%B0",
+  "resolved_title": "김승연",
+  "attempted_titles": [
+    "김승연"
+  ],
+  "position": "제2대 한화 회장",
+  "name_ko": "김승연",
+  "name_hanja": "金昇淵",
+  "name_en": "Kim Seung-youn",
+  "profile_image": "https://i.namu.wiki/i/pEinVHsZOmPgzkwZ7v-BOcYuGLBeP0sDakzeE96GcX3pjbWscP0wKmg19ovYDmBVxbG0lH68wqcKj-R9j3jA9pf6F2KQBdhnGwOSChWSr-6PTmC3ExKL2G6bzQNFCBs23tjf9CID74j11JvfUJMFVg.webp",
+  "birth_date": "1952년 2월 7일",
+  "family": {
+    "parents": {
+      "father": {
+        "name": "김종희",
+        "url": "https://namu.wiki/w/%EA%B9%80%EC%A2%85%ED%9D%AC"
+      },
+      "mother": {
+        "name": "",
+        "url": ""
+      }
+    },
+    "siblings": {
+      "형": [],
+      "누나": [
+        {
+          "name": "김호연",
+          "url": "https://namu.wiki/w/%EA%B9%80%ED%98%B8%EC%97%B0"
+        }
+      ],
+      "오빠": [],
+      "언니": [],
+      "동생": [],
+      "미분류": []
+    },
+    "spouse": [],
+    "children": [
+      {
+        "name": "김동관",
+        "url": "https://namu.wiki/w/%EA%B9%80%EB%8F%99%EA%B4%80"
+      },
+      {
+        "name": "김동원",
+        "url": "https://namu.wiki/w/%EA%B9%80%EB%8F%99%EC%9B%90(%EA%B8%B0%EC%97%85%EC%9D%B8)"
+      },
+      {
+        "name": "김동선",
+        "url": "https://namu.wiki/w/%EA%B9%80%EB%8F%99%EC%84%A0"
+      }
+    ],
+    "flatten": {
+      "부": "김종희",
+      "누나1": "김호연",
+      "자녀1": "김동관",
+      "자녀2": "김동원",
+      "자녀3": "김동선"
+    }
+  }
+}

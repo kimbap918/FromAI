@@ -1,0 +1,83 @@
+{
+  "source": "namu.wiki",
+  "source_url": "https://namu.wiki/w/%ED%99%8D%EC%84%9D%ED%98%84",
+  "resolved_title": "홍석현",
+  "attempted_titles": [
+    "홍석현"
+  ],
+  "position": "중앙그룹 초대 회장",
+  "name_ko": "홍석현",
+  "name_hanja": "洪錫炫",
+  "name_en": "Hong Seok-hyun",
+  "profile_image": "https://i.namu.wiki/i/CfpjUz1Pc8uRhn3NuI5slsRwKa9Pzc1-bOgucdCYfXYaMZ7POt7OO6-RK0zsEW9dZFcxo2jf-o3cOfS2UAKtmz6Pkyiht1C0sOicpxwQgRzZhlPH9W3Q1pIWE0zJp69SFJ7SXINDBdl3E4DuPV_sAw.webp",
+  "birth_date": "1949년 10월 20일",
+  "family": {
+    "parents": {
+      "father": {
+        "name": "홍진기",
+        "url": "https://namu.wiki/w/%ED%99%8D%EC%A7%84%EA%B8%B0"
+      },
+      "mother": {
+        "name": "김윤남",
+        "url": "https://namu.wiki/w/%EA%B9%80%EC%9C%A4%EB%82%A8"
+      }
+    },
+    "siblings": {
+      "형": [],
+      "누나": [
+        {
+          "name": "홍라희",
+          "url": "https://namu.wiki/w/%ED%99%8D%EB%9D%BC%ED%9D%AC"
+        }
+      ],
+      "오빠": [],
+      "언니": [],
+      "동생": [
+        {
+          "name": "홍석조",
+          "url": "https://namu.wiki/w/%ED%99%8D%EC%84%9D%EC%A1%B0"
+        },
+        {
+          "name": "홍석준",
+          "url": "https://namu.wiki/w/%ED%99%8D%EC%84%9D%EC%A4%80%20(%EA%B8%B0%EC%97%85%EC%9D%B8)"
+        },
+        {
+          "name": "홍석규",
+          "url": "https://namu.wiki/w/%ED%99%8D%EC%84%9D%EA%B7%9C"
+        },
+        {
+          "name": "홍라영",
+          "url": "https://namu.wiki/w/%ED%99%8D%EB%9D%BC%EC%98%81"
+        }
+      ],
+      "미분류": []
+    },
+    "spouse": [],
+    "children": [
+      {
+        "name": "홍정도",
+        "url": "https://namu.wiki/w/%ED%99%8D%EC%A0%95%EB%8F%84"
+      },
+      {
+        "name": "홍정현",
+        "url": "https://namu.wiki/w/%ED%99%8D%EC%A0%95%ED%98%84"
+      },
+      {
+        "name": "홍정인",
+        "url": "https://namu.wiki/w/%ED%99%8D%EC%A0%95%EC%9D%B8"
+      }
+    ],
+    "flatten": {
+      "부": "홍진기",
+      "모": "김윤남",
+      "누나1": "홍라희",
+      "동생1": "홍석조",
+      "동생2": "홍석준",
+      "동생3": "홍석규",
+      "동생4": "홍라영",
+      "자녀1": "홍정도",
+      "자녀2": "홍정현",
+      "자녀3": "홍정인"
+    }
+  }
+}

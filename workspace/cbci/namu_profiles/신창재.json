@@ -1,0 +1,39 @@
+{
+  "source": "namu.wiki",
+  "source_url": "https://namu.wiki/w/%EC%8B%A0%EC%B0%BD%EC%9E%AC",
+  "resolved_title": "신창재",
+  "attempted_titles": [
+    "신창재"
+  ],
+  "position": "교보생명그룹 제5대 회장",
+  "name_ko": "신창재",
+  "name_hanja": "慎昌宰",
+  "name_en": "Shin Chang-jae",
+  "profile_image": "https://i.namu.wiki/i/xUNP5pcKC4XqlW9Ytl6nEKo5SP5IBuZD8aolCfLZatmNfgME_88hc7rXMaw1xAsHkn0G1GeN5-a1t2yCXDmyv15Gvl4aDyYpexDrpexfC8vOQwsXVTB4j0pcpsq7UoFYRVVjxe0o1_gjAe0zc3v9-A.webp",
+  "birth_date": "1953년 10월 31일",
+  "family": {
+    "parents": {
+      "father": {
+        "name": "신용호",
+        "url": "https://namu.wiki/w/%EC%8B%A0%EC%9A%A9%ED%98%B8"
+      },
+      "mother": {
+        "name": "",
+        "url": ""
+      }
+    },
+    "siblings": {
+      "형": [],
+      "누나": [],
+      "오빠": [],
+      "언니": [],
+      "동생": [],
+      "미분류": []
+    },
+    "spouse": [],
+    "children": [],
+    "flatten": {
+      "부": "신용호"
+    }
+  }
+}

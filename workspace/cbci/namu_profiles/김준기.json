@@ -1,0 +1,51 @@
+{
+  "source": "namu.wiki",
+  "source_url": "https://namu.wiki/w/%EA%B9%80%EC%A4%80%EA%B8%B0",
+  "resolved_title": "김준기",
+  "attempted_titles": [
+    "김준기"
+  ],
+  "position": "DB그룹 초대 총수",
+  "name_ko": "김준기",
+  "name_hanja": "金俊起",
+  "name_en": "Kim Jun-ki",
+  "profile_image": "https://i.namu.wiki/i/_H7BteZi_4qXeSQxYhgHAf8HQWvDKpt3K1PnKfD5dDU5FFiGJDw9bQymDIw8tEiczbyK3lk4U7UIYqhVY5EMhK6dH3B_jlFXeV0JjSdv5OMs9VzZIL1rhAj21ByYUFK4qe7xz99Bnn9ET7nRKCivVg.webp",
+  "birth_date": "1944년 12월 4일",
+  "family": {
+    "parents": {
+      "father": {
+        "name": "김진만",
+        "url": "https://namu.wiki/w/%EA%B9%80%EC%A7%84%EB%A7%8C(%EC%A0%95%EC%B9%98%EC%9D%B8)"
+      },
+      "mother": {
+        "name": "",
+        "url": ""
+      }
+    },
+    "siblings": {
+      "형": [],
+      "누나": [],
+      "오빠": [],
+      "언니": [],
+      "동생": [
+        {
+          "name": "김택기",
+          "url": "https://namu.wiki/w/%EA%B9%80%ED%83%9D%EA%B8%B0"
+        }
+      ],
+      "미분류": []
+    },
+    "spouse": [],
+    "children": [
+      {
+        "name": "김남호",
+        "url": "https://namu.wiki/w/%EA%B9%80%EB%82%A8%ED%98%B8"
+      }
+    ],
+    "flatten": {
+      "부": "김진만",
+      "동생1": "김택기",
+      "자녀1": "김남호"
+    }
+  }
+}

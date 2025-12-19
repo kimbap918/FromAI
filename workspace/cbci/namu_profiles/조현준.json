@@ -1,0 +1,51 @@
+{
+  "source": "namu.wiki",
+  "source_url": "https://namu.wiki/w/%EC%A1%B0%ED%98%84%EC%A4%80(%EA%B8%B0%EC%97%85%EC%9D%B8)",
+  "resolved_title": "조현준(기업인)",
+  "attempted_titles": [
+    "조현준",
+    "조현준(기업인)"
+  ],
+  "position": "효성그룹 제3대 회장",
+  "name_ko": "조현준",
+  "name_hanja": "趙顯俊",
+  "name_en": "",
+  "profile_image": "https://i.namu.wiki/i/6e_NWKkA-eQrXXI2K4ZniGqnRzk-vOsgBgaktlgS2jJyUS0qQH65jVCvYt5LFRNOubz9-3m5xWFETuMM573kbSQcTKmL8PYhi_9n-RNbOs5yaDNSdfbLBtDeyszh4bwHS1JvUOAjXuEfk29vGaUuAA.webp",
+  "birth_date": "1968년 1월 16일",
+  "family": {
+    "parents": {
+      "father": {
+        "name": "조석래",
+        "url": "https://namu.wiki/w/%EC%A1%B0%EC%84%9D%EB%9E%98"
+      },
+      "mother": {
+        "name": "",
+        "url": ""
+      }
+    },
+    "siblings": {
+      "형": [],
+      "누나": [],
+      "오빠": [],
+      "언니": [],
+      "동생": [
+        {
+          "name": "조현문",
+          "url": "https://namu.wiki/w/%EC%A1%B0%ED%98%84%EB%AC%B8"
+        },
+        {
+          "name": "조현상",
+          "url": "https://namu.wiki/w/%EC%A1%B0%ED%98%84%EC%83%81"
+        }
+      ],
+      "미분류": []
+    },
+    "spouse": [],
+    "children": [],
+    "flatten": {
+      "부": "조석래",
+      "동생1": "조현문",
+      "동생2": "조현상"
+    }
+  }
+}

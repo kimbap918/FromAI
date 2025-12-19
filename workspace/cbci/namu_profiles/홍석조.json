@@ -1,0 +1,79 @@
+{
+  "source": "namu.wiki",
+  "source_url": "https://namu.wiki/w/%ED%99%8D%EC%84%9D%EC%A1%B0",
+  "resolved_title": "홍석조",
+  "attempted_titles": [
+    "홍석조"
+  ],
+  "position": "BGF그룹 회장",
+  "name_ko": "홍석조",
+  "name_hanja": "洪錫肇",
+  "name_en": "Hong Seok-joh",
+  "profile_image": "https://i.namu.wiki/i/fBbMt8SnERqA_xpeeNcwpZ_qDkakvH4-JmHnO7dAZcIG8_ZLQ8IO8XhkYlOIgFyTgdSdEBxPHcCULQ5W4fb3ICaL7sfKKVMCplNV0adB1wNQPq8YXwoNCcvBJYeX4CBAJClMynP_Ft1Q2l2VrGBYdQ.webp",
+  "birth_date": "1953년 1월 8일",
+  "family": {
+    "parents": {
+      "father": {
+        "name": "홍진기",
+        "url": "https://namu.wiki/w/%ED%99%8D%EC%A7%84%EA%B8%B0"
+      },
+      "mother": {
+        "name": "김윤남",
+        "url": "https://namu.wiki/w/%EA%B9%80%EC%9C%A4%EB%82%A8"
+      }
+    },
+    "siblings": {
+      "형": [
+        {
+          "name": "홍석현",
+          "url": "https://namu.wiki/w/%ED%99%8D%EC%84%9D%ED%98%84"
+        }
+      ],
+      "누나": [
+        {
+          "name": "홍라희",
+          "url": "https://namu.wiki/w/%ED%99%8D%EB%9D%BC%ED%9D%AC"
+        }
+      ],
+      "오빠": [],
+      "언니": [],
+      "동생": [
+        {
+          "name": "홍석준",
+          "url": "https://namu.wiki/w/%ED%99%8D%EC%84%9D%EC%A4%80(%EA%B8%B0%EC%97%85%EC%9D%B8)"
+        },
+        {
+          "name": "홍석규",
+          "url": "https://namu.wiki/w/%ED%99%8D%EC%84%9D%EA%B7%9C"
+        },
+        {
+          "name": "홍라영",
+          "url": "https://namu.wiki/w/%ED%99%8D%EB%9D%BC%EC%98%81"
+        }
+      ],
+      "미분류": []
+    },
+    "spouse": [],
+    "children": [
+      {
+        "name": "홍정국",
+        "url": "https://namu.wiki/w/%ED%99%8D%EC%A0%95%EA%B5%AD"
+      },
+      {
+        "name": "홍정혁",
+        "url": "https://namu.wiki/w/%ED%99%8D%EC%A0%95%ED%98%81"
+      }
+    ],
+    "flatten": {
+      "부": "홍진기",
+      "모": "김윤남",
+      "형1": "홍석현",
+      "누나1": "홍라희",
+      "동생1": "홍석준",
+      "동생2": "홍석규",
+      "동생3": "홍라영",
+      "자녀1": "홍정국",
+      "자녀2": "홍정혁"
+    }
+  }
+}

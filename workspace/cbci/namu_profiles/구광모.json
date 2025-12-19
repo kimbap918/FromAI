@@ -1,0 +1,44 @@
+{
+  "source": "namu.wiki",
+  "source_url": "https://namu.wiki/w/%EA%B5%AC%EA%B4%91%EB%AA%A8",
+  "resolved_title": "구광모",
+  "attempted_titles": [
+    "구광모"
+  ],
+  "position": "LG 제4대 회장",
+  "name_ko": "구광모",
+  "name_hanja": "具光謨",
+  "name_en": "Koo Kwang-mo",
+  "profile_image": "https://i.namu.wiki/i/iSIt5ACQ0SVoLXPB4f-PXqPsxQ_1vPLsHvf0wvkqPTdhDR3YDRSbcjkMdOnSnxGBGOKCgFTOZA7QzkBNjMKhqfbq_PwxunTX7Mv0_2DDhgg2iIvqvuPa1AgoXJXFYcc64FI9uG-e7uauuJtgduFh5A.webp",
+  "birth_date": "1978년 1월 23일",
+  "family": {
+    "parents": {
+      "father": {
+        "name": "",
+        "url": ""
+      },
+      "mother": {
+        "name": "",
+        "url": ""
+      }
+    },
+    "siblings": {
+      "형": [],
+      "누나": [],
+      "오빠": [],
+      "언니": [],
+      "동생": [
+        {
+          "name": "구연경",
+          "url": "https://namu.wiki/w/%EA%B5%AC%EC%97%B0%EA%B2%BD"
+        }
+      ],
+      "미분류": []
+    },
+    "spouse": [],
+    "children": [],
+    "flatten": {
+      "동생1": "구연경"
+    }
+  }
+}
