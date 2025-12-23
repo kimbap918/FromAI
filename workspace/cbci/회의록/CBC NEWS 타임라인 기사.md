@@ -1,4 +1,5 @@
 # CBC NEWS 타임라인 기사
+link : https://timeline-news-f399be63.base44.app/ChairmanList?category=%EC%B4%9D%EC%88%98%E5%AE%B6
 
 <br>
 
