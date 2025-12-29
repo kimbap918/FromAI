@@ -2,7 +2,7 @@
 # 목적: groups_filtered.csv의 "총수(동일인)" 목록을 기반으로 나무위키 프로필을 일괄 수집
 #
 # 실행:
-#   python batch_namu_from_groups.py --in groups_filtered.csv --out profiles.csv --out_dir namu_profiles --sleep 1.2 --refresh_bad
+#   python batch_namu.py --in groups_filtered.csv --out profiles.csv --out_dir namu_profiles --sleep 1.2 --refresh_bad
 #
 # 변경점(중요):
 # - ✅ scrape(이름) 결과가 "빈 결과"면 scrape(이름(기업인))로 자동 재시도
