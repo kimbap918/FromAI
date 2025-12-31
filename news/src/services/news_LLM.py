@@ -158,20 +158,25 @@ def _ensure_env_loaded():
     if os.getenv("GOOGLE_API_KEY"): return
     module_dir = os.path.dirname(__file__)
     load_dotenv(os.path.join(module_dir, ".env"))
-    if os.getenv("GOOGLE_API_KEY"): return
-    if getattr(sys, "frozen", False):
-        exe_dir = os.path.dirname(sys.executable)
-        load_dotenv(os.path.join(exe_dir, ".env"))
-    meipass = getattr(sys, "_MEIPASS", None)
-    if meipass:
-        load_dotenv(os.path.join(meipass, ".env"))
+    # 5) Windows AppData (EXE 배포 시 사용자 설정 우선)
+    # [임시 배포용 - 고정 키 사용 시 아래 블록 전체 주석 처리]
+    if getattr(sys, "frozen", False) and sys.platform == "win32":
+        app_data = os.getenv("APPDATA")
+        if app_data:
+            user_env = os.path.join(app_data, "NewsGenerator", ".env")
+            if os.path.exists(user_env):
+                load_dotenv(user_env, override=True) # 사용자 설정이 우선이므로 override=True
 
 _ensure_env_loaded()
 
+# ⚠️ 모듈 로드 시점에 즉시 에러를 내지 않도록 변경 (GUI 구동 보장)
 api_key = os.getenv("GOOGLE_API_KEY")
-if not api_key:
-    raise ValueError(".env에서 GOOGLE_API_KEY를 불러오지 못했습니다.")
-genai.configure(api_key=api_key)
+if api_key:
+    genai.configure(api_key=api_key)
+else:
+    # 키가 아직 없더라도, GUI가 뜬 후 설정을 통해 주입될 수 있으므로
+    # 여기서는 경고만 남기거나 패스하고, generate_article 진입 시 체크
+    pass
 
 # ⚠️ 모델 인스턴스는 generate_article 안에서 system_instruction과 함께 생성
 # model = genai.GenerativeModel("gemini-2.5-flash")
@@ -586,6 +591,19 @@ def generate_article(state: dict) -> dict:
         log_and_print(logger, f"  - URL: {url}")
         log_and_print(logger, f"  - 키워드: {keyword}")
         log_and_print(logger, f"  - 로그 파일: {log_filepath}")
+
+        # 0) API 키 확인 (지연된 검증)
+        current_api_key = os.getenv("GOOGLE_API_KEY")
+        if not current_api_key:
+            # 런타임에 다시 한 번 로드 시도 (사용자가 GUI에서 설정했을 수 있음)
+            _ensure_env_loaded()
+            current_api_key = os.getenv("GOOGLE_API_KEY")
+        
+        if not current_api_key:
+            raise ValueError("API 키가 설정되지 않았습니다. 설정 메뉴에서 Google API Key를 입력해주세요.")
+        
+        # 키가 있다면 설정 (기존에 안 되어 있을 경우를 대비)
+        genai.configure(api_key=current_api_key)
 
         # 1) 기사 추출
         t_extract_start = perf_counter()

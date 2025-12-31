@@ -92,7 +92,7 @@ def _load_env_file():
         search_paths = [
             os.path.dirname(sys.executable),  # exe 실행 디렉토리
             os.path.join(os.path.expanduser("~"), "Desktop"),  # 바탕화면
-            os.path.join(os.getenv("APPDATA", ""), "NewsGenerator"),  # APPDATA
+            os.path.join(os.getenv("APPDATA", ""), "NewsGenerator"),  # APPDATA [임시 배포용 - 주석 처리]
             os.getcwd(),  # 현재 작업 디렉토리
         ]
         

@@ -256,11 +256,16 @@ def create_template(keyword: str, is_foreign: bool, now_kst_dt: datetime = None)
     # 마지막 거래일 계산 함수 (신규 추가)
     def _get_last_trading_day(d: date, holi) -> date:
         cur = d
-        while cur.weekday() >= 5 or cur in holi:
+        # 주말, 공휴일, 또는 12월 31일(연말 휴장)이면 전일로 이동
+        while cur.weekday() >= 5 or cur in holi or (cur.month == 12 and cur.day == 31):
             cur = cur - timedelta(days=1)
         return cur
 
     is_kr_holiday_or_weekend = (today_kst_date.weekday() >= 5) or (today_kst_date in kr_h)
+    
+    # [추가] 12월 31일은 한국 거래소(KRX) 휴장일로 간주
+    if today_kst_date.month == 12 and today_kst_date.day == 31:
+        is_kr_holiday_or_weekend = True
 
     # ▼▼▼ 해외 주식 ▼▼▼
     if is_foreign:
@@ -532,6 +537,17 @@ def build_stock_prompt(today_kst):
     if is_weekend:
         effective_date_obj = date_obj - timedelta(days=weekday - 4)
         now_time = f"{effective_date_obj.day}일 KRX 장마감"
+    # [추가] 12월 31일(휴장일) 처리: 평일이라도 30일(또는 직전 평일)로 기준 조정
+    elif date_obj.month == 12 and date_obj.day == 31:
+        # 31일이 평일이면 하루 전인 30일로, 그 외에는 요일 계산(단, 12/31이 주말 경우 위 is_weekend에서 걸러질 수도 있음)
+        # 여기서는 평일인 12/31 상황을 가정
+        effective_date_obj = date_obj - timedelta(days=1)
+        # 만약 30일도 주말이면(ex. 31일=월, 30일=일) 추가 조정 필요하지만, 12/31 주중이면 30일은 평일일 확률 높음
+        # (더 정교하게 하려면 _get_last_trading_day 논리 필요하나, 여기선 간단히 하루 전으로)
+        if effective_date_obj.weekday() >= 5: # 30일이 주말이면 금요일로
+             effective_date_obj = effective_date_obj - timedelta(days=effective_date_obj.weekday() - 4)
+        
+        now_time = f"{effective_date_obj.day}일 KRX 장마감 (연말 휴장)"
     else: # 평일일 경우
         effective_date_obj = date_obj
         now_time = convert_get_today_kst_str()

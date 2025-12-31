@@ -60,8 +60,13 @@ def get_five_trading_days_ohlc(keyword: str) -> Optional[List[Dict[str, str]]]:
             is_foreign = True  # 오류 발생 시 해외 종목으로 간주
 
         today = _dt.date.today()
-        # 주말이면 직전 금요일로 맞춤
-        if today.weekday() >= 5:  # Sat=5, Sun=6
+        # [수정] 12월 31일(연말 휴장)이거나 주말이면 직전 거래일로 조정
+        if today.month == 12 and today.day == 31:
+             # 31일이 평일이면 하루 전(30일)으로 이동
+             end_date = today - _dt.timedelta(days=1)
+             if end_date.weekday() >= 5: # 30일도 주말이면 금요일로
+                 end_date = end_date - _dt.timedelta(days=(end_date.weekday() - 4))
+        elif today.weekday() >= 5:  # Sat=5, Sun=6
             end_date = today - _dt.timedelta(days=(today.weekday() - 4))
         else:
             end_date = today
@@ -186,8 +191,9 @@ def build_weekly_stock_prompt() -> str:
     is_weekend = weekday >= 5  # 5=토요일, 6=일요일
     
     # 최종 시장 상태 결정
-    if is_weekend:
-        final_status = "장마감"  # 주말은 항상 장마감
+    # [수정] 12월 31일은 연말 휴장이므로 항상 장마감 처리
+    if (now_kst.month == 12 and now_kst.day == 31) or is_weekend:
+        final_status = "장마감"  # 주말/휴장은 항상 장마감
     else:
         final_status = market_status
         
