@@ -1,48 +1,80 @@
+"""
+yna_crawler_auto_date_incremental_dedup.py
+
+✅ 목표:
+- 날짜(days_back) 없이 자동 증분 크롤링
+- 마지막 크롤링 날짜 +1일 ~ 오늘까지 수집
+- 삽입 전 중복 제거:
+  1) CID 기준 (기업(GROUP) 단위)
+  2) 제목 유사/중복 (기업(GROUP) 단위)
+
+✅ 추가(옵션):
+- MongoDB에 이미 들어가 있는 중복을 정리하는 기능
+  --cleanup-existing : 중복 탐지/정리 실행
+  --apply            : 실제 삭제 적용 (없으면 DRY RUN)
+
+사용 예)
+1) 평소(매일 자동 증분 크롤링 + 삽입 전 중복 필터)
+   python yna_crawler_auto_date_incremental_dedup.py
+
+2) 기존 Mongo 중복 정리(먼저 DRY RUN 권장)
+   python yna_crawler_auto_date_incremental_dedup.py --cleanup-existing
+   python yna_crawler_auto_date_incremental_dedup.py --cleanup-existing --apply
+"""
+
 import requests
 import csv
 import json
 import re
 import time
 import os
+import sys
+import argparse
+import difflib
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, time as dtime, date as ddate
+from typing import Optional, Dict, Tuple, List, Any
 from urllib.parse import urljoin
 from urllib3.util import create_urllib3_context
 from fake_useragent import UserAgent
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
+from zoneinfo import ZoneInfo
+
 load_dotenv()
 
-# MongoDB(사용 시 설치 필요)
-# pip install pymongo
+# =========================
+# ✅ 최초 실행 시 자동 수집 범위(사용자 설정 불필요)
+# =========================
+BOOTSTRAP_DAYS = 120  # state도 Mongo도 없으면 최근 120일부터 첫 수집
+
 try:
     from pymongo import MongoClient, UpdateOne
+    from bson import ObjectId
 except Exception:
     MongoClient = None
     UpdateOne = None
+    ObjectId = None
+
+KST = ZoneInfo("Asia/Seoul")
 
 
 # =========================
-# ✅ 설정(여기만 바꾸면 전체 반영)
+# ✅ 설정(날짜 관련 설정 없음)
 # =========================
 @dataclass
 class CrawlConfig:
-    # 기간/속도
-    days_back: int = 120
+    # 속도/페이징
     page_size: int = 15
     timeout: int = 10
     sleep_sec: float = 0.7
-    dedup_global: bool = True
-
-    # ✅ 페이징(기간이 길면 1페이지만으론 부족할 수 있어 추가)
-    max_pages: int = 20  # 필요 시 조정
+    max_pages: int = 20
 
     # 엔드포인트
     base_url: str = "https://ars.yna.co.kr/api/v2/search.basic"
     results_key: str = "YIB_KR_A"
 
-    # 필터(웹 URL ctype/divCode ↔ API 파라미터 추정 매핑)
-    # - 결과가 안 나오면 div_code="all"로 바꿔 테스트 권장
+    # 필터
     cattr: str = "A"
     div_code: str = "01,02,05,11"
     scope: str = "all"
@@ -56,10 +88,7 @@ class CrawlConfig:
     debug_total: bool = True
     debug_top_keys: bool = False
 
-    # 추가 파라미터 주입(필요 시)
-    extra_params: dict = field(default_factory=dict)
-
-    # ✅ 본문/이미지 크롤링
+    # 본문/이미지 크롤링
     fetch_content: bool = True
     fetch_image: bool = True
     content_timeout: int = 12
@@ -68,25 +97,39 @@ class CrawlConfig:
     content_retries: int = 2
     content_retry_backoff: float = 1.3
 
-    # ✅ MongoDB 업로드
+    # MongoDB 업로드
     upload_to_mongo: bool = True
     mongo_uri: str = os.getenv("MONGO_URI", "")
     mongo_db: str = os.getenv("MONGO_DB", "news")
     mongo_collection: str = os.getenv("MONGO_COL", "yna_news")
     mongo_upsert: bool = True
     mongo_batch_size: int = 500
+    mongo_ensure_unique_cid: bool = False  # 중복 정리 후 True 권장
 
-    # ✅ search_groups를 CSV에서 로드하고 싶을 때(옵션)
-    # - CSV 컬럼명에 맞춰 아래 매핑을 수정
-    load_groups_from_csv: bool = False
-    groups_csv_path: str = "Chairman_export.csv"
-    groups_csv_group_col: str = "Group"     # 예: 기업집단명
-    groups_csv_company_col: str = "Company" # 예: 회사키워드(기업명)
-    groups_csv_person_col: str = "Person"   # 예: 총수명
+    # 마지막 크롤링 날짜(state) 저장 경로
+    state_path: str = "crawler_state.json"
+
+    # ✅ (삽입 전) CID/제목 중복 제거 옵션
+    pre_insert_dedup_enable: bool = True
+
+    # 1차 CID dedup: DB에도 같은 CID가 있으면 스킵(권장)
+    pre_insert_skip_if_cid_exists_in_db: bool = True
+
+    # 2차 제목 유사/중복 필터
+    title_dedup_enable: bool = True
+    title_similarity_threshold: float = 0.93   # difflib ratio
+    title_jaccard_threshold: float = 0.88      # token jaccard
+    title_dedup_db_lookup: bool = True         # DB 최근 기사와도 비교
+    title_dedup_db_limit_per_group: int = 3000 # 그룹별 최근 N개 제목 로드
+    title_dedup_compare_recent_keep: int = 300 # 배치 내 최근 유지 제목 비교 개수(속도)
+    title_dedup_only_within_days: int = 3      # 너무 오래된 기사와는 비교 안 함(오탐 방지)
+    title_dedup_verbose: bool = True
+
+    # 추가 파라미터 주입(필요 시)
+    extra_params: dict = field(default_factory=dict)
 
 
 CONFIG = CrawlConfig(
-    days_back=120,
     div_code="01,02,05,11",
     cattr="A",
     fetch_content=True,
@@ -94,7 +137,114 @@ CONFIG = CrawlConfig(
     upload_to_mongo=True,
     debug_total=True,
     max_pages=20,
+    mongo_ensure_unique_cid=False,
+    state_path="crawler_state.json",
 )
+
+
+# =========================
+# ✅ state: 마지막 크롤링 날짜 저장/로드
+# =========================
+def load_last_crawled_date(path: str) -> Optional[ddate]:
+    if not os.path.exists(path):
+        return None
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            obj = json.load(f)
+        s = (obj.get("last_crawled_date_kst") or "").strip()
+        if not s:
+            return None
+        return datetime.strptime(s, "%Y-%m-%d").date()
+    except Exception:
+        return None
+
+
+def save_last_crawled_date(path: str, d: ddate) -> None:
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(
+            {
+                "last_crawled_date_kst": d.strftime("%Y-%m-%d"),
+                "saved_at_kst": datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S"),
+            },
+            f,
+            ensure_ascii=False,
+            indent=2,
+        )
+
+
+# =========================
+# ✅ MongoDB에서 마지막 날짜 자동 감지
+# =========================
+def detect_last_date_from_mongo(config: CrawlConfig) -> Optional[ddate]:
+    if not config.upload_to_mongo or not MongoClient or not config.mongo_uri:
+        return None
+    client = None
+    try:
+        client = MongoClient(config.mongo_uri, serverSelectionTimeoutMS=4000)
+        col = client[config.mongo_db][config.mongo_collection]
+
+        # DATETIME(date) 최신
+        doc = list(
+            col.find({"DATETIME": {"$type": "date"}}, {"DATETIME": 1})
+            .sort("DATETIME", -1)
+            .limit(1)
+        )
+        if doc:
+            dtv = doc[0].get("DATETIME")
+            if isinstance(dtv, datetime):
+                return dtv.date()
+
+        # DATETIME(string) 최신 (형식이 YYYY-MM-DD HH:MM:SS면 문자열 정렬 OK)
+        doc2 = list(
+            col.find({"DATETIME": {"$type": "string"}}, {"DATETIME": 1})
+            .sort("DATETIME", -1)
+            .limit(1)
+        )
+        if doc2:
+            s = (doc2[0].get("DATETIME") or "").strip()
+            if s:
+                try:
+                    return datetime.strptime(s, "%Y-%m-%d %H:%M:%S").date()
+                except Exception:
+                    pass
+
+        return None
+    except Exception:
+        return None
+    finally:
+        try:
+            if client:
+                client.close()
+        except Exception:
+            pass
+
+
+# =========================
+# ✅ 이번 실행의 since_dt 자동 계산
+# =========================
+def compute_since_dt_auto(config: CrawlConfig) -> Optional[datetime]:
+    today = datetime.now(KST).date()
+
+    last_date = load_last_crawled_date(config.state_path)
+    source = "state"
+
+    if last_date is None:
+        last_date = detect_last_date_from_mongo(config)
+        source = "mongo" if last_date else "bootstrap"
+
+    if last_date is None:
+        start_dt = (datetime.now(KST).replace(tzinfo=None) - timedelta(days=BOOTSTRAP_DAYS))
+        print(f"🟡 state/mongo 없음 → 자동 부트스트랩: 최근 {BOOTSTRAP_DAYS}일 수집 (since={start_dt})")
+        return start_dt
+
+    start_date = last_date + timedelta(days=1)
+    if start_date > today:
+        print(f"✅ 이미 최신입니다. (last_date={last_date} / today={today}) → 스킵")
+        return None
+
+    since_dt = datetime.combine(start_date, dtime.min)  # naive
+    print(f"🟢 자동 증분 기준({source}): last_date={last_date} → since={since_dt}")
+    return since_dt
 
 
 # =========================
@@ -123,6 +273,7 @@ def safe_user_agent():
             "Chrome/120.0.0.0 Safari/537.36"
         )
 
+
 def headers_for_api():
     return {
         "User-Agent": safe_user_agent(),
@@ -131,6 +282,7 @@ def headers_for_api():
         "Accept-Language": "ko-KR,ko;q=0.9,en;q=0.8",
         "Connection": "keep-alive",
     }
+
 
 def headers_for_html():
     return {
@@ -145,18 +297,15 @@ def headers_for_html():
 
 
 # =========================
-# 유틸
+# 유틸(쿼리/정규화)
 # =========================
-def get_since_dt(days_back: int) -> datetime:
-    return datetime.now() - timedelta(days=days_back)
-
-def build_queries_company_plus_person(company_kw: str, person_kw: str):
-    """요구사항: '기업 + 총수'만 탐색"""
+def build_queries_company_plus_person(company_kw: str, person_kw: str) -> List[str]:
     company_kw = (company_kw or "").strip()
     person_kw = (person_kw or "").strip()
     if company_kw and person_kw:
         return [f"{company_kw} {person_kw}"]
     return []
+
 
 def normalize_text(text: str) -> str:
     if not text:
@@ -169,7 +318,68 @@ def normalize_text(text: str) -> str:
 
 
 # =========================
-# ✅ 본문 정리(기자/구독/이전/다음/이미지확대/이메일/okjebo/관련뉴스/저작권 제거)
+# ✅ 제목 중복(유사도)용 정규화
+# =========================
+_TITLE_TAGS_RE = re.compile(r"(\[.*?\]|\(.*?\))")
+_TITLE_PUNCT_RE = re.compile(r"[^\w가-힣\s]")
+_TITLE_WS_RE = re.compile(r"\s+")
+_COMMON_NOISE = [
+    "속보", "종합", "단독", "사진", "영상", "그래픽", "인터뷰", "르포",
+    "재송고", "수정", "정정", "추가", "업데이트"
+]
+
+def title_key(title: str) -> str:
+    if not title:
+        return ""
+    t = title.strip()
+    # 괄호/대괄호 태그 제거
+    t = _TITLE_TAGS_RE.sub(" ", t)
+    # 흔한 노이즈 단어 제거(너무 공격적이면 여기 줄이면 됨)
+    for w in _COMMON_NOISE:
+        t = re.sub(rf"\b{re.escape(w)}\b", " ", t, flags=re.IGNORECASE)
+    t = t.lower()
+    t = _TITLE_PUNCT_RE.sub(" ", t)
+    t = _TITLE_WS_RE.sub(" ", t).strip()
+    return t
+
+def tokenize_title(tkey: str) -> List[str]:
+    if not tkey:
+        return []
+    toks = [x for x in tkey.split() if x]
+    # 1글자 토큰은 노이즈가 많아서 제거
+    toks = [x for x in toks if len(x) >= 2]
+    return toks
+
+def jaccard(a: List[str], b: List[str]) -> float:
+    sa, sb = set(a), set(b)
+    if not sa and not sb:
+        return 1.0
+    if not sa or not sb:
+        return 0.0
+    return len(sa & sb) / len(sa | sb)
+
+def sim_ratio(a: str, b: str) -> float:
+    # difflib은 길이가 길어도 꽤 안정적
+    return difflib.SequenceMatcher(None, a, b).ratio()
+
+def is_title_duplicate(a_title: str, b_title: str, cfg: CrawlConfig) -> bool:
+    ak = title_key(a_title)
+    bk = title_key(b_title)
+    if not ak or not bk:
+        return False
+    if ak == bk:
+        return True
+    r = sim_ratio(ak, bk)
+    if r >= cfg.title_similarity_threshold:
+        return True
+    ja = jaccard(tokenize_title(ak), tokenize_title(bk))
+    if ja >= cfg.title_jaccard_threshold:
+        return True
+    return False
+
+
+# =========================
+# ✅ 본문 정리(연합뉴스 UI 제거)
 # =========================
 _UI_TOKENS = ("구독", "구독중", "이전", "다음", "이미지 확대", "이미지확대")
 _UI_LINE_RE = re.compile(r"^\s*(구독|구독중|이전|다음|이미지\s*확대|이미지확대)\s*$")
@@ -184,9 +394,7 @@ _RELATED_HEADER_RE = re.compile(r"^\s*관련\s*뉴스\s*$|^\s*관련뉴스\s*$|^
 def pre_split_glued_ui_text(text: str) -> str:
     if not text:
         return ""
-    # 관련뉴스 헤더 분리
     text = re.sub(r"(관련\s*뉴스|관련뉴스|관련\s*기사|관련기사)", r"\n\1\n", text)
-    # 이전/다음 붙은 것 분리
     text = re.sub(r"(이전)\s*(다음)", r"\1\n\2", text)
     text = re.sub(r"(다음)(?=[가-힣])", r"\1\n", text)
     text = re.sub(r"(다음)(?=[A-Za-z0-9._%+-]+@)", r"\1\n", text)
@@ -195,7 +403,7 @@ def pre_split_glued_ui_text(text: str) -> str:
     text = re.sub(r"(다음)\s*(<저작권자)", r"\1\n\2", text)
     return text
 
-def remove_reporter_ui_blocks_anywhere(lines: list[str]) -> list[str]:
+def remove_reporter_ui_blocks_anywhere(lines: List[str]) -> List[str]:
     out = []
     i = 0
     n = len(lines)
@@ -209,7 +417,6 @@ def remove_reporter_ui_blocks_anywhere(lines: list[str]) -> list[str]:
     while i < n:
         cur = lines[i].strip()
 
-        # "홍길동" + "기자" 패턴
         if i + 1 < n and lines[i + 1].strip() == "기자" and is_name_like(cur):
             i += 2
             while i < n:
@@ -223,7 +430,6 @@ def remove_reporter_ui_blocks_anywhere(lines: list[str]) -> list[str]:
                 break
             continue
 
-        # "홍길동 기자" 한 줄 패턴
         if re.fullmatch(r"[가-힣·\s]{2,10}\s*기자", cur):
             i += 1
             while i < n and _UI_LINE_RE.match(lines[i].strip()):
@@ -253,7 +459,7 @@ def is_headline_like(line: str) -> bool:
         return False
     return False
 
-def remove_related_news_blocks(lines: list[str]) -> list[str]:
+def remove_related_news_blocks(lines: List[str]) -> List[str]:
     out = []
     i = 0
     n = len(lines)
@@ -262,11 +468,9 @@ def remove_related_news_blocks(lines: list[str]) -> list[str]:
         ln = lines[i].strip()
         if _RELATED_HEADER_RE.match(ln):
             i += 1
-            # 관련뉴스 아래 줄들(헤드라인처럼 보이는 줄) 제거
             while i < n and is_headline_like(lines[i]):
                 i += 1
             continue
-
         out.append(lines[i])
         i += 1
 
@@ -289,7 +493,6 @@ def clean_yna_content(text: str) -> str:
     lines = remove_reporter_ui_blocks_anywhere(lines)
     lines = [ln for ln in lines if not _OKJEBO_PHRASE_RE.search(ln)]
 
-    # 저작권 라인부터 컷
     cut_idx = None
     for idx, ln in enumerate(lines):
         if _COPYRIGHT_RE.search(ln):
@@ -307,7 +510,7 @@ def clean_yna_content(text: str) -> str:
 
 
 # =========================
-# ✅ 이미지 URL 정리(상대경로/특수 케이스 보정)
+# ✅ 이미지 URL 정리
 # =========================
 _IMG_HOST_PATH_RE = re.compile(r"^/img\d+\.yna\.co\.kr/")
 
@@ -322,13 +525,11 @@ def absolutize_img_url(src: str, base_url: str) -> str:
         return src
     if src.startswith("//"):
         return "https:" + src
-    # ✅ '/img5.yna.co.kr/...' 같은 케이스 → 'https://img5.yna.co.kr/...'
     if _IMG_HOST_PATH_RE.match(src):
         return "https://" + src.lstrip("/")
-    # 일반 상대경로
     return urljoin(base_url, src)
 
-def uniq_keep_order(items: list[str]) -> list[str]:
+def uniq_keep_order(items: List[str]) -> List[str]:
     seen = set()
     out = []
     for x in items:
@@ -391,11 +592,10 @@ def fetch_articles_paged(session: requests.Session, config: CrawlConfig, query: 
                 continue
 
             try:
-                art_dt = datetime.strptime(dt_str, "%Y%m%d%H%M%S")
+                art_dt = datetime.strptime(dt_str, "%Y%m%d%H%M%S")  # KST 로컬로 간주
             except Exception:
                 continue
 
-            # 정렬이 최신순이므로 since_dt보다 과거가 나오면 이후 페이지는 더 과거일 확률↑ → 페이징 중단
             if art_dt < since_dt:
                 stop_paging = True
                 continue
@@ -409,8 +609,6 @@ def fetch_articles_paged(session: requests.Session, config: CrawlConfig, query: 
 
         if stop_paging:
             break
-
-        # 마지막 페이지 감지(결과 수가 page_size보다 적으면 끝)
         if len(results) < config.page_size:
             break
 
@@ -529,23 +727,10 @@ def extract_yna_content(html: str):
     return "", "empty"
 
 def extract_yna_images(html: str, article_url: str):
-    """
-    대표/본문 이미지 URL 수집
-    우선순위:
-      1) og:image
-      2) twitter:image
-      3) JSON-LD image
-      4) figure.image-zone01 img (연합뉴스 본문 대표/본문 이미지 패턴)
-      5) 본문 셀렉터 내부 img
-    반환:
-      (primary_url, urls_list, source)
-    """
     soup = BeautifulSoup(html, "html.parser")
-
     urls = []
     source = "empty"
 
-    # 1) og:image
     m = soup.find("meta", attrs={"property": "og:image"})
     if m and m.get("content"):
         u = absolutize_img_url(m["content"], article_url)
@@ -553,7 +738,6 @@ def extract_yna_images(html: str, article_url: str):
             urls.append(u)
             source = "meta:og:image"
 
-    # 2) twitter:image
     m = soup.find("meta", attrs={"name": "twitter:image"})
     if m and m.get("content"):
         u = absolutize_img_url(m["content"], article_url)
@@ -562,7 +746,6 @@ def extract_yna_images(html: str, article_url: str):
             if source == "empty":
                 source = "meta:twitter:image"
 
-    # 3) JSON-LD image
     scripts = soup.find_all("script", attrs={"type": "application/ld+json"})
     for sc in scripts:
         raw = sc.get_text(strip=True)
@@ -590,7 +773,6 @@ def extract_yna_images(html: str, article_url: str):
                 if source == "empty":
                     source = "jsonld:image"
 
-    # 4) figure.image-zone01 img (캡처에서 보여준 구조)
     for img_tag in soup.select("figure.image-zone01 img"):
         cand = img_tag.get("src") or img_tag.get("data-src") or img_tag.get("data-original")
         cand = absolutize_img_url(cand, article_url)
@@ -599,7 +781,6 @@ def extract_yna_images(html: str, article_url: str):
             if source == "empty":
                 source = "selector:figure.image-zone01"
 
-    # 5) 본문 내부 img 폴백
     selectors = [
         "#articleBodyContents img",
         "#articleBody img",
@@ -640,17 +821,14 @@ def fetch_article_page(session: requests.Session, config: CrawlConfig, url: str)
 
             html = resp.text
 
-            # ✅ 본문
             content, content_source = extract_yna_content(html)
             if config.content_max_chars and len(content) > config.content_max_chars:
                 content = content[: config.content_max_chars].rstrip() + "\n...(truncated)"
 
-            # ✅ 이미지
             image_url, image_urls, image_source = ("", [], "disabled")
             if config.fetch_image:
                 image_url, image_urls, image_source = extract_yna_images(html, url)
 
-            # content가 너무 짧으면 실패로 표시(이미지는 넣어도 됨)
             if not content or len(content.strip()) < 80:
                 return {
                     "content": "",
@@ -689,7 +867,7 @@ def fetch_article_page(session: requests.Session, config: CrawlConfig, url: str)
     }
 
 
-def enrich_rows_with_content_and_image(session: requests.Session, config: CrawlConfig, flat_rows: list):
+def enrich_rows_with_content_and_image(session: requests.Session, config: CrawlConfig, flat_rows: List[dict]):
     if not flat_rows:
         return
     print("\n[DETAIL] 본문/이미지 크롤링 시작...")
@@ -729,11 +907,13 @@ def enrich_rows_with_content_and_image(session: requests.Session, config: CrawlC
 # =========================
 # 저장(CSV)
 # =========================
-def make_output_filename(config: CrawlConfig) -> str:
+def make_output_filename(config: CrawlConfig, since_dt: datetime) -> str:
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    return f"{config.output_prefix}_{ts}_last{config.days_back}d_company_plus_person_only.csv"
+    since_tag = since_dt.strftime("%Y%m%d")
+    today_tag = datetime.now(KST).strftime("%Y%m%d")
+    return f"{config.output_prefix}_{ts}_{since_tag}_to_{today_tag}_company_plus_person_only.csv"
 
-def save_results_csv(flat_rows, out_path: str):
+def save_results_csv(flat_rows: List[dict], out_path: str):
     fieldnames = [
         "GROUP",
         "COMPANY_KEYWORD",
@@ -758,10 +938,21 @@ def save_results_csv(flat_rows, out_path: str):
 
 
 # =========================
-# ✅ MongoDB 업로드(요청: Group, PERSON, CID, DATETIME, TITLE, CONTENT, URL만)
+# ✅ MongoDB doc 변환
 # =========================
+def parse_dt_any(val: Any) -> Optional[datetime]:
+    if isinstance(val, datetime):
+        return val
+    if isinstance(val, str):
+        s = val.strip()
+        try:
+            return datetime.strptime(s, "%Y-%m-%d %H:%M:%S")
+        except Exception:
+            return None
+    return None
+
 def build_mongo_doc_from_row(row: dict) -> dict:
-    dt_val = row.get("DATETIME", "")
+    dt_val = (row.get("DATETIME", "") or "").strip()
     dt_obj = None
     try:
         if dt_val:
@@ -772,7 +963,7 @@ def build_mongo_doc_from_row(row: dict) -> dict:
     return {
         "Group": row.get("GROUP", ""),
         "PERSON": row.get("PERSON", ""),
-        "CID": row.get("CID", ""),
+        "CID": (row.get("CID", "") or "").strip(),
         "DATETIME": dt_obj if dt_obj else dt_val,
         "TITLE": row.get("TITLE", ""),
         "CONTENT": row.get("CONTENT", ""),
@@ -782,20 +973,205 @@ def build_mongo_doc_from_row(row: dict) -> dict:
     }
 
 
-def upload_rows_to_mongo(flat_rows, config: CrawlConfig):
+# =========================
+# ✅ (삽입 전) 중복 제거 로직 (기업 GROUP 단위)
+# =========================
+def load_existing_cids_for_group(col, group: str, limit: int = 50000) -> set:
+    """
+    그룹별로 최근 문서에서 CID를 로드.
+    엄청 큰 컬렉션이면 limit 조절.
+    """
+    cids = set()
+    cur = col.find({"Group": group, "CID": {"$exists": True, "$ne": ""}}, {"CID": 1}).sort("_id", -1).limit(limit)
+    for d in cur:
+        cid = (d.get("CID") or "").strip()
+        if cid:
+            cids.add(cid)
+    return cids
+
+def load_existing_titles_for_group(col, group: str, cfg: CrawlConfig) -> List[Tuple[str, str]]:
+    """
+    그룹별 최근 N개 제목 로드 -> (title_key, original_title)
+    """
+    out: List[Tuple[str, str]] = []
+    cur = col.find({"Group": group, "TITLE": {"$exists": True, "$ne": ""}}, {"TITLE": 1, "DATETIME": 1}).sort("_id", -1).limit(cfg.title_dedup_db_limit_per_group)
+    cutoff = datetime.now(KST).replace(tzinfo=None) - timedelta(days=cfg.title_dedup_only_within_days)
+    for d in cur:
+        t = (d.get("TITLE") or "").strip()
+        if not t:
+            continue
+        dtv = parse_dt_any(d.get("DATETIME"))
+        # 오래된 기사는 비교 대상에서 제외(오탐 줄이기)
+        if dtv and dtv < cutoff:
+            continue
+        out.append((title_key(t), t))
+    return out
+
+def dedup_rows_before_insert(flat_rows: List[dict], cfg: CrawlConfig, col=None) -> Tuple[List[dict], dict]:
+    """
+    반환:
+      - filtered_rows
+      - stats
+    """
+    stats = {
+        "input": len(flat_rows),
+        "cid_removed_batch": 0,
+        "cid_skipped_db": 0,
+        "title_removed_batch": 0,
+        "title_skipped_db": 0,
+        "kept": 0,
+    }
+
+    if not cfg.pre_insert_dedup_enable or not flat_rows:
+        stats["kept"] = len(flat_rows)
+        return flat_rows, stats
+
+    # 그룹별로 처리
+    by_group: Dict[str, List[dict]] = {}
+    for r in flat_rows:
+        g = (r.get("GROUP") or "").strip()
+        by_group.setdefault(g, []).append(r)
+
+    filtered_all: List[dict] = []
+
+    for g, rows in by_group.items():
+        # DATETIME 최신 우선(유사도 dedup에서 최신을 남기기)
+        def _dtv(rr):
+            try:
+                return datetime.strptime((rr.get("DATETIME") or ""), "%Y-%m-%d %H:%M:%S")
+            except Exception:
+                return datetime.min
+        rows_sorted = sorted(rows, key=_dtv, reverse=True)
+
+        # 1) CID 배치 내부 중복 제거
+        seen_cid = set()
+        rows_cid_unique: List[dict] = []
+        for r in rows_sorted:
+            cid = (r.get("CID") or "").strip()
+            if not cid:
+                continue
+            if cid in seen_cid:
+                stats["cid_removed_batch"] += 1
+                continue
+            seen_cid.add(cid)
+            rows_cid_unique.append(r)
+
+        # 1-2) DB에 CID가 이미 있으면 스킵(선택)
+        existing_cids = set()
+        if col is not None and cfg.pre_insert_skip_if_cid_exists_in_db:
+            # 그룹별 CID set(최근 기준)
+            existing_cids = load_existing_cids_for_group(col, g, limit=50000)
+
+        rows_after_cid_db: List[dict] = []
+        for r in rows_cid_unique:
+            cid = (r.get("CID") or "").strip()
+            if existing_cids and cid in existing_cids:
+                stats["cid_skipped_db"] += 1
+                continue
+            rows_after_cid_db.append(r)
+
+        # 2) 제목 유사/중복 제거
+        if not cfg.title_dedup_enable:
+            filtered_all.extend(rows_after_cid_db)
+            continue
+
+        # DB 최근 제목 로드(선택)
+        existing_title_keys: List[str] = []
+        existing_titles_orig: List[str] = []
+        if col is not None and cfg.title_dedup_db_lookup:
+            ex = load_existing_titles_for_group(col, g, cfg)
+            existing_title_keys = [k for k, _ in ex if k]
+            existing_titles_orig = [t for _, t in ex]
+
+        kept: List[dict] = []
+        kept_title_keys: List[str] = []
+        kept_titles_orig: List[str] = []
+
+        for r in rows_after_cid_db:
+            t = (r.get("TITLE") or "").strip()
+            tk = title_key(t)
+            if not tk:
+                kept.append(r)
+                continue
+
+            # (A) 배치 내 중복 검사(최근 kept N개만 비교)
+            dup_in_batch = False
+            start_idx = max(0, len(kept_title_keys) - cfg.title_dedup_compare_recent_keep)
+            for k2, t2 in zip(kept_title_keys[start_idx:], kept_titles_orig[start_idx:]):
+                if not k2:
+                    continue
+                # key 동일이면 즉시 duplicate
+                if tk == k2:
+                    dup_in_batch = True
+                    break
+                # 유사도 검사
+                if is_title_duplicate(t, t2, cfg):
+                    dup_in_batch = True
+                    break
+            if dup_in_batch:
+                stats["title_removed_batch"] += 1
+                continue
+
+            # (B) DB 기존 기사와 중복 검사(선택)
+            dup_in_db = False
+            if existing_title_keys:
+                # key 동일이면 빠르게 중복 처리
+                if tk in existing_title_keys:
+                    dup_in_db = True
+                else:
+                    # 너무 많이 비교하면 느려서, 최근 N개 원문 타이틀만 대략 비교
+                    # (N=3000이면 difflib가 느릴 수 있어 "key 기반" 먼저, 그다음 제한 비교)
+                    limit_compare = min(len(existing_titles_orig), 400)
+                    for t2 in existing_titles_orig[:limit_compare]:
+                        if is_title_duplicate(t, t2, cfg):
+                            dup_in_db = True
+                            break
+
+            if dup_in_db:
+                stats["title_skipped_db"] += 1
+                continue
+
+            kept.append(r)
+            kept_title_keys.append(tk)
+            kept_titles_orig.append(t)
+
+        if cfg.title_dedup_verbose:
+            print(f"[DEDUP] Group={g} | in={len(rows)} -> cid_unique={len(rows_cid_unique)} -> after_db_cid={len(rows_after_cid_db)} -> kept={len(kept)}")
+
+        filtered_all.extend(kept)
+
+    stats["kept"] = len(filtered_all)
+    return filtered_all, stats
+
+
+# =========================
+# ✅ MongoDB 업로드 (삽입 전 dedup 포함)
+# =========================
+def upload_rows_to_mongo(flat_rows: List[dict], config: CrawlConfig):
     if not MongoClient or not UpdateOne:
         raise RuntimeError("pymongo가 설치되지 않았습니다. pip install pymongo")
-
     if not config.mongo_uri:
         raise RuntimeError("MONGO_URI is required. Set it in .env")
 
     client = MongoClient(config.mongo_uri)
     col = client[config.mongo_db][config.mongo_collection]
 
+    # (선택) CID unique index
+    if config.mongo_ensure_unique_cid:
+        try:
+            col.create_index([("CID", 1)], unique=True, background=True, name="uniq_CID")
+            print("✅ Mongo index ensured: CID unique")
+        except Exception as e:
+            print("⚠️ Mongo CID unique index 생성 실패(이미 중복이 있거나 권한 문제):", e)
+
+    # ✅ 삽입 전 중복 제거
+    filtered_rows, st = dedup_rows_before_insert(flat_rows, config, col=col)
+    print("✅ PRE-INSERT DEDUP STATS:", st)
+
     ops = []
     sent = 0
 
-    for row in flat_rows:
+    for row in filtered_rows:
         cid = (row.get("CID") or "").strip()
         if not cid:
             continue
@@ -804,7 +1180,7 @@ def upload_rows_to_mongo(flat_rows, config: CrawlConfig):
 
         ops.append(
             UpdateOne(
-                {"CID": cid},
+                {"CID": cid},       # ✅ CID 기준 upsert
                 {"$set": doc},
                 upsert=config.mongo_upsert,
             )
@@ -832,16 +1208,119 @@ def upload_rows_to_mongo(flat_rows, config: CrawlConfig):
             "upserted": len(result.upserted_ids or {}),
         })
 
+    try:
+        client.close()
+    except Exception:
+        pass
+
+
+# =========================
+# ✅ (옵션) MongoDB 기존 중복 정리: GROUP 단위
+# =========================
+def cleanup_existing_duplicates(col, groups: List[str], cfg: CrawlConfig, apply: bool = False) -> dict:
+    """
+    1) CID 중복 삭제
+    2) 제목 중복 삭제(정규화 동일 + 유사도)
+    기본은 DRY RUN (apply=False)
+    """
+    report = {
+        "apply": apply,
+        "groups": len(groups),
+        "cid_dups_found": 0,
+        "cid_docs_to_delete": 0,
+        "title_dups_found": 0,
+        "title_docs_to_delete": 0,
+    }
+
+    now_cutoff = datetime.now(KST).replace(tzinfo=None) - timedelta(days=max(cfg.title_dedup_only_within_days, 7))
+
+    for g in groups:
+        # ---------- 1) CID 중복 ----------
+        pipeline = [
+            {"$match": {"Group": g, "CID": {"$exists": True, "$ne": ""}}},
+            {"$group": {"_id": "$CID", "ids": {"$push": "$_id"}, "count": {"$sum": 1}}},
+            {"$match": {"count": {"$gt": 1}}},
+        ]
+        dups = list(col.aggregate(pipeline, allowDiskUse=True))
+        if dups:
+            report["cid_dups_found"] += len(dups)
+
+        for d in dups:
+            ids = d["ids"]
+            # 어떤 걸 남길지 결정: DATETIME 최신, 없으면 _id 최신
+            docs = list(col.find({"_id": {"$in": ids}}, {"DATETIME": 1, "TITLE": 1}))
+            def _score(doc):
+                dtv = parse_dt_any(doc.get("DATETIME"))
+                # dt 없으면 _id의 생성시각
+                oid = doc.get("_id")
+                oid_time = oid.generation_time.replace(tzinfo=None) if hasattr(oid, "generation_time") else datetime.min
+                return dtv if dtv else oid_time
+            docs_sorted = sorted(docs, key=_score, reverse=True)
+            keep_id = docs_sorted[0]["_id"]
+            del_ids = [x["_id"] for x in docs_sorted[1:]]
+            report["cid_docs_to_delete"] += len(del_ids)
+
+            if apply and del_ids:
+                col.delete_many({"_id": {"$in": del_ids}})
+
+        # ---------- 2) 제목 중복 ----------
+        # 최근 문서 위주로만(오탐/시간 이슈 방지)
+        cur = col.find({"Group": g, "TITLE": {"$exists": True, "$ne": ""}}, {"TITLE": 1, "DATETIME": 1}).sort("_id", -1).limit(20000)
+        kept_keys: List[str] = []
+        kept_titles: List[str] = []
+        kept_ids: List[Any] = []
+        to_delete: List[Any] = []
+
+        for doc in cur:
+            dtv = parse_dt_any(doc.get("DATETIME"))
+            if dtv and dtv < now_cutoff:
+                # 너무 오래된 건 비교/정리 대상에서 제외
+                continue
+
+            tid = doc["_id"]
+            t = (doc.get("TITLE") or "").strip()
+            tk = title_key(t)
+            if not tk:
+                kept_ids.append(tid)
+                kept_titles.append(t)
+                kept_keys.append(tk)
+                continue
+
+            dup = False
+            start_idx = max(0, len(kept_keys) - cfg.title_dedup_compare_recent_keep)
+            for k2, t2 in zip(kept_keys[start_idx:], kept_titles[start_idx:]):
+                if not k2:
+                    continue
+                if tk == k2:
+                    dup = True
+                    break
+                if is_title_duplicate(t, t2, cfg):
+                    dup = True
+                    break
+
+            if dup:
+                to_delete.append(tid)
+            else:
+                kept_ids.append(tid)
+                kept_titles.append(t)
+                kept_keys.append(tk)
+
+        if to_delete:
+            report["title_dups_found"] += 1
+            report["title_docs_to_delete"] += len(to_delete)
+            if apply:
+                col.delete_many({"_id": {"$in": to_delete}})
+
+        print(f"[CLEANUP] Group={g} | cid_dups={len(dups)} | title_del={len(to_delete)} | apply={apply}")
+
+    return report
+
 
 # =========================
 # search_groups 로드(옵션)
 # =========================
-def load_search_groups_from_csv(config: CrawlConfig) -> dict:
-    """
-    CSV에서 (GROUP -> (COMPANY, PERSON)) 로드
-    - 컬럼명은 config.groups_csv_* 로 매핑
-    """
-    groups = {}
+def load_search_groups_from_csv(config: CrawlConfig) -> Dict[str, Tuple[str, str]]:
+    groups: Dict[str, Tuple[str, str]] = {}
     with open(config.groups_csv_path, "r", encoding="utf-8-sig", newline="") as f:
         reader = csv.DictReader(f)
         for row in reader:
@@ -859,8 +1338,7 @@ def load_search_groups_from_csv(config: CrawlConfig) -> dict:
 # =========================
 # 메인 크롤러
 # =========================
-def get_news(search_groups: dict, config: CrawlConfig):
-    since_dt = get_since_dt(config.days_back)
+def get_news(search_groups: Dict[str, Tuple[str, str]], config: CrawlConfig, since_dt: datetime):
     print(f"조회 기준 시간: {since_dt.strftime('%Y-%m-%d %H:%M:%S')} 이후 기사")
     print(f"적용 필터: cattr={config.cattr}, div_code={config.div_code}")
     print(f"페이징: max_pages={config.max_pages} / page_size={config.page_size}")
@@ -870,7 +1348,6 @@ def get_news(search_groups: dict, config: CrawlConfig):
     session = requests.Session()
     session.mount("https://", LegacySSLAdapter())
 
-    seen_cids_global = set()
     final_results = {}
     flat_rows = []
 
@@ -891,15 +1368,9 @@ def get_news(search_groups: dict, config: CrawlConfig):
                 added = 0
                 for a in articles:
                     cid = a["CID"]
-
                     if cid in seen_cids_group:
                         continue
-                    if config.dedup_global and cid in seen_cids_global:
-                        continue
-
                     seen_cids_group.add(cid)
-                    if config.dedup_global:
-                        seen_cids_global.add(cid)
 
                     a["KEYWORD_FOUND"] = q
                     group_articles.append(a)
@@ -942,74 +1413,101 @@ def get_news(search_groups: dict, config: CrawlConfig):
 # =========================
 # 실행부
 # =========================
-if __name__ == "__main__":
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--cleanup-existing", action="store_true", help="MongoDB에 이미 들어간 중복(CID/제목)을 정리(기본 DRY RUN)")
+    ap.add_argument("--apply", action="store_true", help="--cleanup-existing 와 같이 사용: 실제 삭제 적용")
+    args = ap.parse_args()
+
     # 1) search_groups 준비
-    if CONFIG.load_groups_from_csv:
-        search_groups = load_search_groups_from_csv(CONFIG)
-    else:
-        # 기본: 하드코딩 (원하는 대로 편집)
-        search_groups = {
-            "유진그룹": ("유진그룹", "유경선"),
-            "BGF": ("BGF", "홍석조"),
-            "현대해상": ("현대해상", "정몽윤"),
-            "하이브": ("하이브", "방시혁"),
-            "한솔": ("한솔", "조동길"),
-            "삼성": ("삼성전자", "이재용"),
-            "SK": ("SK", "최태원"),
-            "현대자동차": ("현대자동차", "정의선"),
-            "LG": ("LG", "구광모"),
-            "롯데": ("롯데", "신동빈"),
-            "한화": ("한화", "김승연"),
-            "HD현대": ("HD현대", "정몽준"),
-            "GS": ("GS", "허창수"),
-            "신세계": ("신세계", "이명희"),
-            "한진": ("한진", "조원태"),
-            "CJ": ("CJ", "이재현"),
-            "LS": ("LS", "구자은"),
-            "카카오": ("카카오", "김범수"),
-            "두산": ("두산", "박정원"),
-            "DL": ("DL", "이해욱"),
-            "중흥건설": ("중흥건설", "정창선"),
-            "셀트리온": ("셀트리온", "서정진"),
-            "네이버": ("네이버", "이해진"),
-            "현대백화점": ("현대백화점", "정지선"),
-            "한국앤컴퍼니그룹": ("한국앤컴퍼니그룹", "조양래"),
-            "부영": ("부영", "이중근"),
-            "하림": ("하림", "김홍국"),
-            "효성": ("효성", "조현준"),
-            "SM": ("SM", "우오현"),
-            "HDC": ("HDC", "정몽규"),
-            "호반건설": ("호반건설", "김상열"),
-            "코오롱": ("코오롱", "이웅열"),
-            "KCC": ("KCC", "정몽진"),
-            "DB": ("DB", "김준기"),
-            "OCI": ("OCI", "이우현"),
-            "LX": ("LX", "구본준"),
-            "넷마블": ("넷마블", "방준혁"),
-            "이랜드": ("이랜드", "박성수"),
-            "교보생명보험": ("교보생명보험", "신창재"),
-            "다우키움": ("다우키움", "김익래"),
-            "금호석유화학": ("금호석유화학", "박찬구"),
-            "태영": ("태영", "윤세영"),
-            "KG": ("KG", "곽재선"),
-            "HL": ("HL", "정몽원"),
-            "동원": ("동원", "김남정"),
-            "아모레퍼시픽": ("아모레퍼시픽", "서경배"),
-            "태광": ("태광", "이호진"),
-            "크래프톤": ("크래프톤", "장병규"),
-            "애경": ("애경", "장영신"),
-            "동국제강": ("동국제강", "장세주"),
-            "중앙": ("중앙", "홍석현"),
-        }
+    # (원하면 CSV 로드로 바꾸세요)
+    search_groups = {
+        "유진그룹": ("유진그룹", "유경선"),
+        "BGF": ("BGF", "홍석조"),
+        "현대해상": ("현대해상", "정몽윤"),
+        "하이브": ("하이브", "방시혁"),
+        "한솔": ("한솔", "조동길"),
+        "삼성": ("삼성전자", "이재용"),
+        "SK": ("SK", "최태원"),
+        "현대자동차": ("현대자동차", "정의선"),
+        "LG": ("LG", "구광모"),
+        "롯데": ("롯데", "신동빈"),
+        "한화": ("한화", "김승연"),
+        "HD현대": ("HD현대", "정몽준"),
+        "GS": ("GS", "허창수"),
+        "신세계": ("신세계", "이명희"),
+        "한진": ("한진", "조원태"),
+        "CJ": ("CJ", "이재현"),
+        "LS": ("LS", "구자은"),
+        "카카오": ("카카오", "김범수"),
+        "두산": ("두산", "박정원"),
+        "DL": ("DL", "이해욱"),
+        "중흥건설": ("중흥건설", "정창선"),
+        "셀트리온": ("셀트리온", "서정진"),
+        "네이버": ("네이버", "이해진"),
+        "현대백화점": ("현대백화점", "정지선"),
+        "한국앤컴퍼니그룹": ("한국앤컴퍼니그룹", "조양래"),
+        "부영": ("부영", "이중근"),
+        "하림": ("하림", "김홍국"),
+        "효성": ("효성", "조현준"),
+        "SM": ("SM", "우오현"),
+        "HDC": ("HDC", "정몽규"),
+        "호반건설": ("호반건설", "김상열"),
+        "코오롱": ("코오롱", "이웅열"),
+        "KCC": ("KCC", "정몽진"),
+        "DB": ("DB", "김준기"),
+        "OCI": ("OCI", "이우현"),
+        "LX": ("LX", "구본준"),
+        "넷마블": ("넷마블", "방준혁"),
+        "이랜드": ("이랜드", "박성수"),
+        "교보생명보험": ("교보생명보험", "신창재"),
+        "다우키움": ("다우키움", "김익래"),
+        "금호석유화학": ("금호석유화학", "박찬구"),
+        "태영": ("태영", "윤세영"),
+        "KG": ("KG", "곽재선"),
+        "HL": ("HL", "정몽원"),
+        "동원": ("동원", "김남정"),
+        "아모레퍼시픽": ("아모레퍼시픽", "서경배"),
+        "태광": ("태광", "이호진"),
+        "크래프톤": ("크래프톤", "장병규"),
+        "애경": ("애경", "장영신"),
+        "동국제강": ("동국제강", "장세주"),
+        "중앙": ("중앙", "홍석현"),
+    }
 
-    # 2) 수집
-    news_data, flat_rows = get_news(search_groups, CONFIG)
+    # (옵션) 기존 Mongo 중복 정리
+    if args.cleanup_existing:
+        if not MongoClient or not CONFIG.mongo_uri:
+            print("❌ MongoClient 또는 MONGO_URI가 없습니다.")
+            sys.exit(1)
+        client = MongoClient(CONFIG.mongo_uri)
+        col = client[CONFIG.mongo_db][CONFIG.mongo_collection]
+        rep = cleanup_existing_duplicates(col, list(search_groups.keys()), CONFIG, apply=args.apply)
+        print("✅ CLEANUP REPORT:", rep)
+        client.close()
+        # cleanup만 하고 끝내고 싶으면 여기서 return
+        # return
 
-    # 3) CSV 저장
-    out_csv = make_output_filename(CONFIG)
+    # ✅ 2) 날짜 자동 계산
+    since_dt = compute_since_dt_auto(CONFIG)
+    if since_dt is None:
+        sys.exit(0)
+
+    # 3) 수집
+    _news_data, flat_rows = get_news(search_groups, CONFIG, since_dt)
+
+    # 4) CSV 저장(원하면 끄거나 경로 변경)
+    out_csv = make_output_filename(CONFIG, since_dt)
     save_results_csv(flat_rows, out_csv)
     print(f"\n✅ CSV 저장 완료: {out_csv}")
 
-    # 4) MongoDB 업로드(요청 7필드만)
+    # 5) MongoDB 업로드(삽입 전 CID+제목 dedup 수행)
     if CONFIG.upload_to_mongo:
         upload_rows_to_mongo(flat_rows, CONFIG)
+
+    # ✅ 6) state 저장: "오늘 날짜"
+    save_last_crawled_date(CONFIG.state_path, datetime.now(KST).date())
+    print(f"✅ state 저장 완료: {CONFIG.state_path}")
+
+if __name__ == "__main__":
+    main()
