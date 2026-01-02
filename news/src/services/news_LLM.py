@@ -158,6 +158,7 @@ def _ensure_env_loaded():
     if os.getenv("GOOGLE_API_KEY"): return
     module_dir = os.path.dirname(__file__)
     load_dotenv(os.path.join(module_dir, ".env"))
+    
     # 5) Windows AppData (EXE 배포 시 사용자 설정 우선)
     # [임시 배포용 - 고정 키 사용 시 아래 블록 전체 주석 처리]
     if getattr(sys, "frozen", False) and sys.platform == "win32":
