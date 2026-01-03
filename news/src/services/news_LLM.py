@@ -139,7 +139,7 @@ def ensure_output_sections(article_text: str, keyword: str, fallback_title: str)
 
 # ------------------------------------------------------------------
 # 작성자 : 최준혁
-# 기능 : 다양한 실행 환경에서 .env를 탐색하여 GOOGLE_API_KEY 로드
+# 기능 : 빌드에 포함된 .env 파일에서 GOOGLE_API_KEY 로드 (고정 빌드용)
 # ------------------------------------------------------------------
 def _ensure_env_loaded():
     """
@@ -160,13 +160,12 @@ def _ensure_env_loaded():
     load_dotenv(os.path.join(module_dir, ".env"))
     
     # 5) Windows AppData (EXE 배포 시 사용자 설정 우선)
-    # [임시 배포용 - 고정 키 사용 시 아래 블록 전체 주석 처리]
     if getattr(sys, "frozen", False) and sys.platform == "win32":
         app_data = os.getenv("APPDATA")
         if app_data:
             user_env = os.path.join(app_data, "NewsGenerator", ".env")
             if os.path.exists(user_env):
-                load_dotenv(user_env, override=True) # 사용자 설정이 우선이므로 override=True
+                load_dotenv(user_env, override=True)
 
 _ensure_env_loaded()
 

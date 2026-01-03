@@ -29,20 +29,30 @@ def get_env_path():
 
 def update_api_key(api_key: str):
     """API 키를 업데이트하고 .env 파일에 저장합니다."""
+    # 환경 변수 업데이트 (현재 세션)
+    os.environ['GOOGLE_API_KEY'] = api_key
+    
     env_path = get_env_path()
     env_path.parent.mkdir(parents=True, exist_ok=True)
     
     # 기존 .env 파일이 있으면 읽기 (API 키 제외)
     existing_content = []
     if env_path.exists():
-        with open(env_path, 'r', encoding='utf-8') as f:
-            existing_content = [line.strip() for line in f if line.strip() and not line.strip().startswith('GOOGLE_API_KEY=')]
+        try:
+            with open(env_path, 'r', encoding='utf-8') as f:
+                existing_content = [line.strip() for line in f if line.strip() and not line.strip().startswith('GOOGLE_API_KEY=')]
+        except Exception as e:
+            print(f"Error reading .env: {e}")
     
     # 새로운 API 키와 함께 파일 쓰기
-    with open(env_path, 'w', encoding='utf-8') as f:
-        for line in existing_content:
-            f.write(f"{line}\n")
-        f.write(f"GOOGLE_API_KEY={api_key}\n")
+    try:
+        with open(env_path, 'w', encoding='utf-8') as f:
+            for line in existing_content:
+                f.write(f"{line}\n")
+            f.write(f"GOOGLE_API_KEY={api_key}\n")
+    except Exception as e:
+        print(f"Error writing to .env: {e}")
+        return False
     
     # 환경 변수 다시 로드
     load_dotenv(env_path, override=True)
@@ -55,14 +65,19 @@ def initialize_environment():
     
     # .env 파일이 없으면 기본 템플릿으로 생성
     if not env_path.exists():
-        with open(env_path, 'w', encoding='utf-8') as f:
-            f.write("# FromAI News Generator 환경 설정 파일\n")
-            f.write("# Google API Key를 설정하세요\n")
-            f.write("GOOGLE_API_KEY=your_api_key_here\n")
+        try:
+            with open(env_path, 'w', encoding='utf-8') as f:
+                f.write("# FromAI News Generator 환경 설정 파일\n")
+                f.write("# Google API Key를 설정하세요\n")
+                f.write("GOOGLE_API_KEY=your_api_key_here\n")
+        except Exception as e:
+            print(f"Error creating .env: {e}")
     
     # 환경 변수 로드
     load_dotenv(env_path, override=True)
     return str(env_path)
+
+
 
 
 # ------------------------------------------------------------------
@@ -77,7 +92,7 @@ class MainWindow(QMainWindow):
         self.init_ui()
 
     def init_ui(self):
-        self.setWindowTitle("통합 뉴스 도구v2.2.8 - 제작자: 최준혁, 곽은규")
+        self.setWindowTitle("통합 뉴스 도구v2.3.0 - 제작자: 최준혁, 곽은규")
         self.setGeometry(100, 100, 1000, 1000)
 
         # 메인 레이아웃
@@ -127,6 +142,7 @@ class MainWindow(QMainWindow):
         api_action = QAction('API 키 설정', self)
         api_action.triggered.connect(self.show_api_settings)
         settings_menu.addAction(api_action)
+
 
     def show_api_settings(self):
         """API 키 설정 다이얼로그 표시"""
@@ -187,6 +203,9 @@ def main():
     # PyInstaller로 빌드된 exe의 경우 환경 초기화
     env_path = initialize_environment()
     print(f"환경 설정 파일 경로: {env_path}")
+    
+    # 빌드에 포함된 .env 파일 로드
+    load_dotenv()
     
     app = QApplication(sys.argv)
     app.setStyle('Fusion')

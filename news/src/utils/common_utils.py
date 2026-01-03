@@ -438,8 +438,9 @@ def capture_and_generate_news(keyword: str, domain: str = "stock", progress_call
         try:
             now_kst = datetime.now(TZ)
 
-            # 09:00 ~ 11:59 사이: 이전 거래일 OHLC 주입
-            if 9 <= now_kst.hour < 12:
+            # 09:00 ~ 11:59 사이 또는 주말(토,일): 이전 거래일 OHLC 주입
+            # 평일 오전장이거나, 장이 열리지 않는 주말에는 직전 거래일 마감 정보를 보여줌
+            if (9 <= now_kst.hour < 12) or (now_kst.weekday() >= 5):
                 prev_ohlc = get_prev_trading_day_ohlc(stock_code, debug=debug)
                 if prev_ohlc:
                     info_dict["이전거래일정보"] = prev_ohlc

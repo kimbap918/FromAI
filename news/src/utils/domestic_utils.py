@@ -92,9 +92,12 @@ def get_prev_trading_day_ohlc(stock_code: str, lookback_days: int = 15, debug: b
     """
     FinanceDataReader를 이용해 최근 N일간의 일별 시세를 조회하고,
     직전 거래일(마지막 행 바로 전)의 OHLC/거래량 정보를 반환.
+    - 토/일요일인 경우: 금요일의 이전 거래일(목요일) 데이터를 반환
+    - 평일인 경우: 전일(가장 최근 거래일) 데이터를 반환
     """
     try:
         today = datetime.today().date()
+        weekday = today.weekday()  # 0=월요일, 5=토요일, 6=일요일
         start = today - timedelta(days=lookback_days * 2)
 
         df = fdr.DataReader(stock_code, start.strftime("%Y-%m-%d"), today.strftime("%Y-%m-%d"))
@@ -118,8 +121,24 @@ def get_prev_trading_day_ohlc(stock_code: str, lookback_days: int = 15, debug: b
                     pass
             return {}
 
-        row = df_prev.iloc[-1]
-        date_idx = df_prev.index[-1]
+        # 토/일요일인 경우: 마지막 거래일(금요일)의 이전 거래일(목요일)을 선택
+        # 평일인 경우: 마지막 거래일(전일)을 선택
+        if weekday >= 5:  # 토요일(5) 또는 일요일(6)
+            if len(df_prev) >= 2:
+                row = df_prev.iloc[-2]  # 마지막에서 두 번째 (목요일)
+                date_idx = df_prev.index[-2]
+                if debug:
+                    print(f"[DEBUG] 토/일요일 감지 - 금요일({df_prev.index[-1].date()})의 이전 거래일({date_idx.date()}) 데이터 조회")
+            else:
+                # 데이터가 2개 미만인 경우 기존 로직 사용
+                row = df_prev.iloc[-1]
+                date_idx = df_prev.index[-1]
+                if debug:
+                    print(f"[DEBUG] 토/일요일이지만 이전 거래일 데이터가 2개 미만 - 마지막 거래일 사용: {date_idx.date()}")
+        else:
+            # 평일인 경우: 전일(가장 최근 거래일) 데이터 사용
+            row = df_prev.iloc[-1]
+            date_idx = df_prev.index[-1]
 
         date_str = f"{date_idx.year}년 {date_idx.month}월 {date_idx.day}일"
 
@@ -247,13 +266,22 @@ def finance(stock_name):
     :param stock_name: 조회할 주식의 이름 (e.g., "삼성전자")
     :return: 6자리 종목 코드 문자열. 찾지 못하면 None.
     """
-    df_krx = fdr.StockListing('KRX') # 한국거래소(KRX) 전체 종목 목록을 불러옴
-    # 입력된 주식 이름과 대소문자 구분 없이 완전히 일치하는 종목을 찾음
-    matching_stocks = df_krx[df_krx['Name'].str.fullmatch(stock_name, case=False)]
-    if not matching_stocks.empty:
-        # 일치하는 종목이 있으면 첫 번째 종목의 'Code'를 반환
-        return matching_stocks.iloc[0]['Code']
-    return None
+    try:
+        df_krx = fdr.StockListing('KRX') # 한국거래소(KRX) 전체 종목 목록을 불러옴
+        # 데이터프레임이 None이거나 비어있는 경우 처리
+        if df_krx is None or df_krx.empty:
+            print(f"[DEBUG] KRX 종목 목록 조회 실패 - 빈 데이터")
+            return None
+        # 입력된 주식 이름과 대소문자 구분 없이 완전히 일치하는 종목을 찾음
+        matching_stocks = df_krx[df_krx['Name'].str.fullmatch(stock_name, case=False)]
+        if not matching_stocks.empty:
+            # 일치하는 종목이 있으면 첫 번째 종목의 'Code'를 반환
+            return matching_stocks.iloc[0]['Code']
+        return None
+    except Exception as e:
+        # FinanceDataReader API 호출 실패 시 (네트워크 오류, JSON 파싱 오류 등)
+        print(f"[DEBUG] 종목 코드 조회 중 오류 발생 - {stock_name}: {str(e)}")
+        return None
 
 # ------------------------------------------------------------------
 # 작성자 : 최준혁
@@ -298,8 +326,9 @@ def check_investment_restricted(stock_code, progress_callback=None, keyword=None
         return False
         
     except Exception as e:
-        # 오류 발생 시 정상 종목으로 간주하고 통과
-        pass
+        # 오류 발생 시 정상 종목으로 간주하고 통과 (False 반환)
+        print(f"[DEBUG] 거래금지 체크 중 오류 발생 - stock_code: {stock_code}, error: {str(e)}")
+        return False
 # ------------------------------------------------------------------
 # 작성자 : 최준혁
 # 작성일 : 2025-07-22
