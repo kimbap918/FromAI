@@ -78,8 +78,6 @@ def initialize_environment():
     return str(env_path)
 
 
-
-
 # ------------------------------------------------------------------
 # 작성자 : 최준혁
 # 작성일 : 2025-07-09
@@ -92,7 +90,7 @@ class MainWindow(QMainWindow):
         self.init_ui()
 
     def init_ui(self):
-        self.setWindowTitle("통합 뉴스 도구v2.3.0 - 제작자: 최준혁, 곽은규")
+        self.setWindowTitle("통합 뉴스 도구v2.3.1 - 제작자: 최준혁, 곽은규")
         self.setGeometry(100, 100, 1000, 1000)
 
         # 메인 레이아웃

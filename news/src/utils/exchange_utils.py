@@ -242,33 +242,67 @@ def capture_exchange_chart_with_data(keyword: str, progress_callback=None):
         driver.quit()
 
 def _parse_exchange_top_text(text: str) -> dict:
-    """상단 텍스트에서 통화/현재가/등락률/등락금액을 휴리스틱으로 추출"""
+    """상단 텍스트에서 통화/현재가/등락/등락률을 휴리스틱으로 추출
+
+    ✅ IDR 100 / JPY 100처럼 '단위(100)'가 헤더에 포함되는 경우,
+       첫 숫자(100)를 현재가로 오인하지 않도록 **헤더 라인을 제외한 본문**에서 우선 파싱한다.
+    """
     import re
-    lines = [l.strip() for l in text.splitlines() if l.strip()]
+
+    lines = [l.strip() for l in (text or "").splitlines() if l.strip()]
     head = lines[0] if lines else ""
+    body_lines = lines[1:] if len(lines) > 1 else []
+    body_text = "\n".join(body_lines)
+
     # 숫자(천단위 콤마, 소수), 퍼센트 탐색
     num_pattern = re.compile(r"\d{1,3}(?:,\d{3})*(?:\.\d+)?")
     pct_pattern = re.compile(r"[-+]?\d+(?:\.\d+)?\s*%")
-    cur = None
-    chg = None
+
+    # 1) 등락률
     pct = None
-    # 우선 전체 텍스트에서 패턴 검색
-    nums = num_pattern.findall(text)
-    # JPY(엔) 표기 보정: 네이버 상단에 'JPY 100' 또는 '100엔당'처럼 단위 숫자 100이
-    # 가격 앞에 먼저 등장하는 경우가 있어 첫 숫자가 100으로 잘못 캡처되는 문제를 방지한다.
-    try:
-        if ("엔" in head) or ("JPY" in head) or ("엔" in text) or ("JPY" in text):
-            if nums and nums[0].replace(",", "") in ("100", "100.0"):
-                nums = nums[1:]
-    except Exception:
-        pass
-    pcts = pct_pattern.findall(text)
-    if nums:
-        cur = nums[0]
-        if len(nums) > 1:
-            chg = nums[1]
+    pcts = pct_pattern.findall(text or "")
     if pcts:
         pct = pcts[0].replace(" ", "")
+
+    # 2) 현재가: 보통 두 번째 줄(또는 본문 첫 숫자)
+    cur = None
+    if body_lines:
+        m = num_pattern.search(body_lines[0])
+        if m:
+            cur = m.group(0)
+
+    if cur is None:
+        nums_body = num_pattern.findall(body_text)
+        if nums_body:
+            cur = nums_body[0]
+        else:
+            nums_all = num_pattern.findall(text or "")
+            cur = nums_all[0] if nums_all else None
+
+    # 3) 등락: '전일대비'가 있는 라인에서 우선 추출, 없으면 본문 두 번째 숫자
+    chg = None
+    delta_line = ""
+    for l in body_lines:
+        if "전일대비" in l:
+            delta_line = l
+            break
+    if delta_line:
+        nums = num_pattern.findall(delta_line)
+        if nums:
+            chg = nums[0]
+
+    if chg is None:
+        nums_body = num_pattern.findall(body_text)
+        if nums_body:
+            # 현재가를 본문에서 찾았으면 그 다음 숫자를 등락으로 사용
+            if cur and len(nums_body) >= 2:
+                if nums_body[0] == cur:
+                    chg = nums_body[1]
+                else:
+                    chg = nums_body[1] if len(nums_body) > 1 else None
+            elif len(nums_body) >= 2:
+                chg = nums_body[1]
+
     return {
         "통화": head,
         "현재가": cur,
@@ -318,10 +352,11 @@ def build_fx_prompt(today_kst: str, include_aggregate_tag: bool = False) -> str:
         "   - 제목에서는 가능하면 '원/달러 환율 하락', '원화 강세', '달러화 약세'처럼 환율 방향과 강·약세 관계가 한눈에 드러나게 쓴다.\n\n"
         "3. 본문 규칙\n"
         '   - 본문 시작부에는 시스템이 자동 삽입하는 템플릿(\"… 기준, 네이버페이 증권에 따르면\")만 날짜/시간을 포함하고, 그 외 본문에서는 날짜/시간을 사용하지 않는다.\n'
+        "   - 본문 서술 시, '어제', '전일' 대신 반드시 '전거래일'로 표기한다.\n"
         "   - 통화별 관찰 포인트를 제시하되 최종 본문은 하나의 통합 기사로 작성.\n"
         "   - 수준/범위/상대 위치 등 수치 기반 근거로 기술하고, 형용적 평가 대신 객관 서술로 제시.\n"
-        "   - 통화별 기본 서술 구조는 '원/달러 환율은 X원으로 전일보다 Y원(Z%) 하락했다' 형식을 따른다.\n"
-        "   - 등락 서술 시에는 반드시 '어제 대비 얼마, 몇 퍼센트 상승/하락'을 우선 제시하고,\n"
+        "   - 통화별 기본 서술 구조는 '원/달러 환율은 X원으로 전거래일보다 Y원(Z%) 하락했다' 형식을 따른다.\n"
+        "   - 등락 서술 시에는 반드시 '전거래일 대비 얼마, 몇 퍼센트 상승/하락'을 우선 제시하고,\n"
         "     그 다음 문장에서 보조적으로 '원화 강세/약세, 달러 강세/약세' 표현을 사용할 수 있다.\n"
         "   - '강세/약세'를 쓸 때는 반드시 어떤 통화가 무엇(원화)을 기준으로 강세/약세인지 명시한다.\n"
         "   - 이미지/차트 분석 언급, 모델/AI 언급을 포함한 메타 표현을 사용하지 않는다.\n"

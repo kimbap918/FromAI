@@ -4,7 +4,7 @@ from typing import List, Dict, Optional
 import pandas as pd
 import FinanceDataReader as fdr
 import yfinance as yf
-from news.src.utils.domestic_utils import finance
+from news.src.utils.domestic_utils import finance, safe_fdr_datareader
 from news.src.utils.ticker_resolver import resolve_ticker_via_yahoo
 
 
@@ -23,43 +23,22 @@ def get_five_trading_days_ohlc(keyword: str) -> Optional[List[Dict[str, str]]]:
     (항목 수는 1~5일 등 유동적입니다.)
     """
     try:
-        # 국내 종목 코드 조회 시도 (domestic_utils.py의 finance 함수와 유사한 로직)
+        # 국내 종목 코드 조회 시도 (domestic_utils.py의 finance 함수 사용)
         is_foreign = False
-        code = None
+        code = finance(keyword)
         
-        try:
-            # 1. 정확한 이름으로 시도 (공백과 대소문자 무시)
-            df_krx = fdr.StockListing('KRX')
-            
-            # 2. 공백과 대소문자 무시하고 정확히 일치하는 경우
-            matching_stocks = df_krx[df_krx['Name'].str.replace(' ', '').str.lower() == keyword.replace(' ', '').lower()]
-            
-            # 3. 정확히 일치하는 것이 없으면, 이름에 포함된 경우 검색 (대소문자 무시)
-            if matching_stocks.empty:
-                matching_stocks = df_krx[df_krx['Name'].str.lower().str.contains(keyword.lower(), na=False)]
-            
-            # 4. 종목코드로 검색 시도 (6자리 숫자인 경우)
-            if matching_stocks.empty and keyword.isdigit() and len(keyword) == 6:
-                matching_stocks = df_krx[df_krx['Code'] == keyword]
-                
-            # 5. 종목코드로 검색 (앞에 'A'가 붙은 경우)
-            if matching_stocks.empty and len(keyword) == 7 and keyword[0].upper() == 'A' and keyword[1:].isdigit():
-                matching_stocks = df_krx[df_krx['Code'] == keyword[1:]]
-            
-            # 일치하는 종목이 있으면 첫 번째 종목의 'Code'를 사용
-            if not matching_stocks.empty:
-                code = matching_stocks.iloc[0]['Code']
-                print(f"DEBUG: Found domestic stock: {matching_stocks.iloc[0]['Name']} ({code})")
-            else:
-                # 국내 종목이 아니면 해외 종목으로 간주
-                is_foreign = True
-                print(f"DEBUG: No matching domestic stock found for '{keyword}'. Trying foreign stocks...")
-                
-        except Exception as e:
-            print(f"ERROR: Error searching for domestic stock: {str(e)}")
-            is_foreign = True  # 오류 발생 시 해외 종목으로 간주
+        if code:
+            print(f"DEBUG: Found domestic stock code for '{keyword}': {code}")
+        else:
+            # 국내 종목이 아니면 해외 종목으로 간주
+            is_foreign = True
+            print(f"DEBUG: No matching domestic stock found for '{keyword}'. Trying foreign stocks...")
 
-        today = _dt.date.today()
+        from news.src.utils.common_utils import TZ
+        now_kst = _dt.datetime.now(TZ)
+        today = now_kst.date()
+        print(f"[DEBUG] get_five_trading_days_ohlc - Current KST: {now_kst}")
+        
         # [수정] 12월 31일(연말 휴장)이거나 주말이면 직전 거래일로 조정
         if today.month == 12 and today.day == 31:
              # 31일이 평일이면 하루 전(30일)으로 이동
@@ -70,73 +49,40 @@ def get_five_trading_days_ohlc(keyword: str) -> Optional[List[Dict[str, str]]]:
             end_date = today - _dt.timedelta(days=(today.weekday() - 4))
         else:
             end_date = today
+        print(f"[DEBUG] get_five_trading_days_ohlc - end_date set to: {end_date}")
 
-        # 이번 주 월요일 계산 (월=0)
-        start_of_week = end_date - _dt.timedelta(days=end_date.weekday())
+        # 이번 주 월요일 계산 (X) -> 최근 5거래일을 가져오기 위해 충분한 범위를 잡음
+        start_search = end_date - _dt.timedelta(days=15)
 
         # 국내 종목이면 기존 코드 사용
         if not is_foreign:
-            df = fdr.DataReader(code, start=start_of_week, end=end_date)
+            df = safe_fdr_datareader(code, start=start_search, end=end_date)
         else:
             # 해외 종목은 Yahoo resolver로 티커 검색을 먼저 시도
-            try:
-                ticker = resolve_ticker_via_yahoo(keyword)
-                print(f"DEBUG: Resolved '{keyword}' to ticker '{ticker}'")  # DEBUG
-            except Exception as e:
-                print(f"DEBUG: Failed to resolve '{keyword}': {str(e)}")  # DEBUG
-                ticker = None
-
-            # resolver 실패하면, 입력이 이미 티커인지 확인
+            # ... (ticker resolution logic) ...
+            ticker = resolve_ticker_via_yahoo(keyword) if 'resolve_ticker_via_yahoo' in globals() else None
             if not ticker:
-                kw_up = keyword.strip()
-                if kw_up and (kw_up.replace('.', '').replace('-', '').isalnum()):
-                    ticker = kw_up.upper()
-                    print(f"DEBUG: Using input as ticker: '{ticker}'")  # DEBUG
-
-            # Yahoo로도 못 찾으면, 주요 미국 거래소 목록에서 이름으로 검색 시도
-            if not ticker:
-                exchanges = ['NASDAQ', 'NYSE', 'AMEX']
-                for ex in exchanges:
-                    try:
-                        listing = fdr.StockListing(ex)
-                        # Name 컬럼과 Symbol 컬럼을 이용해 검색
-                        lower_kw = keyword.lower()
-                        # exact symbol match
-                        if 'Symbol' in listing.columns and lower_kw.upper() in listing['Symbol'].astype(str).values:
-                            ticker = lower_kw.upper()
-                            break
-                        # name contains
-                        if 'Name' in listing.columns:
-                            matched = listing[listing['Name'].astype(str).str.lower().str.contains(lower_kw, na=False)]
-                            if not matched.empty:
-                                # 우선 첫 번째 매칭 심볼 사용
-                                ticker = matched.iloc[0]['Symbol'] if 'Symbol' in matched.columns else None
-                                break
-                    except Exception:
-                        continue
-
-            # 해외 종목은 반드시 ticker가 필요
+                 # 티커 검색 실패 시 이전 로직 유지
+                 ticker = keyword.upper() if keyword.isalnum() else None
+            
             if ticker:
                 try:
-                    print(f"DEBUG: Using ticker '{ticker}' for keyword '{keyword}'")  # DEBUG
                     stock = yf.Ticker(ticker)
-                    df = stock.history(start=start_of_week, end=end_date + _dt.timedelta(days=1))
-                    if df is not None and not df.empty:
-                        # yfinance의 컬럼명은 'Open', 'High' 등으로 이미 맞춰져 있음
-                        pass
-                    else:
-                        print(f"DEBUG: No data returned for ticker '{ticker}'")  # DEBUG
-                except Exception as e:
-                    print(f"DEBUG: Error fetching '{ticker}': {str(e)}")  # DEBUG
+                    # yfinance end_date는 exclusive하므로 +1일
+                    df = stock.history(start=start_search, end=end_date + _dt.timedelta(days=1))
+                except Exception:
                     df = None
             else:
-                print(f"DEBUG: No ticker found for keyword '{keyword}'")  # DEBUG
                 df = None
+
         if df is None or df.empty:
             return None
 
+        # 유효한 데이터만 남기고 최근 5일만 선택
         df = df.dropna(subset=["Open", "High", "Low", "Close"]).copy()
-        if df is None or df.empty:
+        df = df.tail(5)
+        
+        if df.empty:
             return None
 
         rows: List[Dict[str, str]] = []
@@ -176,6 +122,7 @@ def format_weekly_ohlc_for_prompt(rows: List[Dict[str, str]]) -> str:
 def build_weekly_stock_prompt() -> str:
     from news.src.utils.common_utils import TZ  # TZ 추가
     now_kst = _dt.datetime.now(TZ)  # 현재 한국 시간
+    print(f"[DEBUG] build_weekly_stock_prompt - Current KST: {now_kst}")
     
     # 장 시작/마감 시간 정의 (한국 시간)
     market_open_time = _dt.time(9, 0)   # 오전 9:00
@@ -198,6 +145,10 @@ def build_weekly_stock_prompt() -> str:
         final_status = market_status
         
     return (
+        f"[Context]\n"
+        f"- 현재 시점 (KST): {now_kst.strftime('%Y-%m-%d %H:%M')}\n"
+        f"- 오늘 날짜: {now_kst.strftime('%Y년 %m월 %d일')}\n"
+        f"- 분석 성격: {final_status}\n\n"
         f"[Special Rules for Weekly OHLC - 현재 {final_status}]\n"
     "1. 제목 작성 형식 (현재 시점 반영):\n"
     "   다음 4가지 형식 중에서 선택하여 제목 3개를 생성할 것(데이터에 맞게 변형 가능):\n"

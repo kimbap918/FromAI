@@ -173,8 +173,8 @@ def get_stock_info_from_search(keyword: str):
         
     # 2. Selenium을 이용한 Naver 검색 (FinanceDataReader 실패 시)
     options = Options()
-    options.add_argument("--headless") # 브라우저 창을 띄우지 않음
-    options.add_argument("--no-sandbox") #サンドボックスモードを無効にする
+    options.add_argument("--headless") 
+    options.add_argument("--no-sandbox") 
     driver = webdriver.Chrome(options=options)
     try:
         search_url = f"https://search.naver.com/search.naver?query={search_keyword}"
@@ -393,10 +393,13 @@ def capture_and_generate_news(keyword: str, domain: str = "stock", progress_call
             report_step() # 3. 기사 생성 완료
             
             if news:
-                # 1. 팜플렛(기사 서두) 문구 생성 (해외 주식용)
-                template_text = create_template(keyword, is_foreign=True)
+                # 1. 템플릿(기사 서두) 문구 생성 (해외 주식용)
+                is_foreign_tmpl = (domain not in ["stock", "toss", "week"])
+                if debug:
+                    print(f"[DEBUG] create_template 호출 (해외블록): domain={domain}, is_foreign={is_foreign_tmpl}")
+                template_text = create_template(keyword, is_foreign=is_foreign_tmpl)
 
-                # 2. LLM 결과물에서 '[본문]' 마커를 찾아 팜플렛 삽입
+                # 2. LLM 결과물에서 '[본문]' 마커를 찾아 템플릿 삽입
                 if re.search(r'(\[본문\]|본문)', news):
                     replacement_text = f"[본문]\n{template_text} "
                     final_output = re.sub(r'(\[본문\]|본문)\s+', replacement_text, news, count=1)
@@ -440,7 +443,8 @@ def capture_and_generate_news(keyword: str, domain: str = "stock", progress_call
 
             # 09:00 ~ 11:59 사이 또는 주말(토,일): 이전 거래일 OHLC 주입
             # 평일 오전장이거나, 장이 열리지 않는 주말에는 직전 거래일 마감 정보를 보여줌
-            if (9 <= now_kst.hour < 12) or (now_kst.weekday() >= 5):
+            # 단, 'week' 도메인은 자체적으로 5거래일 데이터를 가져오므로 제외
+            if domain != "week" and ((9 <= now_kst.hour < 12) or (now_kst.weekday() >= 5)):
                 prev_ohlc = get_prev_trading_day_ohlc(stock_code, debug=debug)
                 if prev_ohlc:
                     info_dict["이전거래일정보"] = prev_ohlc
@@ -448,7 +452,8 @@ def capture_and_generate_news(keyword: str, domain: str = "stock", progress_call
                         print(f"[DEBUG] 이전거래일정보 추가: {prev_ohlc}")
 
             # 12:00 이후: 금일 1시간 단위 시세 주입
-            else:
+            # 단, 'week' 도메인은 제외
+            elif domain != "week":
                 intraday_data = get_intraday_hourly_data(stock_code, now_kst, debug=debug)
                 if intraday_data:
                     info_dict["시간대별시세"] = intraday_data
@@ -472,6 +477,8 @@ def capture_and_generate_news(keyword: str, domain: str = "stock", progress_call
         
         if news:
             # 1. 템플릿 문구 생성 (국내 주식용)
+            if debug:
+                print(f"[DEBUG] create_template 호출 (국내블록): domain={domain}, is_foreign=False")
             template_text = create_template(keyword, is_foreign= False)
             # 2. LLM 결과물 후처리 및 저장
             if re.search(r'(\[본문\]|본문)', news):
@@ -498,8 +505,8 @@ def capture_and_generate_news(keyword: str, domain: str = "stock", progress_call
         news = generate_info_news_from_text(keyword, info_dict, domain) # LLM 기사 생성
         
         if news:
-            # 해외 주식과 동일한 로직으로 팜플렛 생성 및 후처리
-            template_text = create_template(keyword, is_foreign=True)
+            # 해외 주식과 동일한 로직으로 템플릿 생성 및 후처리
+            template_text = create_template(keyword, is_foreign=(domain not in ["stock", "toss", "week"]))
             if re.search(r'(\[본문\]|본문)', news):
                 replacement_text = f"[본문]\n{template_text} "
                 final_output = re.sub(r'(\[본문\]|본문)\s+', replacement_text, news, count=1)
@@ -592,6 +599,7 @@ def build_stock_prompt(today_kst):
         f"   - 키워드 뒤에는 항상 콤마(,)를 붙일 것.\n"
         f"   - 제목 모두 위 형식을 반드시 유지하고 가격+등락률(%) 포함한 '내용'만 다르게 작성할 것.\n"
         f"   - **금액은 반드시 콤마(,)를 표기할 것 (예: 64,600원), 가격+등락률(%) 함께 표기.**\n"
+        f"   - **제목에 쌍 따옴표(\"\") 사용 금지(예: \"O월 O일 장중\")**\n"
         f"   - 신규상장 값이 True 일 경우, IPO 사실과 가격을 핵심에 배치.\n"
         f"   - 상한가 서술 시, 현재가가 상한가가 아닌 경우, 혹은 상한가가 아닌 상태에서 마감한 경우, '상한가' 단독 표기를 금지하고 **반드시 '장중 한때 상한가'로 명시할것.**\n"
         f"   - {title_time_format}은 **제목 전용**이며, 본문 규칙에 **영향을 주지 않는다**"

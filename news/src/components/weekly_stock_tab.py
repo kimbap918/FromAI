@@ -230,7 +230,7 @@ class WeeklyStockTab(QWidget):
         self.cancel_btn.setEnabled(False)
 
     def open_article_folder(self):
-        today = datetime.now().strftime('%Y%m%d')
+        today = get_today_kst_date_str()
         folder_path = os.path.join("주간 기사", f"기사{today}")
         if os.path.exists(folder_path):
             if platform.system() == "Windows":

@@ -25,7 +25,7 @@ except ImportError:
 
 
 # ------------------------------------------------------------------
-# 작성자 : 최준혁 
+# 작성자 : 최준혁
 # 작성일 : 2025-11-17
 # 기능 : 네이버 분봉 데이터 조회 헬퍼
 # ------------------------------------------------------------------
@@ -66,7 +66,7 @@ def _fetch_naver_minute_df(stock_code: str, count: int = 400, debug: bool = Fals
             return pd.DataFrame()
 
         df = pd.DataFrame(
-            data[1:], 
+            data[1:],
             columns=["Date", "Open", "High", "Low", "Close", "Volume", "외국인소진율"]
         )
 
@@ -84,7 +84,7 @@ def _fetch_naver_minute_df(stock_code: str, count: int = 400, debug: bool = Fals
 
 
 # ------------------------------------------------------------------
-# 작성자 : 최준혁 
+# 작성자 : 최준혁
 # 작성일 : 2025-11-17
 # 기능 : 이전 거래일 OHLC 정보 조회 (FinanceDataReader)
 # ------------------------------------------------------------------
@@ -100,7 +100,7 @@ def get_prev_trading_day_ohlc(stock_code: str, lookback_days: int = 15, debug: b
         weekday = today.weekday()  # 0=월요일, 5=토요일, 6=일요일
         start = today - timedelta(days=lookback_days * 2)
 
-        df = fdr.DataReader(stock_code, start.strftime("%Y-%m-%d"), today.strftime("%Y-%m-%d"))
+        df = safe_fdr_datareader(stock_code, start.strftime("%Y-%m-%d"), today.strftime("%Y-%m-%d"), debug=debug)
         if df is None or df.empty:
             if debug:
                 print(f"[DEBUG] 이전 거래일 OHLC 조회 실패 - 빈 데이터, code={stock_code}")
@@ -255,33 +255,241 @@ def get_intraday_hourly_data(stock_code: str, now_dt: datetime, debug: bool = Fa
         if debug:
             print(f"[DEBUG] 시간대별시세 집계 실패 - code={stock_code}, error={e}")
         return {}
+
+
 # ------------------------------------------------------------------
 # 작성자 : 곽은규
 # 작성일 : 2025-07-22
 # 기능 : 주식 종목 코드 받아오기 위한 연결 라이브러리
+#
+# 2026-01-05 패치(안정화):
+# - fdr.StockListing('KRX')는 네트워크/공급자 이슈로 간헐적으로 빈 DF/예외가 발생할 수 있어
+#   (1) 일 단위 메모리/디스크 캐시
+#   (2) 재시도(backoff)
+#   (3) 네이버 검색 HTML(code=######) 폴백
+#   을 추가해 "항상 None"으로 떨어지는 상황을 크게 줄였습니다.
 # ------------------------------------------------------------------
-def finance(stock_name):
+
+# 메모리 캐시(프로세스 단위)
+_FDR_LISTING_CACHE = {"date": None, "df": None}
+_NAVER_CODE_CACHE = {}  # {"삼성전자": "005930", ...}
+
+
+def _norm_stock_name(s: str) -> str:
+    """종목명 비교용 정규화(공백 제거 + 소문자)"""
+    return re.sub(r"\s+", "", (s or "").strip()).lower()
+
+
+def _get_cache_dir() -> str:
     """
-    FinanceDataReader 라이브러리를 사용하여 주식 이름으로 종목 코드를 조회.
-    :param stock_name: 조회할 주식의 이름 (e.g., "삼성전자")
+    디스크 캐시 폴더.
+    - PyInstaller/배포 환경에서도 쓰기 가능한 경로를 쓰기 위해 CWD 기반으로 생성.
+    """
+    base = os.path.join(os.getcwd(), ".cache_pressai")
+    try:
+        os.makedirs(base, exist_ok=True)
+    except Exception:
+        pass
+    return base
+
+
+def _load_listing_from_disk(date_yyyymmdd: str, debug: bool = False):
+    cache_dir = _get_cache_dir()
+    path = os.path.join(cache_dir, f"krx_listing_{date_yyyymmdd}.csv")
+    try:
+        if os.path.exists(path) and os.path.getsize(path) > 0:
+            df = pd.read_csv(path, dtype=str, encoding="utf-8-sig")
+            if df is not None and not df.empty and "Name" in df.columns and "Code" in df.columns:
+                if debug:
+                    print(f"[DEBUG] KRX listing 디스크 캐시 로드 성공: {path} (rows={len(df)})")
+                return df
+    except Exception as e:
+        if debug:
+            print(f"[DEBUG] KRX listing 디스크 캐시 로드 실패: {e}")
+    return None
+
+
+def _save_listing_to_disk(df: pd.DataFrame, date_yyyymmdd: str, debug: bool = False) -> None:
+    cache_dir = _get_cache_dir()
+    path = os.path.join(cache_dir, f"krx_listing_{date_yyyymmdd}.csv")
+    try:
+        df.to_csv(path, index=False, encoding="utf-8-sig")
+        if debug:
+            print(f"[DEBUG] KRX listing 디스크 캐시 저장 완료: {path} (rows={len(df)})")
+    except Exception as e:
+        if debug:
+            print(f"[DEBUG] KRX listing 디스크 캐시 저장 실패: {e}")
+
+
+def _get_fdr_krx_listing_cached(debug: bool = False, retries: int = 3):
+    """
+    fdr.StockListing('KRX') 결과를 일 단위로 캐싱.
+    - 우선: 메모리 캐시
+    - 다음: 디스크 캐시(당일 → 전일)
+    - 다음: 네트워크 호출 재시도
+    """
+    today = datetime.now().strftime("%Y%m%d")
+
+    # 1) 메모리 캐시
+    if _FDR_LISTING_CACHE["date"] == today and _FDR_LISTING_CACHE["df"] is not None:
+        return _FDR_LISTING_CACHE["df"]
+
+    # 2) 디스크 캐시(당일 → 전일)
+    df_disk = _load_listing_from_disk(today, debug=debug)
+    if df_disk is None:
+        yday = (datetime.now() - timedelta(days=1)).strftime("%Y%m%d")
+        df_disk = _load_listing_from_disk(yday, debug=debug)
+    if df_disk is not None and not df_disk.empty:
+        _FDR_LISTING_CACHE["date"] = today
+        _FDR_LISTING_CACHE["df"] = df_disk
+        return df_disk
+
+    # 3) 네트워크 호출(+재시도)
+    last_err = None
+    for i in range(max(1, retries)):
+        try:
+            df = fdr.StockListing("KRX")
+            if df is None or df.empty:
+                raise ValueError("빈 종목 목록(DF empty)")
+
+            # dtype 안정화
+            try:
+                df["Name"] = df["Name"].astype(str)
+                df["Code"] = df["Code"].astype(str)
+            except Exception:
+                pass
+
+            _FDR_LISTING_CACHE["date"] = today
+            _FDR_LISTING_CACHE["df"] = df
+            _save_listing_to_disk(df, today, debug=debug)
+            return df
+        except Exception as e:
+            last_err = e
+            time.sleep(0.25 * (2 ** i))
+
+    if debug:
+        print(f"[DEBUG] KRX 종목 목록 조회 실패 - {last_err}")
+    return None
+
+
+def safe_fdr_datareader(symbol, start=None, end=None, retries=3, debug=False):
+    """
+    fdr.DataReader() 호출 시 네트워크/JSON 파싱 에러(JSONDecodeError)가 
+    발생할 수 있으므로 재시도 로직을 포함한 래퍼 함수입니다.
+    """
+    last_err = None
+    for i in range(max(1, retries)):
+        try:
+            df = fdr.DataReader(symbol, start=start, end=end)
+            if df is not None:
+                return df
+            raise ValueError("fdr.DataReader returned None")
+        except Exception as e:
+            last_err = e
+            if debug:
+                print(f"[DEBUG] fdr.DataReader 실패 (시도 {i+1}/{retries}) - symbol={symbol}, error={e}")
+            time.sleep(0.3 * (2 ** i))
+    
+    if debug:
+        print(f"[DEBUG] fdr.DataReader 최종 실패 - symbol={symbol}, error={last_err}")
+    return pd.DataFrame()
+
+
+def _resolve_code_via_naver_search(stock_name: str, debug: bool = False):
+    """
+    네이버 검색 HTML에서 finance.naver.com/item/main.naver?code=###### 를 찾아 종목코드를 추출.
+    - Selenium 불필요 (requests 기반)
+    """
+    q = (stock_name or "").strip()
+    if not q:
+        return None
+    if q.isdigit() and len(q) == 6:
+        return q
+
+    # 캐시
+    key = _norm_stock_name(q)
+    if key in _NAVER_CODE_CACHE:
+        return _NAVER_CODE_CACHE[key]
+
+    url = "https://search.naver.com/search.naver"
+    params = {"query": f"{q} 주가"}
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/120.0 Safari/537.36"
+        ),
+        "Referer": "https://www.naver.com/",
+        "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
+    }
+
+    try:
+        r = requests.get(url, params=params, headers=headers, timeout=8)
+        html = r.text or ""
+        m = re.search(r"finance\.naver\.com/item/main\.naver\?code=(\d{6})", html)
+        if m:
+            code = m.group(1)
+            _NAVER_CODE_CACHE[key] = code
+            return code
+        if debug:
+            print(f"[DEBUG] 네이버 검색에서 종목코드 추출 실패 - query={q}")
+        return None
+    except Exception as e:
+        if debug:
+            print(f"[DEBUG] 네이버 검색(code 추출) 요청 실패 - query={q}, error={e}")
+        return None
+
+
+def finance(stock_name, debug: bool = False):
+    """
+    FinanceDataReader + (폴백) 네이버 검색을 이용해 '종목명 -> 6자리 종목 코드'를 조회.
+
+    우선순위
+    1) 숫자 6자리면 그대로 반환
+    2) FDR StockListing('KRX') (일 단위 캐시 + 재시도 + 디스크 캐시)
+    3) 네이버 검색 HTML에서 code=###### 추출 (폴백)
+
+    :param stock_name: 조회할 주식의 이름 (e.g., "삼성전자") 또는 6자리 코드
+    :param debug: 디버그 로그 출력 여부
     :return: 6자리 종목 코드 문자열. 찾지 못하면 None.
     """
     try:
-        df_krx = fdr.StockListing('KRX') # 한국거래소(KRX) 전체 종목 목록을 불러옴
-        # 데이터프레임이 None이거나 비어있는 경우 처리
-        if df_krx is None or df_krx.empty:
-            print(f"[DEBUG] KRX 종목 목록 조회 실패 - 빈 데이터")
+        name = (stock_name or "").strip()
+        if not name:
             return None
-        # 입력된 주식 이름과 대소문자 구분 없이 완전히 일치하는 종목을 찾음
-        matching_stocks = df_krx[df_krx['Name'].str.fullmatch(stock_name, case=False)]
-        if not matching_stocks.empty:
-            # 일치하는 종목이 있으면 첫 번째 종목의 'Code'를 반환
-            return matching_stocks.iloc[0]['Code']
+
+        # 이미 코드면 그대로
+        if name.isdigit() and len(name) == 6:
+            return name
+
+        target = _norm_stock_name(name)
+
+        # 1) FDR listing 기반
+        df_krx = _get_fdr_krx_listing_cached(debug=debug, retries=3)
+        if df_krx is not None and not df_krx.empty and "Name" in df_krx.columns and "Code" in df_krx.columns:
+            try:
+                # 정규식 fullmatch 대신 안전한 동등 비교(특수문자/괄호 등에도 안전)
+                series_norm = df_krx["Name"].astype(str).map(_norm_stock_name)
+                hits = df_krx[series_norm == target]
+                if not hits.empty:
+                    code = str(hits.iloc[0]["Code"]).zfill(6)
+                    return code
+            except Exception as e:
+                if debug:
+                    print(f"[DEBUG] FDR listing 매칭 실패 - {name}: {e}")
+
+        # 2) 폴백: 네이버 검색에서 code=###### 추출
+        code = _resolve_code_via_naver_search(name, debug=debug)
+        if code:
+            return code
+
+        if debug:
+            print(f"[DEBUG] '{stock_name}'에 해당하는 종목 코드를 찾을 수 없습니다.")
         return None
+
     except Exception as e:
-        # FinanceDataReader API 호출 실패 시 (네트워크 오류, JSON 파싱 오류 등)
         print(f"[DEBUG] 종목 코드 조회 중 오류 발생 - {stock_name}: {str(e)}")
         return None
+
 
 # ------------------------------------------------------------------
 # 작성자 : 최준혁
@@ -298,20 +506,20 @@ def check_investment_restricted(stock_code, progress_callback=None, keyword=None
     :return: 거래정지 종목이면 True, 아니면 False
     """
     print(f"[DEBUG] 거래금지 체크 시작 - stock_code: {stock_code}, keyword: {keyword}")
-    
+
     try:
         # FinanceDataReader를 통해 최근 10일간의 거래 데이터를 조회
         end_date = datetime.now().date()
         start_date = end_date - pd.Timedelta(days=10)
-        df = fdr.DataReader(stock_code, start=start_date, end=end_date)
-        
+        df = safe_fdr_datareader(stock_code, start=start_date, end=end_date)
+
         # 데이터프레임이 비어있지 않은지 확인
         if df is not None and not df.empty:
-            latest_data = df.iloc[-1] # 가장 최근 거래일 데이터
+            latest_data = df.iloc[-1]  # 가장 최근 거래일 데이터
             open_price = latest_data.get('Open', 0)
             high_price = latest_data.get('High', 0)
             low_price = latest_data.get('Low', 0)
-            
+
             # 시가, 고가, 저가가 모두 0이면 거래정지로 간주
             if open_price <= 0 and high_price <= 0 and low_price <= 0:
                 if progress_callback and keyword:
@@ -322,13 +530,15 @@ def check_investment_restricted(stock_code, progress_callback=None, keyword=None
             if progress_callback and keyword:
                 progress_callback(f"[{keyword}]는 거래금지종목입니다.")
             return True
-        
+
         return False
-        
+
     except Exception as e:
         # 오류 발생 시 정상 종목으로 간주하고 통과 (False 반환)
         print(f"[DEBUG] 거래금지 체크 중 오류 발생 - stock_code: {stock_code}, error: {str(e)}")
         return False
+
+
 # ------------------------------------------------------------------
 # 작성자 : 최준혁
 # 작성일 : 2025-07-22
@@ -357,13 +567,14 @@ def parse_chart_text(chart_text):
     for key, pat in patterns:
         m = re.search(pat, chart_text)
         if m:
-            cleaned_value = re.sub(r'\s', '', m.group(1)) # 공백 제거
+            cleaned_value = re.sub(r'\s', '', m.group(1))  # 공백 제거
             # 거래대금의 경우 단위 '백만'을 붙여줌
             if key == "거래대금":
                 info[key] = f"{cleaned_value}백만"
             else:
                 info[key] = cleaned_value
     return info
+
 
 # ------------------------------------------------------------------
 # 작성자 : 최준혁
@@ -379,7 +590,8 @@ def parse_invest_info_text(invest_info_text, debug=False):
     """
     info = {}
     if not invest_info_text or not isinstance(invest_info_text, str):
-        if debug: print("[WARNING] 유효하지 않은 투자정보 텍스트가 입력되었습니다.")
+        if debug:
+            print("[WARNING] 유효하지 않은 투자정보 텍스트가 입력되었습니다.")
         return info
 
     # '시가총액순위', '상장주식수'는 줄 단위로 파싱
@@ -388,35 +600,37 @@ def parse_invest_info_text(invest_info_text, debug=False):
         line = line.strip()
         if line.startswith('시가총액순위'):
             parts = re.split(r'[\s\t]+', line, maxsplit=1)
-            if len(parts) > 1: info['시가총액순위'] = parts[1].strip()
+            if len(parts) > 1:
+                info['시가총액순위'] = parts[1].strip()
             continue
         if line.startswith('상장주식수'):
             parts = re.split(r'[\s\t]+', line, maxsplit=1)
-            if len(parts) > 1: info['상장주식수'] = parts[1].strip()
+            if len(parts) > 1:
+                info['상장주식수'] = parts[1].strip()
             continue
-            
+
     # PER 정보 추출 (다양한 형식 처리)
     per_match = re.search(r'^(PER(?:lEPS)?(?:\([^\)]*\))?)\s*[\n:|l|\|\s]*([\d\.,]+)\s*배', invest_info_text, re.MULTILINE)
     if per_match:
         info['PER'] = f"{per_match.group(2).replace(',', '')}배"
     elif re.search(r'^PER[^\n]*N/A', invest_info_text, re.MULTILINE):
         info['PER'] = 'N/A'
-        
+
     # 배당수익률 정보 추출 (여러 줄에 걸쳐 있을 수 있음)
     found = False
     for i, line in enumerate(lines):
         if line.strip().startswith('배당수익률'):
             # '배당수익률' 텍스트 다음 몇 줄 내에서 '%' 기호를 포함한 숫자 탐색
-            for j in range(i+1, min(i+3, len(lines))):
+            for j in range(i + 1, min(i + 3, len(lines))):
                 m = re.search(r'([\d\.]+)%', lines[j])
                 if m:
                     info['배당수익률'] = f"{m.group(1)}%"
                     found = True
                     break
-            if not found and 'N/A' in lines[i+1]:
+            if not found and i + 1 < len(lines) and 'N/A' in lines[i + 1]:
                 info['배당수익률'] = 'N/A'
             break
-            
+
     # 나머지 정보들을 정규표현식으로 추출
     patterns = [
         ("시가총액", r"시가총액[\s|:|l|\|]*([\d,조억\s]+원)"),
@@ -430,12 +644,14 @@ def parse_invest_info_text(invest_info_text, debug=False):
         ("동일업종 등락률", r"동일업종 등락률[\s|:|l|\|]*([\-\+\d\.]+%)"),
     ]
     for key, pat in patterns:
-        if key not in info: # 이미 추출된 정보는 건너뜀
+        if key not in info:  # 이미 추출된 정보는 건너뜀
             m = re.search(pat, invest_info_text)
             if m and m.group(1):
                 info[key] = m.group(1).strip()
-    if debug: print(f"[DEBUG] invest_info 파싱 결과(보강): {info}")
+    if debug:
+        print(f"[DEBUG] invest_info 파싱 결과(보강): {info}")
     return info
+
 
 # ------------------------------------------------------------------
 # 작성자 : 최준혁
@@ -456,11 +672,12 @@ def capture_wrap_company_area(stock_code: str, progress_callback=None, debug=Fal
     def log(msg):
         with open("capture_log.txt", "a", encoding="utf-8") as f:
             f.write(f"[capture_wrap_company_area] {msg}\n")
-    
+
     # 작업 취소 여부를 확인하는 내부 함수
     def check_cancellation():
         if is_running_callback and not is_running_callback():
-            if progress_callback: progress_callback("\n사용자에 의해 취소되었습니다.")
+            if progress_callback:
+                progress_callback("\n사용자에 의해 취소되었습니다.")
             return True
         return False
 
@@ -468,40 +685,43 @@ def capture_wrap_company_area(stock_code: str, progress_callback=None, debug=Fal
     driver = None
     chart_text, invest_info_text, summary_info_text = "", "", ""
     chart_info, invest_info = {}, {}
-    
+
     try:
-        if check_cancellation(): return "", False, "", "", {}, {}, ""
-            
-        driver = initialize_driver() # Selenium 웹 드라이버 초기화
-        
-        if check_cancellation(): 
+        if check_cancellation():
+            return "", False, "", "", {}, {}, ""
+
+        driver = initialize_driver()  # Selenium 웹 드라이버 초기화
+
+        if check_cancellation():
             driver.quit()
             return "", False, "", "", {}, {}, ""
-            
+
         url = f"https://finance.naver.com/item/main.naver?code={stock_code}"
         driver.get(url)
-        
-        if progress_callback: progress_callback("페이지 로딩 대기 중...")
-            
+
+        if progress_callback:
+            progress_callback("페이지 로딩 대기 중...")
+
         # 'wrap_company' 요소가 나타날 때까지 최대 3초 대기
         WebDriverWait(driver, 3).until(EC.presence_of_element_located((By.CSS_SELECTOR, "div.wrap_company")))
-            
+
         # 취소 체크를 위한 짧은 대기
         for _ in range(3):
             if check_cancellation():
                 driver.quit()
                 return "", False, "", "", {}, {}, ""
             time.sleep(0.1)
-        
-        if progress_callback: progress_callback("차트 영역 찾는 중...")
-            
+
+        if progress_callback:
+            progress_callback("차트 영역 찾는 중...")
+
         # 회사 이름 추출
         try:
             company_name = driver.find_element(By.CSS_SELECTOR, "div.wrap_company h2 a").text.strip()
         except Exception:
             company_name = "Unknown"
-        clean_company_name = re.sub(r'[\\/:*?"<>|]', '_', company_name) # 파일명으로 사용 가능하게 정제
-        
+        clean_company_name = re.sub(r'[\\/:*?"<>|]', '_', company_name)  # 파일명으로 사용 가능하게 정제
+
         # 'KRX' 탭이 있는지 확인하고 있으면 클릭 (캡처 영역 크기 조절을 위함)
         if driver.find_elements(By.CSS_SELECTOR, "a.top_tab_link"):
             width, height = 965, 505
@@ -519,7 +739,7 @@ def capture_wrap_company_area(stock_code: str, progress_callback=None, debug=Fal
         driver.execute_script("arguments[0].scrollIntoView({block: 'center'})", el)
         time.sleep(0.3)
         location = el.location
-        
+
         # 1. 차트 정보 텍스트 추출 및 파싱
         try:
             chart_text = driver.find_element(By.CSS_SELECTOR, "div#chart_area").text.strip()
@@ -542,14 +762,15 @@ def capture_wrap_company_area(stock_code: str, progress_callback=None, debug=Fal
             p_tags = soup.find_all('p')
             summary_info_text = "\n".join([p.get_text(strip=True) for p in p_tags if p.get_text(strip=True)])
         except Exception as e:
-            if debug: print(f"[WARNING] summary_info(BeautifulSoup) 추출 실패: {e}")
+            if debug:
+                print(f"[WARNING] summary_info(BeautifulSoup) 추출 실패: {e}")
 
         # 4. 기준일 정보 추출
         try:
             date_text = driver.find_element(By.CSS_SELECTOR, "em.date").text.strip()
-            match = re.search(r'\(.*\)', date_text) # 괄호 안의 내용 (e.g., KRX 장중) 추출
+            match = re.search(r'\(.*\)', date_text)  # 괄호 안의 내용 (e.g., KRX 장중) 추출
             chart_info["기준일"] = match.group(0) if match else date_text
-        except Exception as e:
+        except Exception:
             pass
 
         # 5. 현재가 정보 보강 (텍스트 파싱이 실패할 경우를 대비)
@@ -562,20 +783,22 @@ def capture_wrap_company_area(stock_code: str, progress_callback=None, debug=Fal
             if price_str and price_str != '0':
                 chart_info["현재가"] = price_str
         except Exception as e:
-            if debug: print(f"[DEBUG] 현재가(보강) 추출 실패: {e}")
+            if debug:
+                print(f"[DEBUG] 현재가(보강) 추출 실패: {e}")
 
         if check_cancellation():
             driver.quit()
             return "", False, "", "", {}, {}, ""
-            
-        if progress_callback: progress_callback("화면 전체 스크린샷 캡처 중...")
+
+        if progress_callback:
+            progress_callback("화면 전체 스크린샷 캡처 중...")
         try:
             # 화면 전체를 스크린샷하고, 필요한 부분만 잘라내기
             screenshot = driver.get_screenshot_as_png()
             image = Image.open(io.BytesIO(screenshot))
             left, top_coord = int(location['x']), int(location['y'])
             cropped = image.crop((left, top_coord, left + width, top_coord + height))
-            
+
             # 저장 경로 설정
             if custom_save_dir:
                 folder = custom_save_dir
@@ -583,7 +806,7 @@ def capture_wrap_company_area(stock_code: str, progress_callback=None, debug=Fal
                 today = datetime.now().strftime('%Y%m%d')
                 folder = os.path.join(os.getcwd(), "생성된 기사", f"기사{today}")
             os.makedirs(folder, exist_ok=True)
-            
+
             # 이미지 파일 저장
             filename = f"{clean_company_name}_chart.png"
             output_path = os.path.join(folder, filename)
@@ -594,8 +817,9 @@ def capture_wrap_company_area(stock_code: str, progress_callback=None, debug=Fal
             log(f"스크린샷 처리 중 오류 발생: {str(e)}")
             return "", False, chart_text, invest_info_text, chart_info, invest_info, summary_info_text
 
-        if progress_callback: progress_callback("✅ 차트 캡처 완료")
-        
+        if progress_callback:
+            progress_callback("✅ 차트 캡처 완료")
+
         # 성공적으로 완료 시 모든 결과 반환
         return output_path, True, chart_text, invest_info_text, chart_info, invest_info, summary_info_text
 
