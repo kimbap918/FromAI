@@ -1,25 +1,34 @@
 """
-yna_crawler_auto_date_incremental_dedup.py
+4_crawler.py
 
 ✅ 목표:
-- 날짜(days_back) 없이 자동 증분 크롤링
+- 날짜(days_back) 없이 자동 증분 크롤링 (연합뉴스 API)
 - 마지막 크롤링 날짜 +1일 ~ 오늘까지 수집
 - 삽입 전 중복 제거:
   1) CID 기준 (기업(GROUP) 단위)
   2) 제목 유사/중복 (기업(GROUP) 단위)
+- 감성 분석 통합: 실시간 수집 시 AI 감성 분석 및 하이브리드 스코어링 적용
 
-✅ 추가(옵션):
-- MongoDB에 이미 들어가 있는 중복을 정리하는 기능
-  --cleanup-existing : 중복 탐지/정리 실행
-  --apply            : 실제 삭제 적용 (없으면 DRY RUN)
+✅ 주요 기능:
+1) 자동 증분 크롤링: MongoDB 및 파일 상태를 기반으로 중복 없이 최신 뉴스 수집
+2) 감성 분석 백필: 기존에 저장된 기사들에 대한 사후 감성 분석 기능
+3) 중복 정리: MongoDB 내의 기존 중복 데이터(CID/제목) 탐지 및 삭제
 
 사용 예)
-1) 평소(매일 자동 증분 크롤링 + 삽입 전 중복 필터)
-   python yna_crawler_auto_date_incremental_dedup.py
+1) 일반 크롤링 (매일 자동 증분 + 감성 분석 포함):
+   python 4_crawler.py
 
-2) 기존 Mongo 중복 정리(먼저 DRY RUN 권장)
-   python yna_crawler_auto_date_incremental_dedup.py --cleanup-existing
-   python yna_crawler_auto_date_incremental_dedup.py --cleanup-existing --apply
+2) 감성 분석 백필 (미분석 기사 대상):
+   python 4_crawler.py --backfill-sentiment --backfill-limit 500
+
+3) 감성 분석 강제 재분석 (기존 결과 덮어쓰기):
+   python 4_crawler.py --backfill-sentiment --backfill-limit 500 --force
+
+4) 기존 중복 데이터 정리 (DRY RUN):
+   python 4_crawler.py --cleanup-existing
+
+5) 기존 중복 데이터 실제 삭제 적용:
+   python 4_crawler.py --cleanup-existing --apply
 """
 
 import requests
@@ -57,6 +66,12 @@ except Exception:
     ObjectId = None
 
 KST = ZoneInfo("Asia/Seoul")
+
+# 감성 분석 서비스(로컬, 무비용)
+try:
+    from sentiment_service import service as sentiment_service
+except Exception:
+    sentiment_service = None
 
 
 # =========================
@@ -105,6 +120,10 @@ class CrawlConfig:
     mongo_upsert: bool = True
     mongo_batch_size: int = 500
     mongo_ensure_unique_cid: bool = False  # 중복 정리 후 True 권장
+
+    # ✅ 감성 분석 설정
+    sentiment_enabled: bool = True
+    sentiment_filter: List[str] = field(default_factory=list) # 예: ['positive', 'negative']만 유지
 
     # 마지막 크롤링 날짜(state) 저장 경로
     state_path: str = "crawler_state.json"
@@ -881,6 +900,8 @@ def enrich_rows_with_content_and_image(session: requests.Session, config: CrawlC
             row["IMAGE_URL"] = ""
             row["IMAGE_URLS"] = "[]"
             row["IMAGE_SOURCE"] = "none"
+            row["SENTIMENT_LABEL"] = "neutral"
+            row["SENTIMENT_SCORE"] = 0.0
             continue
 
         r = fetch_article_page(session, config, url)
@@ -894,12 +915,32 @@ def enrich_rows_with_content_and_image(session: requests.Session, config: CrawlC
         row["IMAGE_URLS"] = json.dumps(r.get("image_urls", []), ensure_ascii=False)
         row["IMAGE_SOURCE"] = r.get("image_source", "")
 
+        # ✅ 감성 분석 수행
+        s_label, s_score = "neutral", 0.0
+        if config.sentiment_enabled and sentiment_service:
+            text_for_sent = (r["content"].strip() or row.get("TITLE", "").strip())
+            if text_for_sent:
+                try:
+                    s_label, s_score = sentiment_service.predict(text_for_sent)
+                except Exception:
+                    pass
+        row["SENTIMENT_LABEL"] = s_label
+        row["SENTIMENT_SCORE"] = float(s_score)
+
         if i % 10 == 0 or i == len(flat_rows):
             ok_cnt = sum(1 for rr in flat_rows if rr.get("CONTENT_STATUS") == "OK")
             img_cnt = sum(1 for rr in flat_rows if rr.get("IMAGE_URL"))
             print(f"  - 진행 {i}/{len(flat_rows)} | CONTENT_OK {ok_cnt} | IMAGE(primary) {img_cnt}")
 
         time.sleep(config.content_sleep_sec)
+
+    # ✅ 감성 필터 적용 (있을 경우)
+    if config.sentiment_filter:
+        before_cnt = len(flat_rows)
+        flat_rows[:] = [r for r in flat_rows if r.get("SENTIMENT_LABEL") in config.sentiment_filter]
+        after_cnt = len(flat_rows)
+        if before_cnt != after_cnt:
+            print(f"🔍 감성 필터 적용: {before_cnt}건 -> {after_cnt}건 (필터: {config.sentiment_filter})")
 
     print("[DETAIL] 본문/이미지 크롤링 완료.\n")
 
@@ -930,6 +971,8 @@ def save_results_csv(flat_rows: List[dict], out_path: str):
         "IMAGE_URL",
         "IMAGE_URLS",
         "IMAGE_SOURCE",
+        "SENTIMENT_LABEL",
+        "SENTIMENT_SCORE",
     ]
     with open(out_path, "w", newline="", encoding="utf-8-sig") as f:
         w = csv.DictWriter(f, fieldnames=fieldnames)
@@ -960,16 +1003,32 @@ def build_mongo_doc_from_row(row: dict) -> dict:
     except Exception:
         dt_obj = None
 
+    title = row.get("TITLE", "") or ""
+    content = row.get("CONTENT", "") or ""
+    text_for_sent = (content.strip() or title.strip())
+    # 기본값은 "" 또는 None으로 두어 백필 대상이 될 수 있게 함 (이미 분석된 경우는 제외)
+    s_label = row.get("SENTIMENT_LABEL", "")
+    s_score = row.get("SENTIMENT_SCORE", None)
+
+    # row에 이미 있으면 (크롤링 단계에서 채워짐) 그대로 사용, 없으면 여기서 한 번 더 시도 (옵션)
+    if not s_label and sentiment_service is not None and text_for_sent:
+        try:
+            s_label, s_score = sentiment_service.predict(text_for_sent)
+        except Exception:
+            s_label, s_score = "neutral", 0.0
+
     return {
         "Group": row.get("GROUP", ""),
         "PERSON": row.get("PERSON", ""),
         "CID": (row.get("CID", "") or "").strip(),
         "DATETIME": dt_obj if dt_obj else dt_val,
-        "TITLE": row.get("TITLE", ""),
-        "CONTENT": row.get("CONTENT", ""),
+        "TITLE": title,
+        "CONTENT": content,
         "URL": row.get("URL", ""),
         "IMAGE_URL": row.get("IMAGE_URL", ""),
         "IMAGE_URLS": json.loads(row.get("IMAGE_URLS", "[]")) if row.get("IMAGE_URLS") else [],
+        "sentiment_label": s_label,
+        "sentiment_score": float(s_score),
     }
 
 
@@ -1315,6 +1374,72 @@ def cleanup_existing_duplicates(col, groups: List[str], cfg: CrawlConfig, apply:
 
     return report
 
+# =========================
+# ✅ (옵션) MongoDB 기존 기사 감성 분석 채우기 (Backfill)
+# =========================
+def backfill_sentiment_in_mongo(config: CrawlConfig, limit: int = 1000, force: bool = False):
+    if not MongoClient or not sentiment_service:
+        print("❌ MongoClient 또는 sentiment_service가 로드되지 않았습니다.")
+        return
+
+    client = MongoClient(config.mongo_uri)
+    col = client[config.mongo_db][config.mongo_collection]
+
+    # sentiment_label이 없거나, 비어있거나, 분석되지 않은 기본값(neutral + 0.0)인 경우 찾기
+    if force:
+        # 강제 모드: 모든 기사 대상 (최신순)
+        query = {}
+        print("⚠️ 강제 재분석 모드 (--force): 모든 기존 기사를 대상으로 합니다.")
+    else:
+        query = {
+            "$or": [
+                {"sentiment_label": {"$exists": False}},
+                {"sentiment_label": None},
+                {"sentiment_label": ""},
+                {"$and": [{"sentiment_label": "neutral"}, {"sentiment_score": 0.0}]} # 기본값으로 들어간 것들 재분석
+            ]
+        }
+
+    total_to_process = col.count_documents(query)
+    print(f"🔍 감성 분석이 필요한 기존 기사: {total_to_process}건 (처리 제한: {limit}건)")
+
+    docs = list(col.find(query).sort("DATETIME", -1).limit(limit))
+    if not docs:
+        print("✅ 처리할 대상이 없습니다.")
+        client.close()
+        return
+
+    ops = []
+    processed = 0
+    for d in docs:
+        text = (d.get("CONTENT") or d.get("TITLE") or "").strip()
+        if not text:
+            label, score = "neutral", 0.0
+        else:
+            try:
+                label, score = sentiment_service.predict(text)
+            except Exception:
+                label, score = "neutral", 0.0
+
+        ops.append(
+            UpdateOne(
+                {"_id": d["_id"]},
+                {"$set": {"sentiment_label": label, "sentiment_score": float(score)}}
+            )
+        )
+        processed += 1
+
+        if len(ops) >= config.mongo_batch_size:
+            col.bulk_write(ops, ordered=False)
+            ops.clear()
+            print(f"  - 진행 중... {processed}/{len(docs)}")
+
+    if ops:
+        col.bulk_write(ops, ordered=False)
+
+    print(f"✅ 백필 완료: {processed}건 처리됨")
+    client.close()
+
 
 # =========================
 # search_groups 로드(옵션)
@@ -1393,6 +1518,8 @@ def get_news(search_groups: Dict[str, Tuple[str, str]], config: CrawlConfig, sin
                             "IMAGE_URL": "",
                             "IMAGE_URLS": "[]",
                             "IMAGE_SOURCE": "",
+                            "SENTIMENT_LABEL": "neutral",
+                            "SENTIMENT_SCORE": 0.0,
                         }
                     )
 
@@ -1417,6 +1544,9 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--cleanup-existing", action="store_true", help="MongoDB에 이미 들어간 중복(CID/제목)을 정리(기본 DRY RUN)")
     ap.add_argument("--apply", action="store_true", help="--cleanup-existing 와 같이 사용: 실제 삭제 적용")
+    ap.add_argument("--backfill-sentiment", action="store_true", help="MongoDB의 기존 기사 중 감성 분석이 없는 것들을 처리")
+    ap.add_argument("--backfill-limit", type=int, default=1000, help="백필 시 한 번에 처리할 최대 기사 수")
+    ap.add_argument("--force", action="store_true", help="강제로 모든 대상(이미 분석된 것 포함) 재분석")
     args = ap.parse_args()
 
     # 1) search_groups 준비
@@ -1485,8 +1615,13 @@ def main():
         rep = cleanup_existing_duplicates(col, list(search_groups.keys()), CONFIG, apply=args.apply)
         print("✅ CLEANUP REPORT:", rep)
         client.close()
-        # cleanup만 하고 끝내고 싶으면 여기서 return
+
+    # 1-2) 기존 기사 감성 분석 백필
+    if args.backfill_sentiment:
+        backfill_sentiment_in_mongo(CONFIG, limit=args.backfill_limit, force=args.force)
+        # 백필만 하고 끝내려면 여기서 return
         # return
+
 
     # ✅ 2) 날짜 자동 계산
     since_dt = compute_since_dt_auto(CONFIG)
