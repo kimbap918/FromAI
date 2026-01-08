@@ -192,7 +192,60 @@ def save_last_crawled_date(path: str, d: ddate) -> None:
 
 
 # =========================
-# ✅ MongoDB에서 마지막 날짜 자동 감지
+# ✅ MongoDB에서 마지막 "시각"(datetime) 자동 감지
+# =========================
+def detect_last_dt_from_mongo(config: CrawlConfig) -> Optional[datetime]:
+    """문서의 DATETIME 필드에서 가장 최신 시각을 datetime으로 반환.
+    - 우선 BSON date 타입을 확인(정확한 시간)
+    - 다음 문자열 타입(YYYY-MM-DD HH:MM:SS) 파싱
+    - 둘 다 없으면 None
+    """
+    if not config.upload_to_mongo or not MongoClient or not config.mongo_uri:
+        return None
+    client = None
+    try:
+        client = MongoClient(config.mongo_uri, serverSelectionTimeoutMS=4000)
+        col = client[config.mongo_db][config.mongo_collection]
+
+        # 1) DATETIME(date) 최신
+        doc = list(
+            col.find({"DATETIME": {"$type": "date"}}, {"DATETIME": 1})
+            .sort("DATETIME", -1)
+            .limit(1)
+        )
+        if doc:
+            dtv = doc[0].get("DATETIME")
+            if isinstance(dtv, datetime):
+                # BSON datetime은 UTC일 수 있으나, 본 코드는 naive로 취급
+                return dtv.replace(tzinfo=None)
+
+        # 2) DATETIME(string) 최신 (형식이 YYYY-MM-DD HH:MM:SS면 시간까지 반영)
+        doc2 = list(
+            col.find({"DATETIME": {"$type": "string"}}, {"DATETIME": 1})
+            .sort("DATETIME", -1)
+            .limit(1)
+        )
+        if doc2:
+            s = (doc2[0].get("DATETIME") or "").strip()
+            if s:
+                try:
+                    return datetime.strptime(s, "%Y-%m-%d %H:%M:%S")
+                except Exception:
+                    pass
+
+        return None
+    except Exception:
+        return None
+    finally:
+        try:
+            if client:
+                client.close()
+        except Exception:
+            pass
+
+
+# =========================
+# ✅ MongoDB에서 마지막 날짜 자동 감지(하위 호환: date 단위)
 # =========================
 def detect_last_date_from_mongo(config: CrawlConfig) -> Optional[ddate]:
     if not config.upload_to_mongo or not MongoClient or not config.mongo_uri:
@@ -239,30 +292,32 @@ def detect_last_date_from_mongo(config: CrawlConfig) -> Optional[ddate]:
 
 
 # =========================
-# ✅ 이번 실행의 since_dt 자동 계산
+# ✅ 이번 실행의 since_dt 자동 계산 (시간 단위, 겹침 보장)
 # =========================
 def compute_since_dt_auto(config: CrawlConfig) -> Optional[datetime]:
-    today = datetime.now(KST).date()
+    # 1) Mongo 최신 시각 우선
+    last_dt = detect_last_dt_from_mongo(config)
+    source = "mongo-dt" if last_dt else ""
 
-    last_date = load_last_crawled_date(config.state_path)
-    source = "state"
+    # 2) 하위호환: 날짜(state/mongo-date) 기반
+    if last_dt is None:
+        last_date = load_last_crawled_date(config.state_path)
+        src2 = "state" if last_date else ""
+        if last_date is None:
+            last_date = detect_last_date_from_mongo(config)
+            src2 = "mongo-date" if last_date else "bootstrap"
+        if last_date is None:
+            start_dt = (datetime.now(KST).replace(tzinfo=None) - timedelta(days=BOOTSTRAP_DAYS))
+            print(f"🟡 state/mongo 없음 → 자동 부트스트랩: 최근 {BOOTSTRAP_DAYS}일 수집 (since={start_dt})")
+            return start_dt
+        # 날짜만 있을 때는 자정부터 시작(과거 로직 호환)
+        last_dt = datetime.combine(last_date, dtime.max).replace(microsecond=0)
+        source = src2
 
-    if last_date is None:
-        last_date = detect_last_date_from_mongo(config)
-        source = "mongo" if last_date else "bootstrap"
-
-    if last_date is None:
-        start_dt = (datetime.now(KST).replace(tzinfo=None) - timedelta(days=BOOTSTRAP_DAYS))
-        print(f"🟡 state/mongo 없음 → 자동 부트스트랩: 최근 {BOOTSTRAP_DAYS}일 수집 (since={start_dt})")
-        return start_dt
-
-    start_date = last_date + timedelta(days=1)
-    if start_date > today:
-        print(f"✅ 이미 최신입니다. (last_date={last_date} / today={today}) → 스킵")
-        return None
-
-    since_dt = datetime.combine(start_date, dtime.min)  # naive
-    print(f"🟢 자동 증분 기준({source}): last_date={last_date} → since={since_dt}")
+    # 3) 겹침(Overlap) 적용: 최근 수집 시각에서 일정 시간 이전으로 당겨 수집
+    OVERLAP_MINUTES = 120  # 2시간 겹침으로 누락 방지
+    since_dt = (last_dt - timedelta(minutes=OVERLAP_MINUTES))
+    print(f"🟢 자동 증분 기준({source}): last_dt={last_dt} → overlap={OVERLAP_MINUTES}m → since={since_dt}")
     return since_dt
 
 
